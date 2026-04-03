@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>analyze-loudness</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="vendor/uPlot.min.css">
+</head>
+<body>
+  <h1>Loudness Analyzer (BS.1770 / EBU R128)</h1>
+
+  <form id="analyze-form" class="input-bar">
+    <input id="url-input" type="text" placeholder="YouTube URL" required>
+    <button id="submit-btn" type="submit">Analyze</button>
+    <button id="load-btn" type="button">Load JSON</button>
+  </form>
+
+  <div id="status"></div>
+  <div id="results"></div>
+
+  <script src="vendor/uPlot.iife.min.js"></script>
+  <script src="charts/timeline.js"></script>
+  <script src="charts/histogram.js"></script>
+  <script src="charts/segments.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

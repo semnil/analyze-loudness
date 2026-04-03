@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "analyze-loudness"
+version = "1.0.0"
+description = "Download YouTube audio and analyze loudness (BS.1770 / EBU R128)"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "matplotlib",
+    "yt-dlp",
+    "static-ffmpeg",
+]
+
+[project.optional-dependencies]
+gui = ["pywebview"]
+dev = ["pytest"]
+
+[project.scripts]
+analyze-loudness = "analyze_loudness.cli:main"
+analyze-loudness-gui = "analyze_loudness.gui:main"

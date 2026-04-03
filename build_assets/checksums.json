@@ -1,0 +1,18 @@
+{
+  "yt-dlp": {
+    "version": "2026.03.17",
+    "sha256_yt-dlp.exe": "3db811b366b2da47337d2fcfdfe5bbd9a258dad3f350c54974f005df115a1545"
+  },
+  "deno": {
+    "sha256_deno.exe": "90de85316740480a98ae9411b4fc927cb83a63ae801a344d0774614a187cf467"
+  },
+  "ffmpeg": {
+    "sha256_ffmpeg.exe": "4fa171f2b48fbfc12a4db5698f75a7721ebac7f419ee9b11a6a89c09de642969",
+    "sha256_ffprobe.exe": "d0b5c63af1b92a15bae772557242337742bad9fbadf8dc1647825bd8a1c2cbd8"
+  },
+  "uplot": {
+    "version": "1.6.31",
+    "sha256_uPlot.iife.min.js": "2d27e8ad3d228164525ce213f9dc716f39b4e3aee0cc773fb3491c96cf4921a2",
+    "sha256_uPlot.min.css": "df630c6a8d6f8eeaff264b50f73ce5b114f646ffd9a0bb74f049b0a00135fa04"
+  }
+}

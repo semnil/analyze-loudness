@@ -1,0 +1,24 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Build outputs
+dist/
+build/
+build_assets/bin/
+installer_output/
+*.spec.bak
+
+# Claude Code
+.claude/
+
+# Build artifacts (large zip)
+build_assets/*.zip
+
+# Test
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
