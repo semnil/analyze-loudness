@@ -7,8 +7,8 @@
     "sha256_deno.exe": "90de85316740480a98ae9411b4fc927cb83a63ae801a344d0774614a187cf467"
   },
   "ffmpeg": {
-    "sha256_ffmpeg.exe": "4fa171f2b48fbfc12a4db5698f75a7721ebac7f419ee9b11a6a89c09de642969",
-    "sha256_ffprobe.exe": "d0b5c63af1b92a15bae772557242337742bad9fbadf8dc1647825bd8a1c2cbd8"
+    "sha256_ffmpeg.exe": "708268a6f06511b1cda3ccfa2d471542cb4e77f7690dff8932f194dc936399fb",
+    "sha256_ffprobe.exe": "2b79f77fb2929d7bf7c5e6c664414bc8895fd5f467e0925ccaf655065736ac32"
   },
   "uplot": {
     "version": "1.6.31",
