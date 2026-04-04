@@ -3,7 +3,7 @@
 import subprocess
 import sys
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 
 def _subprocess_kwargs() -> dict:
