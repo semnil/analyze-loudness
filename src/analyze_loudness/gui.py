@@ -35,6 +35,10 @@ _speed_factor = 55.0
 _window = None
 
 
+class _ClientDisconnected(Exception):
+    """Raised when the client aborts the NDJSON stream."""
+
+
 class AnalyzeHandler(SimpleHTTPRequestHandler):
     """Serves frontend files and handles /analyze POST requests."""
 
@@ -96,10 +100,18 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
 
         try:
             self._run_analysis(url, duration)
+        except _ClientDisconnected:
+            return
         except FileNotFoundError as e:
-            self._send_event("error", error=str(e))
+            try:
+                self._send_event("error", error=str(e))
+            except _ClientDisconnected:
+                return
         except Exception as e:
-            self._send_event("error", error=f"Analysis failed: {e}")
+            try:
+                self._send_event("error", error=f"Analysis failed: {e}")
+            except _ClientDisconnected:
+                return
 
     def _run_analysis(self, url, duration_min):
         with tempfile.TemporaryDirectory(prefix="loudness_") as workdir:
@@ -276,8 +288,11 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
 
     def _send_event(self, event_type, **kwargs):
         line = json.dumps({"type": event_type, **kwargs}, ensure_ascii=False)
-        self.wfile.write((line + "\n").encode("utf-8"))
-        self.wfile.flush()
+        try:
+            self.wfile.write((line + "\n").encode("utf-8"))
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError, OSError):
+            raise _ClientDisconnected()
 
     def log_message(self, format, *args):
         pass  # suppress access logs

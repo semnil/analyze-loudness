@@ -1,5 +1,7 @@
 let activeUPlots = [];
 let chartCanvasRefs = [];
+let lastRenderedData = null;
+let activeAbort = null;
 
 const form = document.getElementById("analyze-form");
 const urlInput = document.getElementById("url-input");
@@ -7,6 +9,56 @@ const submitBtn = document.getElementById("submit-btn");
 const loadBtn = document.getElementById("load-btn");
 const statusEl = document.getElementById("status");
 const resultsEl = document.getElementById("results");
+
+// Theme: "light" | "dark" | "auto" (follows system)
+const _THEME_ICONS = { light: "\u2600", dark: "\u263E", auto: "\u25D0" };
+const _THEME_TITLES = { light: "Light (click: Dark)", dark: "Dark (click: Auto)", auto: "Auto (click: Light)" };
+
+function _systemDark() {
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+let _themeMode = "auto";
+
+function _applyTheme() {
+  const resolved = _themeMode === "auto" ? (_systemDark() ? "dark" : "light") : _themeMode;
+  document.documentElement.setAttribute("data-theme", resolved);
+  const btn = document.getElementById("theme-toggle");
+  btn.textContent = _THEME_ICONS[_themeMode];
+  btn.title = _THEME_TITLES[_themeMode];
+}
+
+function _setThemeMode(mode) {
+  _themeMode = mode;
+  localStorage.setItem("loudness-theme", mode);
+  const wasDark = isDark();
+  _applyTheme();
+  if (isDark() !== wasDark && lastRenderedData) rerender();
+}
+
+// Init theme
+(function() {
+  const saved = localStorage.getItem("loudness-theme");
+  _themeMode = (saved === "light" || saved === "dark") ? saved : "auto";
+  _applyTheme();
+})();
+
+// Cycle: light -> dark -> auto -> light
+document.getElementById("theme-toggle").addEventListener("click", function() {
+  const next = { light: "dark", dark: "auto", auto: "light" };
+  _setThemeMode(next[_themeMode]);
+});
+
+// Follow system changes when in auto mode
+if (window.matchMedia) {
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function() {
+    if (_themeMode === "auto") {
+      const wasDark = isDark();
+      _applyTheme();
+      if (isDark() !== wasDark && lastRenderedData) rerender();
+    }
+  });
+}
 
 function clearResults() {
   activeUPlots.forEach(u => u.destroy());
@@ -20,21 +72,45 @@ function safeName(title) {
   return (title || "untitled").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80);
 }
 
+let _isBusy = false;
+
+function _setBusy(busy) {
+  _isBusy = busy;
+  loadBtn.disabled = busy;
+  if (busy) {
+    submitBtn.textContent = "Cancel";
+    submitBtn.classList.add("cancelling");
+    submitBtn.disabled = false;
+  } else {
+    submitBtn.textContent = "Analyze";
+    submitBtn.classList.remove("cancelling");
+    submitBtn.disabled = false;
+    activeAbort = null;
+  }
+}
+
+function _cancelActive() {
+  if (activeAbort) activeAbort.abort();
+}
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (_isBusy) { _cancelActive(); return; }
   const url = urlInput.value.trim();
   if (!url) return;
 
   statusEl.textContent = "Starting...";
   statusEl.className = "";
-  submitBtn.disabled = true;
+  _setBusy(true);
   clearResults();
 
+  activeAbort = new AbortController();
   try {
     const resp = await fetch(window.location.origin + "/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url }),
+      signal: activeAbort.signal,
     });
 
     if (!resp.ok) {
@@ -42,18 +118,24 @@ form.addEventListener("submit", async (e) => {
       throw new Error(err.error || `HTTP ${resp.status}`);
     }
 
-    const data = await readNdjsonStream(resp);
+    const data = await readNdjsonStream(resp, activeAbort.signal);
     statusEl.textContent = "";
     render(data);
   } catch (err) {
-    showError(err.message);
+    if (err.name === "AbortError") {
+      statusEl.textContent = "Cancelled.";
+      statusEl.className = "";
+    } else {
+      showError(err.message);
+    }
   } finally {
-    submitBtn.disabled = false;
+    _setBusy(false);
   }
 });
 
 loadBtn.addEventListener("click", async () => {
-  loadBtn.disabled = true;
+  if (_isBusy) return;
+  _setBusy(true);
   statusEl.textContent = "Opening file...";
   statusEl.className = "";
 
@@ -80,16 +162,20 @@ loadBtn.addEventListener("click", async () => {
   } catch (err) {
     showError(err.message);
   } finally {
-    loadBtn.disabled = false;
+    _setBusy(false);
   }
 });
 
-async function readNdjsonStream(resp) {
+async function readNdjsonStream(resp, signal) {
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let result = null;
   let countdownTimer = null;
+
+  if (signal) {
+    signal.addEventListener("abort", () => reader.cancel(), { once: true });
+  }
 
   try {
     while (true) {
@@ -133,6 +219,11 @@ async function readNdjsonStream(resp) {
         }
       }
     }
+  } catch (err) {
+    if (err.name === "AbortError" || (signal && signal.aborted)) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    throw err;
   } finally {
     if (countdownTimer) clearInterval(countdownTimer);
   }
@@ -141,7 +232,14 @@ async function readNdjsonStream(resp) {
   return result;
 }
 
+function rerender() {
+  if (!lastRenderedData) return;
+  clearResults();
+  render(lastRenderedData);
+}
+
 function render(data) {
+  lastRenderedData = data;
   resultsEl.className = "visible";
   chartCanvasRefs = [];
 
@@ -302,27 +400,29 @@ function captureImage(data) {
   }
   totalH += PAD;
 
+  const th = getTheme();
+
   const comp = document.createElement("canvas");
   comp.width = W * SCALE;
   comp.height = totalH * SCALE;
   const ctx = comp.getContext("2d");
   ctx.scale(SCALE, SCALE);
 
-  // White background
-  ctx.fillStyle = "#fff";
+  // Background
+  ctx.fillStyle = th.surface;
   ctx.fillRect(0, 0, W, totalH);
 
   let y = PAD;
 
   // Title
-  ctx.fillStyle = "#4A148C";
+  ctx.fillStyle = th.titleColor;
   ctx.font = "bold 18px 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "center";
   ctx.fillText(title || "Untitled", W / 2, y + 18);
   y += 32;
 
   // Summary text
-  ctx.fillStyle = "#333";
+  ctx.fillStyle = th.fg;
   ctx.font = "13px 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "left";
   const col1 = PAD, col2 = W / 2 + PAD;
@@ -347,7 +447,7 @@ function captureImage(data) {
   y += 12;
 
   // Separator
-  ctx.strokeStyle = "#E1BEE7";
+  ctx.strokeStyle = th.separator;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(PAD, y);
