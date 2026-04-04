@@ -36,12 +36,13 @@ analyze-loudness/
 │   └── plot.py                 # matplotlib figure generation (CLI only)
 ├── frontend/
 │   ├── index.html
-│   ├── main.js                 # fetch + NDJSON progress + DOM rendering
+│   ├── main.js                 # fetch + NDJSON progress + DOM rendering + theme toggle
+│   ├── theme.js                # getTheme() -- chart color provider (light/dark)
 │   ├── charts/
-│   │   ├── timeline.js         # uPlot wrapper
-│   │   ├── histogram.js        # Canvas histogram
-│   │   └── segments.js         # Canvas segment bars
-│   ├── style.css
+│   │   ├── timeline.js         # uPlot wrapper (theme-aware)
+│   │   ├── histogram.js        # Canvas histogram (theme-aware)
+│   │   └── segments.js         # Canvas segment bars (theme-aware)
+│   ├── style.css               # CSS variables + [data-theme="dark"] rules
 │   └── vendor/                 # uPlot (bundled)
 ├── tests/                      # pytest (72 tests)
 │   ├── test_analysis.py
@@ -139,6 +140,18 @@ NDJSON ストリーミングでリアルタイム進捗表示。runtime-calibrat
 | `/save` | POST | 分析結果 JSON をネイティブファイルダイアログで保存 |
 | `/save-image` | POST | チャート composite PNG (base64) をネイティブダイアログで保存 |
 | `/load` | POST | ネイティブダイアログで JSON を選択し、結果を再可視化 |
+
+### ダークモード
+
+CSS 変数 + `[data-theme="dark"]` でライト/ダーク/auto の 3 ステートテーマ切替。
+デフォルトは `auto` (OS の `prefers-color-scheme` に追従)。選択は `localStorage("loudness-theme")` に保存。
+テーマ切替 UI は fixed top-right pill ボタン (☾/☀/◐)。analyze-eq と統一。
+チャート色は `theme.js` の `getTheme()` で一元管理し、テーマ切替時にチャートを再描画。
+
+### 分析キャンセル
+
+Analyze ボタンが分析中に Cancel ボタンに変化。`AbortController` で fetch + NDJSON ストリーム読み取りを中断。
+`_isBusy` フラグで Load ボタンを無効化し、二重実行を防止。
 
 ### Windows subprocess コンソール非表示
 

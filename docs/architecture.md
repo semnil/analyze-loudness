@@ -47,11 +47,12 @@ graph LR
 | File | Responsibility |
 |------|---------------|
 | `index.html` | SPA entry point, local vendor files |
-| `main.js` | Fetch orchestration, NDJSON progress parsing, DOM rendering, save/load/image capture |
-| `charts/timeline.js` | uPlot time series (60-frame moving average) |
-| `charts/histogram.js` | Canvas density histogram |
-| `charts/segments.js` | Canvas 5-min segment bar chart |
-| `style.css` | Purple theme (#9C27B0) |
+| `main.js` | Fetch orchestration, NDJSON progress parsing, DOM rendering, save/load/image capture, theme toggle, cancel (AbortController) |
+| `theme.js` | `isDark()`, `getTheme()` — theme detection + chart color provider |
+| `charts/timeline.js` | uPlot time series (60-frame moving average, theme-aware) |
+| `charts/histogram.js` | Canvas density histogram (theme-aware) |
+| `charts/segments.js` | Canvas 5-min segment bar chart (theme-aware) |
+| `style.css` | CSS variables + `[data-theme="dark"]` rules, purple accent (#9C27B0) |
 | `vendor/` | uPlot.iife.min.js, uPlot.min.css (bundled) |
 
 ### Shared Utilities (`src/analyze_loudness/__init__.py`)
@@ -136,7 +137,21 @@ ebur128 分析時に直接切り出し。
 CLI ではシステムに ffmpeg がインストールされていれば `static-ffmpeg` を使わない。
 `shutil.which("ffmpeg")` で検出し、不在時のみ `static_ffmpeg.add_paths()` を呼ぶ。
 
-### 7. Windows subprocess console hiding
+### 7. Dark mode (light / dark / auto)
+
+CSS 変数 (`--bg`, `--fg`, `--accent` 等) + `[data-theme="dark"]` でテーマを切り替え。
+`theme.js` の `getTheme()` がチャート描画時のカラーパレットを返す。
+fixed top-right pill ボタン (☾/☀/◐) で light → dark → auto をサイクル。
+`auto` は OS の `prefers-color-scheme` に追従し、`matchMedia` の `change` イベントでリアルタイム反映。
+選択は `localStorage("loudness-theme")` に永続化。UI は analyze-eq プロジェクトと統一。
+
+### 8. Analysis cancel (AbortController)
+
+分析中に Analyze ボタンが Cancel に変化 (赤色)。`AbortController.signal` を `fetch()` と
+NDJSON `ReadableStream.getReader()` に渡し、キャンセル時にストリーム読み取りを中断。
+`_isBusy` フラグで Load ボタンを無効化し、二重実行を防止。
+
+### 9. Windows subprocess console hiding
 
 PyInstaller frozen mode では `subprocess.STARTUPINFO` + `STARTF_USESHOWWINDOW` で
 yt-dlp / ffmpeg / ffprobe のコンソールウインドウを非表示にする。
@@ -182,3 +197,5 @@ Build pipeline:
 | Segment size | 5 min | plot.py, segments.js | Bar chart segment width |
 | Moving average window | 60 frames | plot.py, timeline.js | Timeline smoothing window |
 | Downsample target | ~3000 points | plot.py | Plot responsiveness |
+| Default theme | "system" | main.js | OS prefers-color-scheme 追従 |
+| Theme storage key | "theme" | main.js | localStorage persistence key |

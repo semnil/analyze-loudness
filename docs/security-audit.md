@@ -1,6 +1,6 @@
 # Security Audit Report
 
-**Date**: 2026-04-03
+**Date**: 2026-04-04
 **Scope**: CLI (`src/analyze_loudness/`), GUI (`src/analyze_loudness/gui.py`), Frontend SPA (`frontend/`), Build/Distribution (`build.py`, `analyze-loudness.spec`, `installer.iss`)
 
 ## Summary
@@ -13,12 +13,12 @@
 | File I/O (Save/Load) | 3 | 0 | 0 | 3 |
 | Data Exposure | 1 | 0 | 0 | 1 |
 | XSS | 1 | 0 | 0 | 1 |
-| Subprocess Management | 1 | 0 | 1 | 0 |
+| Subprocess Management | 2 | 0 | 1 | 1 |
 | Bundled Binaries | 2 | 0 | 2 | 0 |
 | Resource Management | 1 | 0 | 0 | 1 |
-| **Total** | **15** | **0** | **7** | **8** |
+| **Total** | **16** | **0** | **7** | **9** |
 
-**Open: 0** / Resolved: 7 / Accepted (risk acknowledged): 8
+**Open: 0** / Resolved: 7 / Accepted (risk acknowledged): 9
 
 ---
 
@@ -144,6 +144,18 @@
   - 読み込んだデータはフロントエンドの `render()` に渡されるが、ユーザー由来文字列は `textContent` 経由で安全に表示（SEC-09 参照）
   - 127.0.0.1 + ランダムポートのため外部からの呼び出し不可
 
+### SEC-16: クライアント切断時の subprocess orphaning -- ACCEPTED
+
+- **Risk**: LOW
+- **Location**: [gui.py:116-148](../src/analyze_loudness/gui.py), [download.py](../src/analyze_loudness/download.py)
+- **Analysis**: フロントエンドの Cancel (AbortController) でストリーム読み取りを中断すると、サーバー側の `_send_event()` が `_ClientDisconnected` を発生させて分析を中断する。ただし `subprocess.run()` がブロッキング中の場合、yt-dlp / ffmpeg プロセスは完了まで実行が継続する。
+  - `_ClientDisconnected` は `subprocess.run()` の次の `_send_event()` 呼び出し時にのみ検出される
+  - yt-dlp ダウンロード中 (3-8秒) や ffmpeg 分析中 (~11秒) にキャンセルしても、該当 subprocess は完了まで実行
+  - 完了後に `_send_event()` が `_ClientDisconnected` を送出し、以降の処理を中断
+  - `TemporaryDirectory` は `with` ブロック終了時にクリーンアップされるため、一時ファイルのリークは発生しない
+  - 修正には `subprocess.Popen` ベースに変更し、キャンセル時に `process.kill()` する必要があるが、単一ユーザーのローカルアプリでは実害が小さく、複雑性増加に見合わない
+- **Accepted**: 最大でも十数秒の不要な subprocess 実行のみ。DoS やリソース枯渇のリスクなし
+
 ---
 
 ## Threat Model
@@ -170,6 +182,7 @@
 | Arbitrary file read via /load | Info disclosure | Native dialog + 127.0.0.1 + random port | Very low risk |
 | XSS via loaded JSON title | Code execution | `textContent` (no HTML parse) | Not vulnerable |
 | Invalid base64 in /save-image | Server crash | `ValueError` caught | Resolved |
+| Cancel during subprocess | Orphaned process (~11s) | `_ClientDisconnected` + `TemporaryDirectory` cleanup | Accepted (low) |
 
 ```mermaid
 graph TD
