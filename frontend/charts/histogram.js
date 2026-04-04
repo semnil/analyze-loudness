@@ -23,6 +23,7 @@ function renderHistogram(canvas, values, label, integrated, silenceThreshold) {
   const density = Array.from(counts, c => c / total);
   const maxDensity = Math.max(...density);
 
+  const th = getTheme();
   const ctx = canvas.getContext("2d");
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth;
@@ -38,7 +39,7 @@ function renderHistogram(canvas, values, label, integrated, silenceThreshold) {
   ctx.clearRect(0, 0, w, h);
 
   // bars
-  ctx.fillStyle = "rgba(156,39,176,0.6)";
+  ctx.fillStyle = th.barFill;
   for (let i = 0; i < nBins; i++) {
     if (density[i] === 0) continue;
     const x = pad.left + (i / nBins) * pw;
@@ -50,7 +51,7 @@ function renderHistogram(canvas, values, label, integrated, silenceThreshold) {
   // integrated line
   if (integrated != null) {
     const ix = pad.left + ((integrated - lo) / (hi - lo)) * pw;
-    ctx.strokeStyle = "#9C27B0";
+    ctx.strokeStyle = th.accent;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(ix, pad.top);
@@ -62,7 +63,7 @@ function renderHistogram(canvas, values, label, integrated, silenceThreshold) {
   const sorted = filtered.slice().sort((a, b) => a - b);
   const median = sorted[Math.floor(sorted.length / 2)];
   const mx = pad.left + ((median - lo) / (hi - lo)) * pw;
-  ctx.strokeStyle = "#666";
+  ctx.strokeStyle = th.fgMuted;
   ctx.lineWidth = 1.5;
   ctx.setLineDash([4, 3]);
   ctx.beginPath();
@@ -72,7 +73,7 @@ function renderHistogram(canvas, values, label, integrated, silenceThreshold) {
   ctx.setLineDash([]);
 
   // axes labels
-  ctx.fillStyle = "#333";
+  ctx.fillStyle = th.fg;
   ctx.font = "12px sans-serif";
   ctx.textAlign = "center";
   ctx.fillText(`${label} Loudness (LUFS)`, w / 2, h - 4);
@@ -83,7 +84,7 @@ function renderHistogram(canvas, values, label, integrated, silenceThreshold) {
 
   // x ticks
   ctx.font = "10px sans-serif";
-  ctx.fillStyle = "#666";
+  ctx.fillStyle = th.fgMuted;
   for (let v = lo; v <= hi; v += 10) {
     const x = pad.left + ((v - lo) / (hi - lo)) * pw;
     ctx.fillText(v.toString(), x, pad.top + ph + 16);
@@ -91,7 +92,7 @@ function renderHistogram(canvas, values, label, integrated, silenceThreshold) {
 
   // legend
   ctx.font = "10px sans-serif";
-  ctx.fillStyle = "#333";
+  ctx.fillStyle = th.fg;
   ctx.textAlign = "right";
   ctx.fillText(`Median: ${median.toFixed(1)}`, w - pad.right, pad.top + 14);
 }

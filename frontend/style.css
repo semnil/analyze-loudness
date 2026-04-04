@@ -1,19 +1,64 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+:root {
+  --bg: #fafafa;
+  --fg: #333;
+  --fg-muted: #666;
+  --fg-meta: #888;
+  --accent: #9C27B0;
+  --accent-dark: #7B1FA2;
+  --accent-deeper: #6A1B9A;
+  --accent-deepest: #4A148C;
+  --accent-light: #CE93D8;
+  --accent-bg: #E1BEE7;
+  --surface: #fff;
+  --border: #ddd;
+  --border-light: #eee;
+  --border-header: #ccc;
+  --error: #D32F2F;
+  --copy-bg: #eee;
+  --copy-bg-hover: #ddd;
+  --copy-border: #ccc;
+  --copy-fg: #666;
+}
+
+[data-theme="dark"] {
+  --bg: #1a1a2e;
+  --fg: #e0e0e0;
+  --fg-muted: #aaa;
+  --fg-meta: #888;
+  --accent: #CE93D8;
+  --accent-dark: #BA68C8;
+  --accent-deeper: #AB47BC;
+  --accent-deepest: #E1BEE7;
+  --accent-light: #6A1B9A;
+  --accent-bg: #2a1a3e;
+  --surface: #16213e;
+  --border: #333;
+  --border-light: #2a2a4a;
+  --border-header: #444;
+  --error: #EF5350;
+  --copy-bg: #2a2a4a;
+  --copy-bg-hover: #3a3a5a;
+  --copy-border: #555;
+  --copy-fg: #aaa;
+}
+
 body {
   font-family: "Segoe UI", "Meiryo", sans-serif;
-  background: #fafafa;
-  color: #333;
+  background: var(--bg);
+  color: var(--fg);
   max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
+  transition: background 0.2s, color 0.2s;
 }
 
 h1 {
   text-align: center;
   margin-bottom: 24px;
   font-size: 1.4rem;
-  color: #7B1FA2;
+  color: var(--accent-dark);
 }
 
 .input-bar {
@@ -25,17 +70,19 @@ h1 {
 .input-bar input {
   flex: 1;
   padding: 10px 14px;
-  border: 2px solid #CE93D8;
+  border: 2px solid var(--accent-light);
   border-radius: 6px;
   font-size: 14px;
   outline: none;
+  background: var(--surface);
+  color: var(--fg);
 }
 
-.input-bar input:focus { border-color: #9C27B0; }
+.input-bar input:focus { border-color: var(--accent); }
 
 .input-bar button {
   padding: 10px 24px;
-  background: #9C27B0;
+  background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 6px;
@@ -43,35 +90,55 @@ h1 {
   cursor: pointer;
 }
 
-.input-bar button:hover { background: #7B1FA2; }
-.input-bar button:disabled { background: #CE93D8; cursor: wait; }
+.input-bar button:hover { background: var(--accent-dark); }
+.input-bar button:disabled { background: var(--accent-light); cursor: not-allowed; }
+.input-bar button.cancelling { background: #c62828; }
+.input-bar button.cancelling:hover { background: #b71c1c; }
 
-#load-btn { background: #6A1B9A; }
-#load-btn:hover { background: #4A148C; }
+#load-btn { background: var(--accent-deeper); }
+#load-btn:hover { background: var(--accent-deepest); }
+
+/* Theme toggle */
+.theme-toggle {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 16px;
+  z-index: 100;
+  color: var(--fg);
+  line-height: 1;
+}
+
+.theme-toggle:hover { border-color: var(--accent); }
 
 #status {
   text-align: center;
   margin-bottom: 16px;
   font-size: 14px;
-  color: #666;
+  color: var(--fg-muted);
   min-height: 20px;
 }
 
-#status.error { color: #D32F2F; user-select: text; }
+#status.error { color: var(--error); user-select: text; }
 
 .copy-btn {
   margin-left: 8px;
   padding: 2px 10px;
-  background: #eee;
-  color: #666;
-  border: 1px solid #ccc;
+  background: var(--copy-bg);
+  color: var(--copy-fg);
+  border: 1px solid var(--copy-border);
   border-radius: 3px;
   font-size: 11px;
   cursor: pointer;
   vertical-align: middle;
 }
 
-.copy-btn:hover { background: #ddd; }
+.copy-btn:hover { background: var(--copy-bg-hover); }
 
 /* Summary table */
 .summary-table {
@@ -82,18 +149,20 @@ h1 {
 }
 
 .summary-table th {
-  background: #E1BEE7;
+  background: var(--accent-bg);
   padding: 6px 12px;
   font-weight: 600;
   font-size: 12px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-header);
+  color: var(--fg);
 }
 
 .summary-table td {
   padding: 6px 12px;
   text-align: center;
-  border: 1px solid #ddd;
-  background: #fff;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
 }
 
 /* Chart containers */
@@ -103,8 +172,8 @@ h1 {
 
 .chart-row canvas {
   width: 100%;
-  background: #fff;
-  border: 1px solid #eee;
+  background: var(--surface);
+  border: 1px solid var(--border-light);
   border-radius: 4px;
 }
 
@@ -118,8 +187,8 @@ h1 {
 
 .chart-pair canvas {
   width: 100%;
-  background: #fff;
-  border: 1px solid #eee;
+  background: var(--surface);
+  border: 1px solid var(--border-light);
   border-radius: 4px;
 }
 
@@ -137,19 +206,19 @@ h1 {
 .video-title {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #4A148C;
+  color: var(--accent-deepest);
 }
 
 .meta-info {
   text-align: center;
   font-size: 12px;
-  color: #888;
+  color: var(--fg-meta);
   margin-bottom: 12px;
 }
 
 .save-btn {
   padding: 4px 14px;
-  background: #7B1FA2;
+  background: var(--accent-dark);
   color: #fff;
   border: none;
   border-radius: 4px;
@@ -158,4 +227,14 @@ h1 {
   white-space: nowrap;
 }
 
-.save-btn:hover { background: #6A1B9A; }
+.save-btn:hover { background: var(--accent-deeper); }
+
+/* uPlot dark mode overrides */
+[data-theme="dark"] .uplot,
+[data-theme="dark"] .u-title,
+[data-theme="dark"] .u-legend th,
+[data-theme="dark"] .u-legend td {
+  color: var(--fg) !important;
+}
+
+[data-theme="dark"] .u-legend { background: transparent !important; }

@@ -19,6 +19,7 @@ function movingAvg(arr, w) {
 function renderTimeline(container, t, S, integrated) {
   const tMin = t.map(v => v / 60);
   const sSmooth = movingAvg(S, 60);
+  const th = getTheme();
 
   const opts = {
     width: container.clientWidth,
@@ -29,32 +30,42 @@ function renderTimeline(container, t, S, integrated) {
       y: { range: [-55, -5] },
     },
     axes: [
-      { label: "Time (min)" },
-      { label: "Short-term LUFS" },
+      {
+        label: "Time (min)",
+        stroke: th.fg,
+        grid: { stroke: th.gridStroke },
+        ticks: { stroke: th.gridStroke },
+      },
+      {
+        label: "Short-term LUFS",
+        stroke: th.fg,
+        grid: { stroke: th.gridStroke },
+        ticks: { stroke: th.gridStroke },
+      },
     ],
     series: [
       {},
       {
         label: "S raw",
-        stroke: "rgba(156,39,176,0.2)",
-        fill: "rgba(156,39,176,0.08)",
+        stroke: th.accentStroke,
+        fill: th.accentFill,
         width: 0.5,
       },
       {
         label: "60s avg",
-        stroke: "#9C27B0",
+        stroke: th.accent,
         width: 2,
       },
       {
         label: `I: ${integrated?.toFixed(1) ?? "?"} LUFS`,
-        stroke: "#9C27B0",
+        stroke: th.accent,
         width: 1.2,
         dash: [6, 4],
         value: () => integrated?.toFixed(1) ?? "",
       },
       {
         label: "Target -23",
-        stroke: "#4CAF50",
+        stroke: th.green,
         width: 1,
         dash: [4, 4],
         value: () => "-23.0",

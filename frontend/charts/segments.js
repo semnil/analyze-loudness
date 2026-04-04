@@ -33,6 +33,7 @@ function renderSegments(canvas, t, S, integrated, silenceThreshold) {
     }
   }
 
+  const th = getTheme();
   const ctx = canvas.getContext("2d");
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth;
@@ -55,7 +56,6 @@ function renderSegments(canvas, t, S, integrated, silenceThreshold) {
   const yRange = yMax - yMin || 1;
 
   const barW = (pw / segments.length) * 0.6;
-  const gap = (pw / segments.length) * 0.4;
 
   for (let i = 0; i < segments.length; i++) {
     const s = segments[i];
@@ -64,13 +64,13 @@ function renderSegments(canvas, t, S, integrated, silenceThreshold) {
     if (s.mean != null) {
       // bar
       const barH = ((s.mean - yMin) / yRange) * ph;
-      ctx.fillStyle = "rgba(156,39,176,0.6)";
+      ctx.fillStyle = th.barFill;
       ctx.fillRect(cx - barW / 2, pad.top + ph - barH, barW, barH);
 
       // error bar
       const y10 = pad.top + ph - ((s.p10 - yMin) / yRange) * ph;
       const y90 = pad.top + ph - ((s.p90 - yMin) / yRange) * ph;
-      ctx.strokeStyle = "#666";
+      ctx.strokeStyle = th.fgMuted;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(cx, y10);
@@ -83,7 +83,7 @@ function renderSegments(canvas, t, S, integrated, silenceThreshold) {
     }
 
     // x label
-    ctx.fillStyle = "#666";
+    ctx.fillStyle = th.fgMuted;
     ctx.font = "10px sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(s.label, cx, pad.top + ph + 16);
@@ -92,7 +92,7 @@ function renderSegments(canvas, t, S, integrated, silenceThreshold) {
   // integrated line
   if (integrated != null) {
     const iy = pad.top + ph - ((integrated - yMin) / yRange) * ph;
-    ctx.strokeStyle = "#9C27B0";
+    ctx.strokeStyle = th.accent;
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
@@ -103,7 +103,7 @@ function renderSegments(canvas, t, S, integrated, silenceThreshold) {
   }
 
   // title
-  ctx.fillStyle = "#333";
+  ctx.fillStyle = th.fg;
   ctx.font = "bold 13px sans-serif";
   ctx.textAlign = "center";
   ctx.fillText("5-Minute Segment Average (error bars: P10-P90)", w / 2, 16);
