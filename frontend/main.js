@@ -10,6 +10,40 @@ const loadBtn = document.getElementById("load-btn");
 const statusEl = document.getElementById("status");
 const resultsEl = document.getElementById("results");
 
+// Context menu for text input (right-click paste/cut/copy/select all)
+(function() {
+  var menu = null;
+  function closeMenu() { if (menu) { menu.remove(); menu = null; } }
+  document.addEventListener("click", closeMenu);
+  document.addEventListener("contextmenu", (e) => {
+    closeMenu();
+    var el = e.target;
+    if (el.tagName !== "INPUT" || el.type !== "text") return;
+    e.preventDefault();
+    menu = document.createElement("div");
+    menu.className = "ctx-menu";
+    var items = [
+      { label: "Cut", fn: () => { document.execCommand("cut"); } },
+      { label: "Copy", fn: () => { document.execCommand("copy"); }, disabled: el.selectionStart === el.selectionEnd },
+      { label: "Paste", fn: () => { navigator.clipboard.readText().then((t) => { document.execCommand("insertText", false, t); }); } },
+      { label: "Select All", fn: () => { el.select(); } },
+    ];
+    items.forEach((it) => {
+      var btn = document.createElement("button");
+      btn.textContent = it.label;
+      if (it.disabled) btn.disabled = true;
+      btn.addEventListener("mousedown", (ev) => { ev.preventDefault(); el.focus(); it.fn(); closeMenu(); });
+      menu.appendChild(btn);
+    });
+    menu.style.left = e.clientX + "px";
+    menu.style.top = e.clientY + "px";
+    document.body.appendChild(menu);
+    var rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) menu.style.left = (window.innerWidth - rect.width - 4) + "px";
+    if (rect.bottom > window.innerHeight) menu.style.top = (window.innerHeight - rect.height - 4) + "px";
+  });
+})();
+
 // Theme: "light" | "dark" | "auto" (follows system)
 const _THEME_ICONS = { light: "\u2600", dark: "\u263E", auto: "\u25D0" };
 const _THEME_TITLES = { light: "Light (click: Dark)", dark: "Dark (click: Auto)", auto: "Auto (click: Light)" };
@@ -158,6 +192,8 @@ loadBtn.addEventListener("click", async () => {
 
     clearResults();
     statusEl.textContent = "";
+    var src = result.data.meta && result.data.meta.source_url;
+    if (src) urlInput.value = src;
     render(result.data);
   } catch (err) {
     showError(err.message);
@@ -359,7 +395,8 @@ async function saveResult(data) {
     const resp = await fetch(window.location.origin + "/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ data, filename }),
+      body: JSON.stringify({ data, filename,
+        source_url: data.meta && data.meta.source_url || undefined }),
     });
     const result = await resp.json();
     if (result.saved) {
@@ -389,13 +426,19 @@ function captureImage(data) {
   totalH += 32; // title
   totalH += LINE * 7 + 12; // summary lines + spacing
 
+  // Chart titles for canvases that lack built-in titles (uPlot renders title in DOM, not canvas)
+  const chartTitles = ["Short-term Loudness (3s window)", null, null, null];
+
   // Chart heights (in CSS pixels)
   const chartSizes = [];
-  for (const c of chartCanvasRefs) {
+  for (let ci = 0; ci < chartCanvasRefs.length; ci++) {
+    const c = chartCanvasRefs[ci];
     if (!c || !c.width) continue;
     const h = c.height / dpr;
     const w = c.width / dpr;
-    chartSizes.push({ canvas: c, w, h });
+    const label = chartTitles[ci] || null;
+    chartSizes.push({ canvas: c, w, h, label });
+    if (label) totalH += 22;
     totalH += h + 16;
   }
   totalH += PAD;
@@ -456,7 +499,14 @@ function captureImage(data) {
   y += 8;
 
   // Draw chart canvases
-  for (const { canvas, w, h } of chartSizes) {
+  for (const { canvas, w, h, label } of chartSizes) {
+    if (label) {
+      ctx.fillStyle = th.fg;
+      ctx.font = "bold 13px 'Segoe UI', 'Meiryo', sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(label, W / 2, y + 14);
+      y += 22;
+    }
     const drawW = Math.min(w, W - PAD * 2);
     const drawH = h * (drawW / w);
     const x = (W - drawW) / 2;

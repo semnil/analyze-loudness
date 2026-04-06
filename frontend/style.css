@@ -229,6 +229,32 @@ h1 {
 
 .save-btn:hover { background: var(--accent-deeper); }
 
+/* Context menu for input fields */
+.ctx-menu {
+  position: fixed;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  padding: 4px 0;
+  z-index: 9999;
+  min-width: 120px;
+}
+.ctx-menu button {
+  display: block;
+  width: 100%;
+  padding: 6px 16px;
+  border: none;
+  background: none;
+  color: var(--fg);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.ctx-menu button:hover { background: rgba(156, 39, 176, 0.1); }
+.ctx-menu button:disabled { color: var(--fg-meta); cursor: default; }
+.ctx-menu button:disabled:hover { background: none; }
+
 /* uPlot dark mode overrides */
 [data-theme="dark"] .uplot,
 [data-theme="dark"] .u-title,
