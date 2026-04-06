@@ -44,7 +44,7 @@ analyze-loudness/
 │   │   └── segments.js         # Canvas segment bars (theme-aware)
 │   ├── style.css               # CSS variables + [data-theme="dark"] rules
 │   └── vendor/                 # uPlot (bundled)
-├── tests/                      # pytest (72 tests)
+├── tests/                      # pytest (76 tests)
 │   ├── test_analysis.py
 │   ├── test_cli.py
 │   ├── test_download.py
@@ -206,13 +206,13 @@ Result event:
 
 ## Implementation status
 
-All items implemented and tested (72 tests passing).
+All items implemented and tested (76 tests passing).
 
 1. `src/analyze_loudness/` -- CLI + GUI 共通パッケージ
 2. `src/analyze_loudness/gui.py` -- pywebview GUI (NDJSON progress, runtime time estimation, save/load/image)
 3. `frontend/` -- SPA (uPlot + 自前チャート, NDJSON progress, JSON/Image save, JSON load + 再可視化)
 4. `build.py` + `analyze-loudness.spec` + `installer.iss` -- ビルド + インストーラー (SHA256 検証)
-5. `tests/` -- pytest (72 tests: analysis, cli, download, gui, init)
+5. `tests/` -- pytest (76 tests: analysis, cli, download, gui, init)
 6. `docs/` -- 設計ドキュメント + セキュリティ監査レポート (15 findings, 0 open)
 
 ## Known limitations / future work

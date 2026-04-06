@@ -181,6 +181,29 @@ class TestSaveImageValidation:
         assert save_path.read_bytes() == png_bytes
 
 
+class TestClientDisconnected:
+    """Tests for _ClientDisconnected and _send_event error handling."""
+
+    @pytest.mark.parametrize("exc", [BrokenPipeError, ConnectionAbortedError, ConnectionResetError])
+    def test_send_event_raises_on_disconnect(self, handler_class, exc):
+        from analyze_loudness.gui import _ClientDisconnected
+        handler = MagicMock()
+        handler.wfile = MagicMock()
+        handler.wfile.write.side_effect = exc()
+        with pytest.raises(_ClientDisconnected):
+            handler_class._send_event(handler, "progress", message="test")
+
+    def test_send_event_success(self, handler_class):
+        handler = MagicMock()
+        handler.wfile = MagicMock()
+        handler_class._send_event(handler, "progress", message="hello")
+        written = handler.wfile.write.call_args[0][0]
+        parsed = json.loads(written.decode())
+        assert parsed["type"] == "progress"
+        assert parsed["message"] == "hello"
+        handler.wfile.flush.assert_called_once()
+
+
 class TestMetaGeneration:
     def test_meta_fields_present(self):
         from analyze_loudness import __version__

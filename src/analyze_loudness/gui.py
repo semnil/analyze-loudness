@@ -1,8 +1,10 @@
 """GUI application: pywebview window + local HTTP server for analysis."""
 
+import atexit
 import base64
 import json
 import os
+import shutil
 import sys
 import tempfile
 import threading
@@ -33,6 +35,39 @@ _speed_factor = 55.0
 
 # pywebview window reference (set in main())
 _window = None
+
+# Analysis result cache — avoids re-analysis for same URL + duration
+_cache_dir = tempfile.mkdtemp(prefix="loudness_cache_")
+atexit.register(shutil.rmtree, _cache_dir, True)
+_result_cache: dict[tuple, str] = {}  # (url, duration) -> json path
+
+
+def _cache_file(url: str, duration: float | None) -> str | None:
+    path = _result_cache.get((url, duration))
+    return path if path and os.path.exists(path) else None
+
+
+def _cache_get(url: str, duration: float | None) -> dict | None:
+    path = _cache_file(url, duration)
+    if path:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    return None
+
+
+_cache_seq = 0
+
+
+def _cache_put(url: str, duration: float | None, result_dict: dict) -> str:
+    global _cache_seq
+    key = (url, duration)
+    _cache_seq += 1
+    fname = f"cache_{_cache_seq:04d}.json"
+    path = os.path.join(_cache_dir, fname)
+    Path(path).write_text(
+        json.dumps(result_dict, indent=2, ensure_ascii=False), encoding="utf-8",
+    )
+    _result_cache[key] = path
+    return path
 
 
 class _ClientDisconnected(Exception):
@@ -114,6 +149,13 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
                 return
 
     def _run_analysis(self, url, duration_min):
+        cached = _cache_get(url, duration_min)
+        if cached:
+            self._send_event("progress", stage="cache",
+                             message="Using cached result...")
+            self._send_event("result", data=cached)
+            return
+
         with tempfile.TemporaryDirectory(prefix="loudness_") as workdir:
             # Stage 1: Download
             self._send_event("progress", stage="download",
@@ -187,12 +229,14 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
                 "M": [round(float(v), 1) for v in M],
             },
         }
+        _cache_put(url, duration_min, result)
         self._send_event("result", data=result)
 
     def _handle_save(self):
         body = self._read_json_body()
         data = body.get("data")
         filename = body.get("filename", "loudness_result.json")
+        source_url = body.get("source_url")
 
         if not data:
             self._json_error(400, "Missing 'data' field")
@@ -213,9 +257,13 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             return
 
         try:
-            Path(save_path).write_text(
-                json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
-            )
+            cache = _cache_file(source_url, None) if source_url else None
+            if cache:
+                shutil.copy2(cache, save_path)
+            else:
+                Path(save_path).write_text(
+                    json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+                )
         except OSError as e:
             self._json_error(500, f"Failed to write file: {e}")
             return
@@ -275,6 +323,11 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             self._json_error(400, "Invalid loudness JSON: missing summary or series")
             return
 
+        # Cache loaded data for reuse
+        src = data.get("meta", {}).get("source_url")
+        if src:
+            _cache_put(src, None, data)
+
         self._json_response(200, {"loaded": True, "data": data})
 
     def _json_response(self, status, obj):
@@ -298,6 +351,54 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         pass  # suppress access logs
 
 
+_BG_LIGHT = "#fafafa"
+_BG_DARK = "#1a1a2e"
+
+
+def _system_prefers_dark() -> bool:
+    """Check if the OS is set to dark mode (Windows registry)."""
+    try:
+        import winreg
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+        ) as key:
+            val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+        return val == 0
+    except Exception:
+        return False
+
+
+def _resolve_background_color(storage_key: str) -> str:
+    """Resolve the pywebview initial background color from the theme setting.
+
+    Reads the WebView2 localStorage via the LevelDB profile to match
+    the user's persisted theme choice.  Falls back to OS preference
+    for 'auto' or when the profile cannot be read.
+    """
+    mode = "auto"
+    try:
+        profile = Path(os.environ.get("LOCALAPPDATA", "")) / "pywebview" / "Default"
+        ls_dir = profile / "Local Storage" / "leveldb"
+        if ls_dir.is_dir():
+            for ldb in sorted(ls_dir.glob("*.log"), reverse=True):
+                raw = ldb.read_bytes()
+                idx = raw.find(storage_key.encode())
+                if idx == -1:
+                    continue
+                tail = raw[idx + len(storage_key):idx + len(storage_key) + 40]
+                if b"dark" in tail:
+                    mode = "dark"
+                elif b"light" in tail:
+                    mode = "light"
+                break
+    except Exception:
+        pass
+    if mode == "auto":
+        return _BG_DARK if _system_prefers_dark() else _BG_LIGHT
+    return _BG_DARK if mode == "dark" else _BG_LIGHT
+
+
 def main():
     # When frozen, add bundled binaries (ffmpeg, ffprobe, yt-dlp) to PATH
     if getattr(sys, "frozen", False):
@@ -310,11 +411,13 @@ def main():
     thread.start()
 
     global _window
+    bg = _resolve_background_color("loudness-theme")
     _window = webview.create_window(
         "Loudness Analyzer (BS.1770 / EBU R128)",
         url=f"http://127.0.0.1:{port}/index.html",
         width=1100,
         height=800,
+        background_color=bg,
     )
     webview.start()
     server.shutdown()
