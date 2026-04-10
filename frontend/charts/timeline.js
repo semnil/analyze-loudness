@@ -44,7 +44,7 @@ function renderTimeline(container, t, S, integrated) {
       },
     ],
     series: [
-      {},
+      { label: "Time (min)" },
       {
         label: "S raw",
         stroke: th.accentStroke,
