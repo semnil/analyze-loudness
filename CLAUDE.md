@@ -197,13 +197,6 @@ Result event:
 | stderr parse + JSON| <1 s    |
 | **Total**          | **~20 s** |
 
-## Coding conventions
-
-- Discussion in Japanese, code in English.
-- No formatting-only changes; minimize diffs.
-- Half-width parentheses + spaces; comments describe behavior only.
-- Self-review before delivery.
-
 ## Implementation status
 
 All items implemented and tested (76 tests passing).
