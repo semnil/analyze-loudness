@@ -1,7 +1,7 @@
 ; Inno Setup script for analyze-loudness
 
 #define MyAppName "Loudness Analyzer"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.1.1"
 #define MyAppExeName "analyze-loudness.exe"
 
 [Setup]
