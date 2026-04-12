@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#242540"/>
+      <stop offset="1" stop-color="#141225"/>
+    </linearGradient>
+
+    <!-- Meter fill: green (safe) -> yellow (nominal) -> red (peak) -->
+    <linearGradient id="meterGrad" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0.00" stop-color="#2aa876"/>
+      <stop offset="0.45" stop-color="#58d38a"/>
+      <stop offset="0.65" stop-color="#e8d84a"/>
+      <stop offset="0.82" stop-color="#f09c38"/>
+      <stop offset="1.00" stop-color="#e94f4f"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="1024" height="1024" rx="225" ry="225" fill="url(#bgGrad)"/>
+
+  <!-- Faint dB scale guides (horizontal) -->
+  <g stroke="#ffffff" stroke-opacity="0.05" stroke-width="2">
+    <line x1="120" y1="260" x2="904" y2="260"/>
+    <line x1="120" y1="360" x2="904" y2="360"/>
+    <line x1="120" y1="460" x2="904" y2="460"/>
+    <line x1="120" y1="560" x2="904" y2="560"/>
+    <line x1="120" y1="660" x2="904" y2="660"/>
+    <line x1="120" y1="760" x2="904" y2="760"/>
+  </g>
+
+  <!-- Target LUFS line (-14 LUFS, e.g. streaming target) -->
+  <line x1="120" y1="420" x2="904" y2="420"
+        stroke="#7ea3f7" stroke-opacity="0.55" stroke-width="4"
+        stroke-dasharray="14,12" stroke-linecap="round"/>
+
+  <!-- Baseline -->
+  <line x1="120" y1="820" x2="904" y2="820"
+        stroke="#ffffff" stroke-opacity="0.25" stroke-width="3"
+        stroke-linecap="round"/>
+
+  <!-- Meter track (unlit background) -->
+  <rect x="362" y="110" width="300" height="820" rx="48" ry="48" fill="#2a2742"/>
+
+  <!-- Meter fill (~ -8 dB) -->
+  <rect x="362" y="260" width="300" height="670" rx="48" ry="48"
+        fill="url(#meterGrad)" filter="url(#glow)"/>
+
+  <!-- Meter outer stroke -->
+  <rect x="362" y="110" width="300" height="820" rx="48" ry="48"
+        fill="none" stroke="#ffffff" stroke-opacity="0.12" stroke-width="3"/>
+</svg>
