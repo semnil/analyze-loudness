@@ -8,7 +8,7 @@ import pytest
 
 from analyze_loudness.download import (
     sanitize_filename, compute_middle, probe_duration,
-    _run, fetch_title, download_audio,
+    _run, download_audio,
 )
 
 
@@ -141,52 +141,53 @@ class TestRun:
         assert len(exc_info.value.args[0]) < 600
 
 
-class TestFetchTitle:
-    @patch("analyze_loudness.download._run")
-    def test_returns_title(self, mock_run):
-        mock_run.return_value = MagicMock(stdout="My Video Title\n")
-        assert fetch_title("https://example.com") == "My Video Title"
-
-    @patch("analyze_loudness.download._run")
-    def test_returns_untitled_on_error(self, mock_run):
-        mock_run.side_effect = RuntimeError("failed")
-        assert fetch_title("https://example.com") == "Untitled"
-
-    @patch("analyze_loudness.download._run")
-    def test_returns_untitled_on_empty_output(self, mock_run):
-        mock_run.return_value = MagicMock(stdout="")
-        assert fetch_title("https://example.com") == "Untitled"
-
-    @patch("analyze_loudness.download._run")
-    def test_multiline_takes_first(self, mock_run):
-        mock_run.return_value = MagicMock(stdout="First Line\nSecond Line\n")
-        assert fetch_title("https://example.com") == "First Line"
-
-
 class TestDownloadAudio:
-    @patch("analyze_loudness.download._run")
-    @patch("analyze_loudness.download.fetch_title", return_value="Test Title")
-    def test_returns_file_and_title(self, mock_title, mock_run, tmp_path):
-        # Create a fake downloaded file
+    def _mock_ydl(self, info):
+        ctx = MagicMock()
+        ctx.__enter__ = MagicMock(return_value=ctx)
+        ctx.__exit__ = MagicMock(return_value=False)
+        ctx.extract_info = MagicMock(return_value=info)
+        return ctx
+
+    @patch("analyze_loudness.download.YoutubeDL")
+    def test_returns_file_and_title(self, mock_ydl_cls, tmp_path):
         fake_file = tmp_path / "abc123.opus"
         fake_file.write_text("fake audio")
+        mock_ydl_cls.return_value = self._mock_ydl({"title": "Test Title"})
 
         result = download_audio("https://example.com", str(tmp_path))
         assert result == (str(fake_file), "Test Title")
 
-    @patch("analyze_loudness.download._run")
-    @patch("analyze_loudness.download.fetch_title", return_value="Title")
-    def test_no_file_raises(self, mock_title, mock_run, tmp_path):
+    @patch("analyze_loudness.download.YoutubeDL")
+    def test_no_file_raises(self, mock_ydl_cls, tmp_path):
+        mock_ydl_cls.return_value = self._mock_ydl({"title": "Title"})
         with pytest.raises(FileNotFoundError, match="no audio file"):
             download_audio("https://example.com", str(tmp_path))
 
-    @patch("analyze_loudness.download._run")
-    @patch("analyze_loudness.download.fetch_title", return_value="Title")
-    def test_calls_ytdlp_with_correct_args(self, mock_title, mock_run, tmp_path):
+    @patch("analyze_loudness.download.YoutubeDL")
+    def test_missing_title_falls_back_to_untitled(self, mock_ydl_cls, tmp_path):
         fake_file = tmp_path / "abc.opus"
         fake_file.write_text("data")
+        mock_ydl_cls.return_value = self._mock_ydl({})
+
+        _, title = download_audio("https://example.com", str(tmp_path))
+        assert title == "Untitled"
+
+    @patch("analyze_loudness.download.YoutubeDL")
+    def test_extract_info_error_raises_runtime(self, mock_ydl_cls, tmp_path):
+        ctx = self._mock_ydl({})
+        ctx.extract_info.side_effect = Exception("network error")
+        mock_ydl_cls.return_value = ctx
+        with pytest.raises(RuntimeError, match="yt-dlp failed"):
+            download_audio("https://example.com", str(tmp_path))
+
+    @patch("analyze_loudness.download.YoutubeDL")
+    def test_passes_opus_postprocessor(self, mock_ydl_cls, tmp_path):
+        fake_file = tmp_path / "abc.opus"
+        fake_file.write_text("data")
+        mock_ydl_cls.return_value = self._mock_ydl({"title": "T"})
+
         download_audio("https://example.com/watch?v=X", str(tmp_path))
-        cmd = mock_run.call_args[0][0]
-        assert cmd[0] == "yt-dlp"
-        assert "-x" in cmd
-        assert "https://example.com/watch?v=X" in cmd
+        opts = mock_ydl_cls.call_args[0][0]
+        assert opts["postprocessors"][0]["preferredcodec"] == "opus"
+        assert str(tmp_path) in opts["outtmpl"]

@@ -12,7 +12,6 @@ _EXE = ".exe" if IS_WINDOWS else ""
 _BINARIES = [
     (os.path.join(ROOT, f"build_assets/bin/ffmpeg{_EXE}"), "bin"),
     (os.path.join(ROOT, f"build_assets/bin/ffprobe{_EXE}"), "bin"),
-    (os.path.join(ROOT, f"build_assets/bin/yt-dlp{_EXE}"), "bin"),
     (os.path.join(ROOT, f"build_assets/bin/deno{_EXE}"), "bin"),
 ]
 
@@ -92,12 +91,12 @@ if IS_MAC:
         name="Loudness Analyzer.app",
         icon=_ICON,
         bundle_identifier="com.semnil.loudness-analyzer",
-        version="1.1.3",
+        version="1.1.4",
         info_plist={
             "CFBundleName": "Loudness Analyzer",
             "CFBundleDisplayName": "Loudness Analyzer",
-            "CFBundleShortVersionString": "1.1.3",
-            "CFBundleVersion": "1.1.3",
+            "CFBundleShortVersionString": "1.1.4",
+            "CFBundleVersion": "1.1.4",
             "LSMinimumSystemVersion": "11.0",
             "NSHighResolutionCapable": True,
             "LSEnvironment": {"PYTHONIOENCODING": "utf-8"},
