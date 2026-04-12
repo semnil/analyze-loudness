@@ -355,47 +355,47 @@ _BG_LIGHT = "#fafafa"
 _BG_DARK = "#1a1a2e"
 
 
-def _system_prefers_dark() -> bool:
-    """Check if the OS is set to dark mode (Windows registry)."""
+from desktop_app_common.platform import IS_WINDOWS, IS_MAC  # noqa: E402
+from desktop_app_common.theme import is_dark_mode  # noqa: E402
+
+
+def _read_theme_from_leveldb(ls_dir: Path, storage_key: str) -> str | None:
+    """Scan a Chromium LevelDB directory for a localStorage key value."""
     try:
-        import winreg
-        with winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
-        ) as key:
-            val, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-        return val == 0
+        if not ls_dir.is_dir():
+            return None
+        for ldb in sorted(ls_dir.glob("*.log"), reverse=True):
+            raw = ldb.read_bytes()
+            idx = raw.find(storage_key.encode())
+            if idx == -1:
+                continue
+            tail = raw[idx + len(storage_key):idx + len(storage_key) + 40]
+            if b"dark" in tail:
+                return "dark"
+            if b"light" in tail:
+                return "light"
     except Exception:
-        return False
+        pass
+    return None
 
 
 def _resolve_background_color(storage_key: str) -> str:
-    """Resolve the pywebview initial background color from the theme setting.
-
-    Reads the WebView2 localStorage via the LevelDB profile to match
-    the user's persisted theme choice.  Falls back to OS preference
-    for 'auto' or when the profile cannot be read.
-    """
-    mode = "auto"
-    try:
+    """Resolve the pywebview initial background color from the theme setting."""
+    mode: str | None = None
+    if IS_WINDOWS:
         profile = Path(os.environ.get("LOCALAPPDATA", "")) / "pywebview" / "Default"
-        ls_dir = profile / "Local Storage" / "leveldb"
-        if ls_dir.is_dir():
-            for ldb in sorted(ls_dir.glob("*.log"), reverse=True):
-                raw = ldb.read_bytes()
-                idx = raw.find(storage_key.encode())
-                if idx == -1:
-                    continue
-                tail = raw[idx + len(storage_key):idx + len(storage_key) + 40]
-                if b"dark" in tail:
-                    mode = "dark"
-                elif b"light" in tail:
-                    mode = "light"
+        mode = _read_theme_from_leveldb(profile / "Local Storage" / "leveldb", storage_key)
+    elif IS_MAC:
+        home = Path.home()
+        for base in (
+            home / "Library/WebKit/org.python.python/WebsiteData/LocalStorage",
+            home / "Library/Application Support/pywebview/WebsiteData/LocalStorage",
+        ):
+            mode = _read_theme_from_leveldb(base, storage_key)
+            if mode:
                 break
-    except Exception:
-        pass
-    if mode == "auto":
-        return _BG_DARK if _system_prefers_dark() else _BG_LIGHT
+    if mode is None:
+        return _BG_DARK if is_dark_mode() else _BG_LIGHT
     return _BG_DARK if mode == "dark" else _BG_LIGHT
 
 
