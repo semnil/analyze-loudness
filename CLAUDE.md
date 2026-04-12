@@ -211,7 +211,7 @@ All items implemented and tested.
 2. `src/analyze_loudness/gui.py` -- pywebview GUI (NDJSON progress, runtime time estimation, save/load/image)
 3. `frontend/` -- SPA (uPlot + 自前チャート, NDJSON progress, JSON/Image save, JSON load + 再可視化)
 4. `build.py` + `analyze-loudness.spec` + `installer.iss` -- ビルド + インストーラー (SHA256 検証)
-5. `tests/` -- pytest (analysis, cli, download, gui)
+5. `tests/` -- pytest (analysis, cli, download, gui, init)
 6. `docs/` -- 設計ドキュメント + セキュリティ監査レポート (15 findings, 0 open)
 
 ## Known limitations / future work
