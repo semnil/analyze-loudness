@@ -148,9 +148,9 @@
 
 - **Risk**: LOW
 - **Location**: [gui.py:116-148](../src/analyze_loudness/gui.py), [download.py](../src/analyze_loudness/download.py)
-- **Analysis**: フロントエンドの Cancel (AbortController) でストリーム読み取りを中断すると、サーバー側の `_send_event()` が `_ClientDisconnected` を発生させて分析を中断する。ただし `subprocess.run()` がブロッキング中の場合、yt-dlp / ffmpeg プロセスは完了まで実行が継続する。
-  - `_ClientDisconnected` は `subprocess.run()` の次の `_send_event()` 呼び出し時にのみ検出される
-  - yt-dlp ダウンロード中 (3-8秒) や ffmpeg 分析中 (~11秒) にキャンセルしても、該当 subprocess は完了まで実行
+- **Analysis**: フロントエンドの Cancel (AbortController) でストリーム読み取りを中断すると、サーバー側の `_send_event()` が `_ClientDisconnected` を発生させて分析を中断する。ただし `yt_dlp.YoutubeDL.extract_info()` や `subprocess.run()` (ffmpeg) がブロッキング中の場合、該当処理は完了まで実行が継続する。
+  - `_ClientDisconnected` は次の `_send_event()` 呼び出し時にのみ検出される
+  - yt_dlp ダウンロード中 (3-8秒) や ffmpeg 分析中 (~11秒) にキャンセルしても、該当処理は完了まで実行
   - 完了後に `_send_event()` が `_ClientDisconnected` を送出し、以降の処理を中断
   - `TemporaryDirectory` は `with` ブロック終了時にクリーンアップされるため、一時ファイルのリークは発生しない
   - 修正には `subprocess.Popen` ベースに変更し、キャンセル時に `process.kill()` する必要があるが、単一ユーザーのローカルアプリでは実害が小さく、複雑性増加に見合わない
@@ -188,7 +188,7 @@
 graph TD
     A["User Input<br/>(URL + duration)"] --> B{"gui.py<br/>validation"}
     B -->|"invalid"| C["400 error"]
-    B -->|"valid"| D["yt-dlp<br/>(subprocess list args)"]
+    B -->|"valid"| D["yt_dlp.YoutubeDL<br/>(Python API)"]
     D --> E["ffmpeg<br/>(subprocess list args)"]
     E --> F["NDJSON response<br/>(127.0.0.1 only)"]
     F --> G["pywebview<br/>(WebView2 sandbox)"]

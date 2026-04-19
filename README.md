@@ -5,7 +5,7 @@ CLI 版と Windows GUI アプリケーション版の 2 形態を持つ。
 
 ## 機能
 
-- YouTube 動画の音声をダウンロード (yt-dlp, opus 形式)
+- YouTube 動画の音声をダウンロード (yt_dlp Python API, opus 形式)
 - EBU R128 ラウドネス分析 (Momentary 400ms / Short-term 3s)
 - 数値サマリー (Integrated, True Peak, LRA, 中央値, P10/P90, 無音率)
 - CLI: 4 段構成の PNG グラフ生成 (matplotlib)
@@ -18,7 +18,7 @@ CLI 版と Windows GUI アプリケーション版の 2 形態を持つ。
 graph LR
     A["pywebview<br/>(WebView2)"] -->|"HTTP<br/>127.0.0.1:random"| B["Local HTTP Server<br/>(gui.py)"]
     B -->|"NDJSON stream"| C["Analysis Pipeline"]
-    C --> D["yt-dlp -x<br/>(audio DL)"]
+    C --> D["yt_dlp.YoutubeDL<br/>(audio DL)"]
     D --> E["ffmpeg -af ebur128<br/>(loudness measurement)"]
     E --> F["JSON result"]
     F --> A
@@ -90,6 +90,8 @@ pip install -e ".[gui]"
 analyze-loudness-gui
 ```
 
+GUI は URL 入力のみを受け付け、常に全尺を分析する。`--duration` 相当 (分析対象長の指定) は GUI に実装しない。中盤のみを分析したい場合は CLI の `--duration` オプションを使用する。
+
 ### ビルド & 配布 (Windows)
 
 ```bash
@@ -120,7 +122,7 @@ analyze-loudness/
 │   ├── __main__.py
 │   ├── cli.py                  # argparse + main orchestration (CLI)
 │   ├── gui.py                  # pywebview + local HTTP server (GUI)
-│   ├── download.py             # yt-dlp download, ffprobe duration
+│   ├── download.py             # yt_dlp.YoutubeDL API, ffprobe duration
 │   ├── analysis.py             # ebur128 stderr parsing, compute_stats
 │   └── plot.py                 # matplotlib figure generation (CLI only)
 ├── frontend/
@@ -143,5 +145,5 @@ analyze-loudness/
 ├── analyze-loudness.spec       # PyInstaller spec
 ├── installer.iss               # Inno Setup script
 ├── THIRD_PARTY_LICENSES.txt    # Bundled license file
-└── build_assets/bin/           # ffmpeg, ffprobe, yt-dlp (git 管理外)
+└── build_assets/bin/           # ffmpeg, ffprobe, deno (git 管理外)
 ```
