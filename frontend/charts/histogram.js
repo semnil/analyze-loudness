@@ -6,7 +6,17 @@
 function renderHistogram(canvas, values, label, integrated, silenceThreshold) {
   silenceThreshold = silenceThreshold ?? -60;
   const filtered = values.filter(v => v > silenceThreshold);
-  if (filtered.length === 0) return;
+  if (filtered.length === 0) {
+    var ctx0 = canvas.getContext("2d");
+    var th0 = getTheme();
+    ctx0.clearRect(0, 0, canvas.width, canvas.height);
+    ctx0.fillStyle = th0.fgMuted;
+    ctx0.font = "13px 'Segoe UI', 'Meiryo', sans-serif";
+    ctx0.textAlign = "center";
+    ctx0.textBaseline = "middle";
+    ctx0.fillText(window.i18n.t("chart.no_data_silence"), canvas.width / 2, canvas.height / 2);
+    return;
+  }
 
   const binWidth = 0.5;
   const lo = -55, hi = -5;
@@ -61,7 +71,8 @@ function renderHistogram(canvas, values, label, integrated, silenceThreshold) {
 
   // median line
   const sorted = filtered.slice().sort((a, b) => a - b);
-  const median = sorted[Math.floor(sorted.length / 2)];
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
   const mx = pad.left + ((median - lo) / (hi - lo)) * pw;
   ctx.strokeStyle = th.fgMuted;
   ctx.lineWidth = 1.5;
@@ -74,16 +85,16 @@ function renderHistogram(canvas, values, label, integrated, silenceThreshold) {
 
   // axes labels
   ctx.fillStyle = th.fg;
-  ctx.font = "12px sans-serif";
+  ctx.font = "12px 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(`${label} Loudness (LUFS)`, w / 2, h - 4);
+  ctx.fillText(window.i18n.t("chart.hist_axis", { label }), w / 2, h - 4);
 
   // title
-  ctx.font = "bold 13px sans-serif";
-  ctx.fillText(`${label} Distribution`, w / 2, 16);
+  ctx.font = "bold 13px 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.fillText(window.i18n.t("chart.hist_title", { label }), w / 2, 16);
 
   // x ticks
-  ctx.font = "10px sans-serif";
+  ctx.font = "10px 'Segoe UI', 'Meiryo', sans-serif";
   ctx.fillStyle = th.fgMuted;
   for (let v = lo; v <= hi; v += 10) {
     const x = pad.left + ((v - lo) / (hi - lo)) * pw;
@@ -91,8 +102,33 @@ function renderHistogram(canvas, values, label, integrated, silenceThreshold) {
   }
 
   // legend
-  ctx.font = "10px sans-serif";
+  ctx.font = "10px 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.textAlign = "left";
+  const legendX = w - pad.right - 110;
+  let legendY = pad.top + 6;
+  const sampleX1 = legendX;
+  const sampleX2 = legendX + 18;
+  const textX = sampleX2 + 6;
+
+  if (integrated != null) {
+    ctx.strokeStyle = th.accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(sampleX1, legendY); ctx.lineTo(sampleX2, legendY); ctx.stroke();
+    ctx.fillStyle = th.fg;
+    ctx.textBaseline = "middle";
+    ctx.fillText(window.i18n.t("chart.hist_integrated", { val: integrated.toFixed(1) }), textX, legendY);
+    legendY += 14;
+  }
+
+  ctx.strokeStyle = th.fgMuted;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.moveTo(sampleX1, legendY); ctx.lineTo(sampleX2, legendY); ctx.stroke();
+  ctx.setLineDash([]);
   ctx.fillStyle = th.fg;
-  ctx.textAlign = "right";
-  ctx.fillText(`Median: ${median.toFixed(1)}`, w - pad.right, pad.top + 14);
+  ctx.textBaseline = "middle";
+  ctx.fillText(window.i18n.t("chart.hist_median", { val: median.toFixed(1) }), textX, legendY);
+  ctx.textBaseline = "alphabetic";
 }

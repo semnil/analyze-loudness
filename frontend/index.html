@@ -1,11 +1,12 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>analyze-loudness</title>
+  <title data-i18n="app.title">analyze-loudness</title>
+  <script src="i18n.js"></script>
   <script>
-    // Resolve theme before CSS paints to prevent white flash
+    // Resolve theme + lang before CSS paints to prevent flash
     (function() {
       var s = localStorage.getItem("loudness-theme");
       var mode = (s === "light" || s === "dark") ? s : "auto";
@@ -13,24 +14,34 @@
         ? (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
         : mode;
       document.documentElement.setAttribute("data-theme", resolved);
+      document.documentElement.setAttribute("lang", window.i18n.lang());
     })();
   </script>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="vendor/uPlot.min.css">
 </head>
 <body>
-  <h1>Loudness Analyzer (BS.1770 / EBU R128)</h1>
+  <header>
+    <h1 data-i18n="app.title">Loudness Analyzer (BS.1770 / EBU R128)</h1>
+  </header>
 
-  <form id="analyze-form" class="input-bar">
-    <input id="url-input" type="text" placeholder="YouTube URL" required>
-    <button id="submit-btn" type="submit">Analyze</button>
-    <button id="load-btn" type="button">Load JSON</button>
-  </form>
+  <main>
+    <form id="analyze-form" class="input-bar" data-i18n-aria-label="form.aria" aria-label="Analyze audio source">
+      <label for="url-input" class="visually-hidden" data-i18n="url.label">YouTube URL</label>
+      <input id="url-input" type="url" inputmode="url" placeholder="YouTube URL" data-i18n-placeholder="url.placeholder"
+             autocomplete="off" autocapitalize="off" spellcheck="false" required>
+      <button id="submit-btn" type="submit" data-i18n="btn.analyze">Analyze</button>
+      <button id="load-btn" type="button" data-i18n="btn.load_json" data-i18n-aria-label="btn.load_json.aria" aria-label="Load saved JSON result">&#x1F4C4; Load JSON</button>
+    </form>
 
-  <button id="theme-toggle" class="theme-toggle" title="Toggle dark mode"></button>
+    <div id="status" role="status" aria-live="polite"></div>
+    <div id="results" tabindex="-1"></div>
+  </main>
 
-  <div id="status"></div>
-  <div id="results"></div>
+  <div class="toolbar">
+    <button id="lang-toggle" class="lang-toggle" type="button" data-i18n-aria-label="lang.aria_toggle" aria-label="Switch language"></button>
+    <button id="theme-toggle" class="theme-toggle" type="button" data-i18n-aria-label="theme.aria_toggle" aria-label="Toggle color theme"></button>
+  </div>
 
   <script src="vendor/uPlot.iife.min.js"></script>
   <script src="theme.js"></script>

@@ -10,43 +10,8 @@ const loadBtn = document.getElementById("load-btn");
 const statusEl = document.getElementById("status");
 const resultsEl = document.getElementById("results");
 
-// Context menu for text input (right-click paste/cut/copy/select all)
-(function() {
-  var menu = null;
-  function closeMenu() { if (menu) { menu.remove(); menu = null; } }
-  document.addEventListener("click", closeMenu);
-  document.addEventListener("contextmenu", (e) => {
-    closeMenu();
-    var el = e.target;
-    if (el.tagName !== "INPUT" || el.type !== "text") return;
-    e.preventDefault();
-    menu = document.createElement("div");
-    menu.className = "ctx-menu";
-    var items = [
-      { label: "Cut", fn: () => { document.execCommand("cut"); } },
-      { label: "Copy", fn: () => { document.execCommand("copy"); }, disabled: el.selectionStart === el.selectionEnd },
-      { label: "Paste", fn: () => { navigator.clipboard.readText().then((t) => { document.execCommand("insertText", false, t); }); } },
-      { label: "Select All", fn: () => { el.select(); } },
-    ];
-    items.forEach((it) => {
-      var btn = document.createElement("button");
-      btn.textContent = it.label;
-      if (it.disabled) btn.disabled = true;
-      btn.addEventListener("mousedown", (ev) => { ev.preventDefault(); el.focus(); it.fn(); closeMenu(); });
-      menu.appendChild(btn);
-    });
-    menu.style.left = e.clientX + "px";
-    menu.style.top = e.clientY + "px";
-    document.body.appendChild(menu);
-    var rect = menu.getBoundingClientRect();
-    if (rect.right > window.innerWidth) menu.style.left = (window.innerWidth - rect.width - 4) + "px";
-    if (rect.bottom > window.innerHeight) menu.style.top = (window.innerHeight - rect.height - 4) + "px";
-  });
-})();
-
 // Theme: "light" | "dark" | "auto" (follows system)
-const _THEME_ICONS = { light: "\u2600", dark: "\u263E", auto: "\u25D0" };
-const _THEME_TITLES = { light: "Light (click: Dark)", dark: "Dark (click: Auto)", auto: "Auto (click: Light)" };
+const _THEME_ICONS = { light: "\u2600\uFE0F", dark: "\u263E\uFE0F", auto: "\u25D0\uFE0F" };
 
 function _systemDark() {
   return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -58,8 +23,13 @@ function _applyTheme() {
   const resolved = _themeMode === "auto" ? (_systemDark() ? "dark" : "light") : _themeMode;
   document.documentElement.setAttribute("data-theme", resolved);
   const btn = document.getElementById("theme-toggle");
-  btn.textContent = _THEME_ICONS[_themeMode];
-  btn.title = _THEME_TITLES[_themeMode];
+  btn.textContent = "";
+  const icon = document.createElement("span");
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = _THEME_ICONS[_themeMode];
+  btn.appendChild(icon);
+  btn.title = window.i18n.t("theme.title." + _themeMode);
+  btn.setAttribute("aria-label", window.i18n.t("theme.aria_state." + _themeMode));
 }
 
 function _setThemeMode(mode) {
@@ -67,7 +37,7 @@ function _setThemeMode(mode) {
   localStorage.setItem("loudness-theme", mode);
   const wasDark = isDark();
   _applyTheme();
-  if (isDark() !== wasDark && lastRenderedData) rerender();
+  if (isDark() !== wasDark && lastRenderedData) _reRenderCharts();
 }
 
 // Init theme
@@ -83,16 +53,42 @@ document.getElementById("theme-toggle").addEventListener("click", function() {
   _setThemeMode(next[_themeMode]);
 });
 
+// Language toggle (EN <-> JA)
+function _applyLangButton() {
+  const btn = document.getElementById("lang-toggle");
+  if (!btn) return;
+  const cur = window.i18n.lang();
+  btn.textContent = window.i18n.t("lang.label." + cur);
+  btn.title = window.i18n.t("lang.title." + cur);
+}
+_applyLangButton();
+document.getElementById("lang-toggle").addEventListener("click", function () {
+  const next = window.i18n.lang() === "ja" ? "en" : "ja";
+  window.i18n.setLang(next);
+});
+window.i18n.onChange(function () {
+  _applyLangButton();
+  _applyTheme();
+  if (lastRenderedData) rerender();
+});
+
 // Follow system changes when in auto mode
 if (window.matchMedia) {
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function() {
     if (_themeMode === "auto") {
       const wasDark = isDark();
       _applyTheme();
-      if (isDark() !== wasDark && lastRenderedData) rerender();
+      if (isDark() !== wasDark && lastRenderedData) _reRenderCharts();
     }
   });
 }
+
+var _resizeTimer = null;
+window.addEventListener("resize", function () {
+  if (!lastRenderedData) return;
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(rerender, 200);
+});
 
 function clearResults() {
   activeUPlots.forEach(u => u.destroy());
@@ -103,22 +99,35 @@ function clearResults() {
 }
 
 function safeName(title) {
-  return (title || "untitled").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80);
+  return (title || "untitled").replace(/[\x00-\x1f\\/:*?"<>|]/g, "_").slice(0, 80);
 }
 
 let _isBusy = false;
 
-function _setBusy(busy) {
+function _setBusy(busy, cancelable = true) {
   _isBusy = busy;
   loadBtn.disabled = busy;
   if (busy) {
-    submitBtn.textContent = "Cancel";
-    submitBtn.classList.add("cancelling");
-    submitBtn.disabled = false;
+    if (cancelable) {
+      submitBtn.textContent = window.i18n.t("btn.cancel");
+      submitBtn.classList.add("cancelling");
+      submitBtn.disabled = false;
+      submitBtn.setAttribute("aria-label", window.i18n.t("btn.cancel.aria"));
+    } else {
+      submitBtn.textContent = window.i18n.t("btn.loading");
+      submitBtn.classList.remove("cancelling");
+      submitBtn.disabled = true;
+      submitBtn.removeAttribute("aria-label");
+    }
+    form.setAttribute("aria-busy", "true");
+    statusEl.classList.add("loading");
   } else {
-    submitBtn.textContent = "Analyze";
+    submitBtn.textContent = window.i18n.t("btn.analyze");
     submitBtn.classList.remove("cancelling");
     submitBtn.disabled = false;
+    submitBtn.removeAttribute("aria-label");
+    form.removeAttribute("aria-busy");
+    statusEl.classList.remove("loading");
     activeAbort = null;
   }
 }
@@ -127,18 +136,84 @@ function _cancelActive() {
   if (activeAbort) activeAbort.abort();
 }
 
+function _setStatusNormal() {
+  // Keep the .loading modifier so the spinner persists across status updates.
+  statusEl.classList.remove("error");
+  statusEl.setAttribute("role", "status");
+  statusEl.setAttribute("aria-live", "polite");
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.isComposing || e.keyCode === 229) return;
+  if (e.key === "Escape" && activeAbort) {
+    e.preventDefault();
+    _cancelActive();
+  }
+});
+
+function _buildSummaryTable(ariaKey, headerKeys, valueStrings) {
+  const table = document.createElement("table");
+  table.className = "summary-table";
+  table.setAttribute("aria-label", window.i18n.t(ariaKey));
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  for (const key of headerKeys) {
+    const th = document.createElement("th");
+    th.setAttribute("scope", "col");
+    th.textContent = window.i18n.t(key);
+    headerRow.appendChild(th);
+  }
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  const valueRow = document.createElement("tr");
+  for (const v of valueStrings) {
+    const td = document.createElement("td");
+    if (v instanceof Node) td.appendChild(v);
+    else td.textContent = v;
+    valueRow.appendChild(td);
+  }
+  tbody.appendChild(valueRow);
+  table.appendChild(tbody);
+  return table;
+}
+
+function _naCell(title) {
+  const span = document.createElement("span");
+  span.title = title;
+  span.textContent = "\u2014";
+  return span;
+}
+
+// Build a status message whose countdown portion is aria-hidden so the
+// polite live region doesn't re-announce every second.
+function _setStatusWithCountdown(message, countdownText) {
+  _setStatusNormal();
+  statusEl.textContent = "";
+  const msgSpan = document.createElement("span");
+  msgSpan.textContent = message + " ";
+  statusEl.appendChild(msgSpan);
+  const countdown = document.createElement("span");
+  countdown.className = "countdown";
+  countdown.setAttribute("aria-hidden", "true");
+  countdown.textContent = countdownText;
+  statusEl.appendChild(countdown);
+  return countdown;
+}
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (_isBusy) { _cancelActive(); return; }
   const url = urlInput.value.trim();
   if (!url) return;
 
-  statusEl.textContent = "Starting...";
-  statusEl.className = "";
+  statusEl.textContent = window.i18n.t("status.starting");
+  _setStatusNormal();
   _setBusy(true);
   clearResults();
 
   activeAbort = new AbortController();
+  let endedAbnormally = false;
   try {
     const resp = await fetch(window.location.origin + "/analyze", {
       method: "POST",
@@ -155,33 +230,44 @@ form.addEventListener("submit", async (e) => {
     const data = await readNdjsonStream(resp, activeAbort.signal);
     statusEl.textContent = "";
     render(data);
+    resultsEl.scrollIntoView({ behavior: "smooth", block: "start" });
+    resultsEl.focus({ preventScroll: true });
   } catch (err) {
+    endedAbnormally = true;
     if (err.name === "AbortError") {
-      statusEl.textContent = "Cancelled.";
-      statusEl.className = "";
+      _setStatusNormal();
+      statusEl.textContent = window.i18n.t("status.cancelled");
     } else {
       showError(err.message);
     }
   } finally {
     _setBusy(false);
+    if (endedAbnormally) urlInput.focus();
   }
 });
 
 loadBtn.addEventListener("click", async () => {
   if (_isBusy) return;
-  _setBusy(true);
-  statusEl.textContent = "Opening file...";
-  statusEl.className = "";
+  _setBusy(true, false);
+  _setStatusNormal();
+  statusEl.textContent = window.i18n.t("status.opening_file");
 
+  let endedAbnormally = false;
   try {
     const resp = await fetch(window.location.origin + "/load", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{}",
     });
+    if (!resp.ok) {
+      endedAbnormally = true;
+      showError(window.i18n.t("err.load_failed_http") + resp.status);
+      return;
+    }
     const result = await resp.json();
 
     if (result.error) {
+      endedAbnormally = true;
       showError(result.error);
       return;
     }
@@ -196,9 +282,11 @@ loadBtn.addEventListener("click", async () => {
     if (src) urlInput.value = src;
     render(result.data);
   } catch (err) {
+    endedAbnormally = true;
     showError(err.message);
   } finally {
     _setBusy(false);
+    if (endedAbnormally) loadBtn.focus();
   }
 });
 
@@ -224,7 +312,13 @@ async function readNdjsonStream(resp, signal) {
 
       for (const line of lines) {
         if (!line.trim()) continue;
-        const event = JSON.parse(line);
+        let event;
+        try {
+          event = JSON.parse(line);
+        } catch (parseErr) {
+          console.warn("Skipping malformed NDJSON line:", line, parseErr);
+          continue;
+        }
 
         if (event.type === "progress") {
           if (countdownTimer) clearInterval(countdownTimer);
@@ -232,22 +326,30 @@ async function readNdjsonStream(resp, signal) {
           if (event.estimate_sec != null) {
             let remaining = event.estimate_sec;
             const durationMin = (event.duration_sec / 60).toFixed(1);
-            statusEl.textContent =
-              `${event.message} (${durationMin} min, ~${remaining}s remaining)`;
+            const reducedMotion = window.matchMedia &&
+              window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+            const tick = reducedMotion ? 5000 : 1000;
+            const step = reducedMotion ? 5 : 1;
+            const minUnit = window.i18n.t("summary.min");
+            const cdParams = { duration: durationMin, unit: minUnit };
+            const countdown = _setStatusWithCountdown(
+              event.message, window.i18n.t("status.countdown", { ...cdParams, remaining }));
             countdownTimer = setInterval(() => {
-              remaining--;
+              remaining -= step;
               if (remaining > 0) {
-                statusEl.textContent =
-                  `${event.message} (${durationMin} min, ~${remaining}s remaining)`;
+                countdown.textContent =
+                  " " + window.i18n.t("status.countdown", { ...cdParams, remaining });
               } else {
-                statusEl.textContent = `${event.message} (finishing up...)`;
+                countdown.textContent = window.i18n.t("status.finishing_up");
                 clearInterval(countdownTimer);
                 countdownTimer = null;
               }
-            }, 1000);
+            }, tick);
           } else {
             statusEl.textContent = event.message;
           }
+        } else if (event.type === "warning") {
+          statusEl.textContent = "\u26a0 " + event.message;
         } else if (event.type === "result") {
           result = event.data;
         } else if (event.type === "error") {
@@ -264,7 +366,7 @@ async function readNdjsonStream(resp, signal) {
     if (countdownTimer) clearInterval(countdownTimer);
   }
 
-  if (!result) throw new Error("No result received from server");
+  if (!result) throw new Error(window.i18n.t("err.no_result"));
   return result;
 }
 
@@ -286,21 +388,35 @@ function render(data) {
   const titleRow = document.createElement("div");
   titleRow.className = "title-row";
 
-  const titleEl = document.createElement("div");
+  const titleEl = document.createElement("h2");
   titleEl.className = "video-title";
-  titleEl.textContent = title || "Untitled";
+  titleEl.textContent = title || window.i18n.t("summary.untitled");
   titleRow.appendChild(titleEl);
 
   const saveBtn = document.createElement("button");
   saveBtn.className = "save-btn";
-  saveBtn.textContent = "Save JSON";
-  saveBtn.addEventListener("click", () => saveResult(data));
+  saveBtn.textContent = window.i18n.t("btn.save_json");
+  saveBtn.addEventListener("click", async () => {
+    saveBtn.disabled = true;
+    try {
+      await saveResult(data);
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
   titleRow.appendChild(saveBtn);
 
   const saveImgBtn = document.createElement("button");
   saveImgBtn.className = "save-btn";
-  saveImgBtn.textContent = "Save Image";
-  saveImgBtn.addEventListener("click", () => saveImage(data));
+  saveImgBtn.textContent = window.i18n.t("btn.save_image");
+  saveImgBtn.addEventListener("click", async () => {
+    saveImgBtn.disabled = true;
+    try {
+      await saveImage(data);
+    } finally {
+      saveImgBtn.disabled = false;
+    }
+  });
   titleRow.appendChild(saveImgBtn);
 
   resultsEl.appendChild(titleRow);
@@ -308,85 +424,189 @@ function render(data) {
   if (meta) {
     const metaEl = document.createElement("div");
     metaEl.className = "meta-info";
-    const parts = [];
+    let hasContent = false;
     if (meta.analyzed_at) {
       const d = new Date(meta.analyzed_at);
-      parts.push(d.toLocaleString());
+      const text = isNaN(d) ? (meta.analyzed_at || "\u2014") : d.toLocaleString();
+      metaEl.appendChild(document.createTextNode(text));
+      hasContent = true;
     }
-    if (meta.source_url) parts.push(meta.source_url);
-    metaEl.textContent = parts.join(" | ");
+    if (meta.source_url) {
+      if (hasContent) metaEl.appendChild(document.createTextNode(" | "));
+      metaEl.appendChild(_sourceUrlNode(meta.source_url));
+      hasContent = true;
+    }
     resultsEl.appendChild(metaEl);
   }
 
-  const table = document.createElement("table");
-  table.className = "summary-table";
-  table.innerHTML = `
-    <tr>
-      <th>Duration</th><th>Integrated</th><th>True Peak</th><th>LRA</th>
-    </tr>
-    <tr>
-      <td>${fmt(summary.duration_sec / 60, 1)} min (${summary.frames} frames)</td>
-      <td>${fmt(summary.integrated, 1)} LUFS</td>
-      <td>${summary.true_peak != null ? fmt(summary.true_peak, 1, true) + " dBFS" : "?"}</td>
-      <td>${fmt(summary.lra, 1)} LU</td>
-    </tr>
-    <tr>
-      <th>S-term Median</th><th>S-term P10/P90</th>
-      <th>Mom. Median</th><th>Mom. P10/P90</th>
-    </tr>
-    <tr>
-      <td>${fmt(st.median, 1)} LUFS</td>
-      <td>${fmt(st.p10, 1)} / ${fmt(st.p90, 1)} LUFS</td>
-      <td>${fmt(mo.median, 1)} LUFS</td>
-      <td>${fmt(mo.p10, 1)} / ${fmt(mo.p90, 1)} LUFS</td>
-    </tr>
-    <tr><td colspan="4" style="text-align:right;color:#888;font-size:12px">
-      Silence (S &lt; -40 LUFS): ${fmt(summary.silence_pct, 1)}%
-    </td></tr>
-  `;
-  resultsEl.appendChild(table);
+  const tpeakNa = window.i18n.t("summary.true_peak_na");
+  const minUnit = window.i18n.t("summary.min");
+  const framesUnit = window.i18n.t("summary.frames");
+  const summaryTable = _buildSummaryTable(
+    "summary.aria.loudness",
+    ["table.duration", "table.integrated", "table.true_peak", "table.lra"],
+    [
+      fmt(summary.duration_sec / 60, 1) + " " + minUnit + " (" + fmt(summary.frames, 0) + " " + framesUnit + ")",
+      fmt(summary.integrated, 1) + " LUFS",
+      summary.true_peak != null
+        ? fmt(summary.true_peak, 1, true) + " dBFS"
+        : _naCell(tpeakNa),
+      fmt(summary.lra, 1) + " LU",
+    ]
+  );
+  resultsEl.appendChild(summaryTable);
 
+  const distTable = _buildSummaryTable(
+    "summary.aria.distribution",
+    ["table.sterm_median", "table.sterm_p10p90", "table.mom_median", "table.mom_p10p90"],
+    [
+      fmt(st.median, 1) + " LUFS",
+      fmt(st.p10, 1) + " / " + fmt(st.p90, 1) + " LUFS",
+      fmt(mo.median, 1) + " LUFS",
+      fmt(mo.p10, 1) + " / " + fmt(mo.p90, 1) + " LUFS",
+    ]
+  );
+  const silenceRow = document.createElement("tr");
+  silenceRow.className = "silence-row";
+  const silenceTh = document.createElement("th");
+  silenceTh.setAttribute("scope", "row");
+  silenceTh.setAttribute("colspan", "3");
+  silenceTh.textContent = window.i18n.t("table.silence");
+  silenceRow.appendChild(silenceTh);
+  const silenceTd = document.createElement("td");
+  silenceTd.textContent = fmt(summary.silence_pct, 1) + "%";
+  silenceRow.appendChild(silenceTd);
+  distTable.querySelector("tbody").appendChild(silenceRow);
+  resultsEl.appendChild(distTable);
+
+  _renderCharts(data);
+}
+
+function _renderCharts(data) {
+  const { summary, series } = data;
+  const st = summary.short_term || {};
+  const mo = summary.momentary || {};
+
+  const timeHeading = document.createElement("h3");
+  timeHeading.className = "chart-title";
+  timeHeading.setAttribute("data-chart-block", "1");
+  timeHeading.textContent = window.i18n.t("chart.timeline_title");
+  resultsEl.appendChild(timeHeading);
   const timeDiv = document.createElement("div");
   timeDiv.className = "chart-row";
+  timeDiv.setAttribute("data-chart-block", "1");
+  timeDiv.setAttribute("role", "img");
+  timeDiv.setAttribute("aria-label", _timelineAriaLabel(summary, series, st));
   resultsEl.appendChild(timeDiv);
   const uplot = renderTimeline(timeDiv, series.t, series.S, summary.integrated);
   activeUPlots.push(uplot);
   if (uplot.ctx) chartCanvasRefs.push(uplot.ctx.canvas);
 
+  const histHeading = document.createElement("h3");
+  histHeading.className = "visually-hidden";
+  histHeading.setAttribute("data-chart-block", "1");
+  histHeading.textContent = window.i18n.t("chart.histograms_heading");
+  resultsEl.appendChild(histHeading);
   const histRow = document.createElement("div");
   histRow.className = "chart-pair";
+  histRow.setAttribute("data-chart-block", "1");
 
   const histS = document.createElement("div");
+  histS.setAttribute("role", "img");
+  histS.setAttribute("aria-label", _histogramAriaLabel(window.i18n.t("chart.label_short_term"), st));
   const canvasS = document.createElement("canvas");
-  canvasS.style.height = "250px";
+  canvasS.className = "histogram-canvas";
   histS.appendChild(canvasS);
   histRow.appendChild(histS);
 
   const histM = document.createElement("div");
+  histM.setAttribute("role", "img");
+  histM.setAttribute("aria-label", _histogramAriaLabel(window.i18n.t("chart.label_momentary"), mo));
   const canvasM = document.createElement("canvas");
-  canvasM.style.height = "250px";
+  canvasM.className = "histogram-canvas";
   histM.appendChild(canvasM);
   histRow.appendChild(histM);
 
   resultsEl.appendChild(histRow);
-  renderHistogram(canvasS, series.S, "Short-term", summary.integrated);
-  renderHistogram(canvasM, series.M, "Momentary", summary.integrated);
+  renderHistogram(canvasS, series.S, window.i18n.t("chart.label_short_term"), summary.integrated);
+  renderHistogram(canvasM, series.M, window.i18n.t("chart.label_momentary"), summary.integrated);
   chartCanvasRefs.push(canvasS, canvasM);
 
+  const segHeading = document.createElement("h3");
+  segHeading.className = "visually-hidden";
+  segHeading.setAttribute("data-chart-block", "1");
+  segHeading.textContent = window.i18n.t("chart.segments_heading");
+  resultsEl.appendChild(segHeading);
   const segDiv = document.createElement("div");
   segDiv.className = "chart-row";
+  segDiv.setAttribute("data-chart-block", "1");
+  segDiv.setAttribute("role", "img");
+  segDiv.setAttribute("aria-label", _segmentsAriaLabel(summary));
   const segCanvas = document.createElement("canvas");
-  segCanvas.style.height = "200px";
+  segCanvas.className = "segments-canvas";
   segDiv.appendChild(segCanvas);
   resultsEl.appendChild(segDiv);
   renderSegments(segCanvas, series.t, series.S, summary.integrated);
   chartCanvasRefs.push(segCanvas);
 }
 
+function _reRenderCharts() {
+  if (!lastRenderedData) return;
+  activeUPlots.forEach(u => u.destroy());
+  activeUPlots = [];
+  chartCanvasRefs = [];
+  resultsEl.querySelectorAll("[data-chart-block]").forEach(n => n.remove());
+  _renderCharts(lastRenderedData);
+}
+
+function _timelineAriaLabel(summary, series, st) {
+  return window.i18n.t("aria.timeline", {
+    mins: fmt(summary.duration_sec / 60, 1),
+    integrated: summary.integrated != null ? fmt(summary.integrated, 1) + " LUFS" : "unavailable",
+    lo: fmt(st.p10, 1),
+    hi: fmt(st.p90, 1),
+  });
+}
+
+function _histogramAriaLabel(kind, stats) {
+  return window.i18n.t("aria.histogram", {
+    kind,
+    median: fmt(stats.median, 1),
+    p10: fmt(stats.p10, 1),
+    p90: fmt(stats.p90, 1),
+  });
+}
+
+function _segmentsAriaLabel(summary) {
+  return window.i18n.t("aria.segments", {
+    integrated: summary.integrated != null ? fmt(summary.integrated, 1) + " LUFS" : "unavailable",
+    lra: fmt(summary.lra, 1),
+  });
+}
+
 function fmt(val, decimals, showSign) {
-  if (val == null) return "?";
+  if (val == null || !isFinite(val)) return "?";
   const s = val.toFixed(decimals);
   return showSign && val > 0 ? `+${s}` : s;
+}
+
+function _sourceUrlNode(url) {
+  // Only http(s) URLs become clickable links; anything else is plain text
+  // to avoid javascript: / data: injection in the WebView.
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      const a = document.createElement("a");
+      a.href = parsed.href;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.textContent = url;
+      return a;
+    }
+  } catch (_) {
+    // fall through to text node
+  }
+  return document.createTextNode(url);
 }
 
 async function saveResult(data) {
@@ -395,18 +615,21 @@ async function saveResult(data) {
     const resp = await fetch(window.location.origin + "/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ data, filename,
-        source_url: data.meta && data.meta.source_url || undefined }),
+      body: JSON.stringify({ data, filename }),
     });
+    if (!resp.ok) {
+      showError(window.i18n.t("err.save_failed_http") + resp.status);
+      return;
+    }
     const result = await resp.json();
     if (result.saved) {
-      statusEl.textContent = `Saved: ${result.path}`;
-      statusEl.className = "";
+      _setStatusNormal();
+      statusEl.textContent = window.i18n.t("status.saved") + result.path;
     } else if (result.error) {
-      showError(`Save failed: ${result.error}`);
+      showError(window.i18n.t("err.save_failed") + result.error);
     }
   } catch (err) {
-    showError(`Save failed: ${err.message}`);
+    showError(window.i18n.t("err.save_failed") + err.message);
   }
 }
 
@@ -426,8 +649,9 @@ function captureImage(data) {
   totalH += 32; // title
   totalH += LINE * 7 + 12; // summary lines + spacing
 
-  // Chart titles for canvases that lack built-in titles (uPlot renders title in DOM, not canvas)
-  const chartTitles = ["Short-term Loudness (3s window)", null, null, null];
+  // Chart titles baked into the composite PNG only.  The HTML uses .chart-title
+  // above each canvas; the canvas bitmap itself has no text, so we redraw it here.
+  const chartTitles = [window.i18n.t("chart.timeline_title"), null, null, null];
 
   // Chart heights (in CSS pixels)
   const chartSizes = [];
@@ -440,6 +664,10 @@ function captureImage(data) {
     chartSizes.push({ canvas: c, w, h, label });
     if (label) totalH += 22;
     totalH += h + 16;
+  }
+  if (chartSizes.length === 0) {
+    showError(window.i18n.t("err.charts_not_ready"));
+    return null;
   }
   totalH += PAD;
 
@@ -461,7 +689,12 @@ function captureImage(data) {
   ctx.fillStyle = th.titleColor;
   ctx.font = "bold 18px 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(title || "Untitled", W / 2, y + 18);
+  var displayTitle = title || window.i18n.t("summary.untitled");
+  var maxTitleW = W - PAD * 2;
+  while (ctx.measureText(displayTitle).width > maxTitleW && displayTitle.length > 4) {
+    displayTitle = displayTitle.slice(0, -4) + "\u2026";
+  }
+  ctx.fillText(displayTitle, W / 2, y + 18);
   y += 32;
 
   // Summary text
@@ -470,16 +703,19 @@ function captureImage(data) {
   ctx.textAlign = "left";
   const col1 = PAD, col2 = W / 2 + PAD;
 
+  const tImg = window.i18n.t;
+  const mi = tImg("summary.min");
+  const fr = tImg("summary.frames");
   const lines = [
-    [`Duration: ${fmt(summary.duration_sec / 60, 1)} min (${summary.frames} frames)`,
-     `Integrated: ${fmt(summary.integrated, 1)} LUFS`],
-    [`True Peak: ${summary.true_peak != null ? fmt(summary.true_peak, 1, true) + " dBFS" : "?"}`,
-     `LRA: ${fmt(summary.lra, 1)} LU`],
-    [`S-term Median: ${fmt(st.median, 1)} LUFS`,
-     `Mom. Median: ${fmt(mo.median, 1)} LUFS`],
-    [`S-term P10/P90: ${fmt(st.p10, 1)} / ${fmt(st.p90, 1)} LUFS`,
-     `Mom. P10/P90: ${fmt(mo.p10, 1)} / ${fmt(mo.p90, 1)} LUFS`],
-    [`Silence (S < -40 LUFS): ${fmt(summary.silence_pct, 1)}%`, ""],
+    [`${tImg("table.duration")}: ${fmt(summary.duration_sec / 60, 1)} ${mi} (${summary.frames} ${fr})`,
+     `${tImg("table.integrated")}: ${fmt(summary.integrated, 1)} LUFS`],
+    [`${tImg("table.true_peak")}: ${summary.true_peak != null ? fmt(summary.true_peak, 1, true) + " dBFS" : "?"}`,
+     `${tImg("table.lra")}: ${fmt(summary.lra, 1)} LU`],
+    [`${tImg("table.sterm_median")}: ${fmt(st.median, 1)} LUFS`,
+     `${tImg("table.mom_median")}: ${fmt(mo.median, 1)} LUFS`],
+    [`${tImg("table.sterm_p10p90")}: ${fmt(st.p10, 1)} / ${fmt(st.p90, 1)} LUFS`,
+     `${tImg("table.mom_p10p90")}: ${fmt(mo.p10, 1)} / ${fmt(mo.p90, 1)} LUFS`],
+    [`${tImg("table.silence")}: ${fmt(summary.silence_pct, 1)}%`, ""],
   ];
 
   for (const [left, right] of lines) {
@@ -520,42 +756,61 @@ function captureImage(data) {
 async function saveImage(data) {
   const filename = `loudness_${safeName(data.title)}.png`;
   try {
-    statusEl.textContent = "Generating image...";
-    statusEl.className = "";
     const dataUrl = captureImage(data);
+    if (!dataUrl) return;
+    _setStatusNormal();
+    statusEl.textContent = window.i18n.t("status.generating_image");
     const resp = await fetch(window.location.origin + "/save-image", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ dataUrl, filename }),
     });
+    if (!resp.ok) {
+      showError(window.i18n.t("err.save_failed_http") + resp.status);
+      return;
+    }
     const result = await resp.json();
     if (result.saved) {
-      statusEl.textContent = `Saved: ${result.path}`;
-      statusEl.className = "";
+      _setStatusNormal();
+      statusEl.textContent = window.i18n.t("status.saved") + result.path;
     } else if (result.error) {
-      showError(`Save failed: ${result.error}`);
+      showError(window.i18n.t("err.save_failed") + result.error);
     } else {
       statusEl.textContent = "";
     }
   } catch (err) {
-    showError(`Save failed: ${err.message}`);
+    showError(window.i18n.t("err.save_failed") + err.message);
   }
 }
 
 function showError(message) {
-  statusEl.className = "error";
-  statusEl.innerHTML = "";
+  statusEl.setAttribute("role", "alert");
+  statusEl.setAttribute("aria-live", "assertive");
+  statusEl.classList.remove("loading");
+  statusEl.classList.add("error");
+  statusEl.textContent = "";
+  const icon = document.createElement("span");
+  icon.className = "error-icon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "\u26A0";
+  statusEl.appendChild(icon);
   const text = document.createElement("span");
-  text.textContent = `Error: ${message}`;
+  text.className = "error-text";
+  text.textContent = window.i18n.t("err.prefix") + message;
   statusEl.appendChild(text);
-  const btn = document.createElement("button");
-  btn.className = "copy-btn";
-  btn.textContent = "Copy";
-  btn.addEventListener("click", () => {
-    navigator.clipboard.writeText(message).then(() => {
-      btn.textContent = "Copied";
-      setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+  if (navigator.clipboard) {
+    const btn = document.createElement("button");
+    btn.className = "copy-btn";
+    btn.textContent = window.i18n.t("btn.copy");
+    btn.addEventListener("click", () => {
+      navigator.clipboard.writeText(message).then(() => {
+        btn.textContent = window.i18n.t("btn.copied");
+        setTimeout(() => { btn.textContent = window.i18n.t("btn.copy"); }, 1500);
+      }).catch(() => {
+        btn.textContent = window.i18n.t("btn.copy_failed");
+        setTimeout(() => { btn.textContent = window.i18n.t("btn.copy"); }, 1500);
+      });
     });
-  });
-  statusEl.appendChild(btn);
+    statusEl.appendChild(btn);
+  }
 }

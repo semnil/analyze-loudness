@@ -42,7 +42,7 @@ function renderSegments(canvas, t, S, integrated, silenceThreshold) {
   canvas.height = h * dpr;
   ctx.scale(dpr, dpr);
 
-  const pad = { top: 30, right: 20, bottom: 40, left: 50 };
+  const pad = { top: 30, right: 20, bottom: 40, left: 70 };
   const pw = w - pad.left - pad.right;
   const ph = h - pad.top - pad.bottom;
 
@@ -50,10 +50,35 @@ function renderSegments(canvas, t, S, integrated, silenceThreshold) {
 
   // y scale: find range
   const allVals = segments.filter(s => s.mean != null);
-  if (allVals.length === 0) return;
+  if (allVals.length === 0) {
+    ctx.fillStyle = th.fgMuted;
+    ctx.font = "13px 'Segoe UI', 'Meiryo', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(window.i18n.t("chart.no_data_silence"), w / 2, h / 2);
+    return;
+  }
   const yMin = Math.min(...allVals.map(s => s.p10)) - 2;
   const yMax = Math.max(...allVals.map(s => s.p90)) + 2;
   const yRange = yMax - yMin || 1;
+
+  // Y axis ticks (5 LU steps)
+  var yTickStart = Math.ceil(yMin / 5) * 5;
+  ctx.fillStyle = th.fgMuted;
+  ctx.strokeStyle = th.border || th.fgMuted;
+  ctx.lineWidth = 0.5;
+  ctx.font = "10px 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  for (var yv = yTickStart; yv <= yMax; yv += 5) {
+    var yy = pad.top + ph - ((yv - yMin) / yRange) * ph;
+    ctx.fillText(yv + " LUFS", pad.left - 6, yy);
+    ctx.beginPath();
+    ctx.moveTo(pad.left, yy);
+    ctx.lineTo(pad.left + pw, yy);
+    ctx.stroke();
+  }
+  ctx.textBaseline = "alphabetic";
 
   const barW = (pw / segments.length) * 0.6;
 
@@ -84,7 +109,7 @@ function renderSegments(canvas, t, S, integrated, silenceThreshold) {
 
     // x label
     ctx.fillStyle = th.fgMuted;
-    ctx.font = "10px sans-serif";
+    ctx.font = "10px 'Segoe UI', 'Meiryo', sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(s.label, cx, pad.top + ph + 16);
   }
@@ -104,11 +129,11 @@ function renderSegments(canvas, t, S, integrated, silenceThreshold) {
 
   // title
   ctx.fillStyle = th.fg;
-  ctx.font = "bold 13px sans-serif";
+  ctx.font = "bold 13px 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("5-Minute Segment Average (error bars: P10-P90)", w / 2, 16);
+  ctx.fillText(window.i18n.t("chart.seg_title"), w / 2, 16);
 
   // axis label
-  ctx.font = "12px sans-serif";
-  ctx.fillText("Time Segment (min)", w / 2, h - 4);
+  ctx.font = "12px 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.fillText(window.i18n.t("chart.seg_axis"), w / 2, h - 4);
 }
