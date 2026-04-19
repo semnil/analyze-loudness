@@ -17,6 +17,9 @@ installer_output/
 # Build artifacts (large zip)
 build_assets/*.zip
 
+# macOS icon bundle (generated from icon.iconset/ by iconutil)
+build_assets/icon.icns
+
 # Test
 .pytest_cache/
 htmlcov/

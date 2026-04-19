@@ -34,7 +34,6 @@ a = Analysis(
         "desktop_app_common",
         "desktop_app_common.platform",
         "desktop_app_common.theme",
-        "desktop_app_common.assets",
         "webview",
     ],
     hookspath=[],
