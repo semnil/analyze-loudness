@@ -53,7 +53,7 @@ def plot_analysis(
 
     st = compute_stats(S, "Short-term")
     mo = compute_stats(M, "Momentary")
-    silence_pct = np.sum(S < -40) / len(S) * 100
+    silence_pct = (np.sum(np.isnan(S) | (S < -40)) / len(S) * 100) if len(S) else 0.0
 
     fig = plt.figure(figsize=(16, 16))
     gs = GridSpec(
@@ -70,18 +70,23 @@ def plot_analysis(
     ax_tbl = fig.add_subplot(gs[0, :])
     ax_tbl.axis("off")
 
+    def _fmt(x, suffix="", sign=""):
+        if x is None:
+            return "N/A"
+        return f"{x:{sign}.1f}{suffix}"
+
     table_data = [
         [
             f"{t[-1] / 60:.1f} min ({len(t)} frames)",
-            f"{intg:.1f} LUFS",
-            f"{true_peak:+.1f} dBFS",
-            f"{lra:.1f} LU",
+            _fmt(intg, " LUFS"),
+            _fmt(true_peak, " dBFS", "+"),
+            _fmt(lra, " LU"),
         ],
         [
-            f"{st['median']:.1f} LUFS",
-            f"{st['p10']:.1f} / {st['p90']:.1f} LUFS",
-            f"{mo['median']:.1f} LUFS",
-            f"{mo['p10']:.1f} / {mo['p90']:.1f} LUFS",
+            _fmt(st['median'], " LUFS"),
+            f"{_fmt(st['p10'])} / {_fmt(st['p90'])} LUFS",
+            _fmt(mo['median'], " LUFS"),
+            f"{_fmt(mo['p10'])} / {_fmt(mo['p90'])} LUFS",
         ],
     ]
     col_labels = [
@@ -148,9 +153,10 @@ def plot_analysis(
     ax1.hist(S_valid, bins=bins, alpha=0.7, color=c, density=True)
     ax1.axvline(intg, color=c, linestyle="-", alpha=0.8, linewidth=2,
                 label=f"I: {intg:.1f}")
-    med_s = float(np.median(S_valid))
-    ax1.axvline(med_s, color="white", linestyle="--", alpha=0.8, linewidth=1.5,
-                label=f"Median: {med_s:.1f}")
+    if len(S_valid) > 0:
+        med_s = float(np.median(S_valid))
+        ax1.axvline(med_s, color="white", linestyle="--", alpha=0.8, linewidth=1.5,
+                    label=f"Median: {med_s:.1f}")
     ax1.set_xlabel("Short-term Loudness (LUFS)")
     ax1.set_ylabel("Density")
     ax1.set_title("Short-term Distribution")
@@ -161,9 +167,10 @@ def plot_analysis(
     ax2 = fig.add_subplot(gs[2, 1])
     M_valid = M[M > SILENCE_THRESHOLD]
     ax2.hist(M_valid, bins=bins, alpha=0.7, color=c, density=True)
-    med_m = float(np.median(M_valid))
-    ax2.axvline(med_m, color="white", linestyle="--", alpha=0.8, linewidth=1.5,
-                label=f"Median: {med_m:.1f}")
+    if len(M_valid) > 0:
+        med_m = float(np.median(M_valid))
+        ax2.axvline(med_m, color="white", linestyle="--", alpha=0.8, linewidth=1.5,
+                    label=f"Median: {med_m:.1f}")
     ax2.set_xlabel("Momentary Loudness (LUFS)")
     ax2.set_ylabel("Density")
     ax2.set_title("Momentary Distribution")

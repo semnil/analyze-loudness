@@ -47,3 +47,29 @@ class TestParseArgs:
     def test_invalid_duration_exits(self):
         with pytest.raises(SystemExit):
             parse_args(["https://example.com", "--duration", "-1"])
+
+
+class TestPositiveFloatBoundary:
+    """Extended boundary tests for _positive_float."""
+
+    def test_infinity_raises(self):
+        with pytest.raises(argparse.ArgumentTypeError, match="positive finite"):
+            _positive_float("inf")
+
+    def test_negative_infinity_raises(self):
+        with pytest.raises(argparse.ArgumentTypeError, match="positive finite"):
+            _positive_float("-inf")
+
+    def test_nan_raises(self):
+        with pytest.raises(argparse.ArgumentTypeError, match="positive finite"):
+            _positive_float("nan")
+
+    def test_very_small_positive_accepted(self):
+        assert _positive_float("0.001") == pytest.approx(0.001)
+
+    def test_upper_bound_accepted(self):
+        assert _positive_float("240") == pytest.approx(240.0)
+
+    def test_above_upper_bound_raises(self):
+        with pytest.raises(argparse.ArgumentTypeError, match="240"):
+            _positive_float("1e9")

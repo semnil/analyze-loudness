@@ -1,6 +1,5 @@
 """Tests for analyze_loudness.analysis module."""
 
-import math
 from unittest.mock import patch, MagicMock
 
 import numpy as np
@@ -18,18 +17,18 @@ class TestComputeStats:
         assert isinstance(result["mean"], float)
         assert result["p10"] <= result["median"] <= result["p90"]
 
-    def test_all_silence_returns_nan(self):
+    def test_all_silence_returns_none(self):
         arr = np.array([-70.0, -80.0, -90.0])
         result = compute_stats(arr, "silent")
-        assert math.isnan(result["median"])
-        assert math.isnan(result["mean"])
-        assert math.isnan(result["p10"])
-        assert math.isnan(result["p90"])
+        assert result["median"] is None
+        assert result["mean"] is None
+        assert result["p10"] is None
+        assert result["p90"] is None
 
-    def test_empty_array_returns_nan(self):
+    def test_empty_array_returns_none(self):
         arr = np.array([])
         result = compute_stats(arr, "empty")
-        assert math.isnan(result["median"])
+        assert result["median"] is None
 
     def test_single_value(self):
         arr = np.array([-20.0])
@@ -151,6 +150,88 @@ class TestRunEbur128Parsing:
         mock_run.return_value = MagicMock(returncode=0, stderr=stderr)
         _, _, _, summary = run_ebur128("/fake/audio.opus")
         assert summary["true_peak"] == float("-inf")
+
+
+class TestComputeStatsNanInf:
+    """V-01, V-02: NaN/Inf handling in compute_stats."""
+
+    def test_nan_values_excluded(self):
+        arr = np.array([-20.0, np.nan, -25.0, np.nan])
+        result = compute_stats(arr, "nan_test")
+        assert result["median"] is not None
+        # NaN should be stripped; only -20 and -25 contribute
+        assert result["min"] == -25.0
+        assert result["max"] == -20.0
+
+    def test_inf_values_excluded(self):
+        arr = np.array([-20.0, np.inf, -25.0, -np.inf])
+        result = compute_stats(arr, "inf_test")
+        # +inf passes threshold, -inf does not; +inf removed by isfinite
+        assert result["median"] is not None
+        assert result["min"] == -25.0
+        assert result["max"] == -20.0
+
+    def test_all_nan_returns_none(self):
+        arr = np.array([np.nan, np.nan, np.nan])
+        result = compute_stats(arr, "all_nan")
+        assert result["median"] is None
+        assert result["mean"] is None
+
+    def test_mixed_nan_inf_silence(self):
+        # -70 is below threshold, nan and inf are non-finite
+        arr = np.array([-70.0, np.nan, np.inf, -20.0])
+        result = compute_stats(arr, "mixed")
+        assert result["median"] == -20.0
+        assert result["mean"] == -20.0
+
+
+class TestRunEbur128InfNanFrames:
+    """V-03: Parsing frames with -inf / nan M/S values."""
+
+    @patch("analyze_loudness.analysis.subprocess.run")
+    def test_inf_frame_parsed(self, mock_run):
+        stderr = (
+            "[Parsed_ebur128_0 @ 0x1] t: 0.100    TARGET:-23 LUFS"
+            "    M: -inf S: -inf\n"
+            "[Parsed_ebur128_0 @ 0x1] t: 0.200    TARGET:-23 LUFS"
+            "    M: -20.0 S: -22.0\n"
+        )
+        mock_run.return_value = MagicMock(returncode=0, stderr=stderr)
+        t, M, S, summary = run_ebur128("/fake/audio.opus")
+        assert len(t) == 2
+        assert M[0] == float("-inf")
+        assert S[0] == float("-inf")
+        assert M[1] == pytest.approx(-20.0)
+
+    @patch("analyze_loudness.analysis.subprocess.run")
+    def test_nan_frame_parsed(self, mock_run):
+        stderr = (
+            "[Parsed_ebur128_0 @ 0x1] t: 0.100    TARGET:-23 LUFS"
+            "    M: nan S: nan\n"
+            "[Parsed_ebur128_0 @ 0x1] t: 0.200    TARGET:-23 LUFS"
+            "    M: -18.0 S: -19.0\n"
+        )
+        mock_run.return_value = MagicMock(returncode=0, stderr=stderr)
+        t, M, S, _ = run_ebur128("/fake/audio.opus")
+        assert len(t) == 2
+        assert np.isnan(M[0])
+        assert np.isnan(S[0])
+
+    @patch("analyze_loudness.analysis.subprocess.run")
+    def test_all_inf_integration_with_compute_stats(self, mock_run):
+        """All-silent audio: every frame is -inf -> stats return None."""
+        stderr = (
+            "[Parsed_ebur128_0 @ 0x1] t: 0.100    TARGET:-23 LUFS"
+            "    M: -inf S: -inf\n"
+            "[Parsed_ebur128_0 @ 0x1] t: 0.200    TARGET:-23 LUFS"
+            "    M: -inf S: -inf\n"
+        )
+        mock_run.return_value = MagicMock(returncode=0, stderr=stderr)
+        _, M, S, _ = run_ebur128("/fake/audio.opus")
+        st = compute_stats(S, "silent")
+        mo = compute_stats(M, "silent")
+        assert st["median"] is None
+        assert mo["median"] is None
 
 
 class TestSilenceThreshold:

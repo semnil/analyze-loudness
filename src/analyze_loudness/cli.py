@@ -1,6 +1,7 @@
 """CLI entry point and main orchestration."""
 
 import argparse
+import math
 import shutil
 import tempfile
 from pathlib import Path
@@ -14,8 +15,10 @@ from analyze_loudness.plot import plot_analysis
 
 def _positive_float(value: str) -> float:
     f = float(value)
-    if f <= 0:
-        raise argparse.ArgumentTypeError(f"must be a positive number, got {value}")
+    if not math.isfinite(f) or f <= 0:
+        raise argparse.ArgumentTypeError(f"must be a positive finite number, got {value}")
+    if f > 240:
+        raise argparse.ArgumentTypeError("duration must be <= 240 minutes")
     return f
 
 
@@ -61,7 +64,7 @@ def main(argv: list[str] | None = None) -> None:
     # Step 3: Summary + plot
     st = compute_stats(S, "Short-term")
     mo = compute_stats(M, "Momentary")
-    silence_pct = np.sum(S < -40) / len(S) * 100
+    silence_pct = (np.sum(np.isnan(S) | (S < -40)) / len(S) * 100) if len(S) else 0.0
 
     dur_label = f"_{int(args.duration)}m" if args.duration is not None else ""
     label = f"{title}{dur_label}"
@@ -70,14 +73,17 @@ def main(argv: list[str] | None = None) -> None:
     print("=" * 56)
     print(f"  {label}")
     print("=" * 56)
+    def _fmt(x):
+        return "N/A" if x is None else f"{x:.1f}"
+
     print(f"  Duration          : {t[-1] / 60:.1f} min ({len(t)} frames)")
     print(f"  Integrated        : {summary.get('integrated', '?')} LUFS")
     print(f"  True Peak (max)   : {summary.get('true_peak', '?')} dBFS")
     print(f"  LRA               : {summary.get('lra', '?')} LU")
-    print(f"  Short-term median : {st['median']:.1f} LUFS")
-    print(f"  Short-term P10/P90: {st['p10']:.1f} / {st['p90']:.1f} LUFS")
-    print(f"  Momentary  median : {mo['median']:.1f} LUFS")
-    print(f"  Momentary  P10/P90: {mo['p10']:.1f} / {mo['p90']:.1f} LUFS")
+    print(f"  Short-term median : {_fmt(st['median'])} LUFS")
+    print(f"  Short-term P10/P90: {_fmt(st['p10'])} / {_fmt(st['p90'])} LUFS")
+    print(f"  Momentary  median : {_fmt(mo['median'])} LUFS")
+    print(f"  Momentary  P10/P90: {_fmt(mo['p10'])} / {_fmt(mo['p90'])} LUFS")
     print(f"  Silence (S<-40)   : {silence_pct:.1f}%")
     print("=" * 56)
 

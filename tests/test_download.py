@@ -111,7 +111,7 @@ class TestProbeDuration:
 
 
 class TestRun:
-    @patch("analyze_loudness.download._subprocess_kwargs", return_value={})
+    @patch("analyze_loudness.download._ffmpeg_kwargs", return_value={})
     @patch("analyze_loudness.download.subprocess.run")
     def test_success(self, mock_run, mock_kwargs):
         mock_run.return_value = MagicMock(returncode=0, stdout="ok\n")
@@ -119,7 +119,7 @@ class TestRun:
         assert result.stdout == "ok\n"
         mock_run.assert_called_once()
 
-    @patch("analyze_loudness.download._subprocess_kwargs", return_value={})
+    @patch("analyze_loudness.download._ffmpeg_kwargs", return_value={})
     @patch("analyze_loudness.download.subprocess.run")
     def test_calledprocesserror_raises_runtime(self, mock_run, mock_kwargs):
         mock_run.side_effect = subprocess.CalledProcessError(
@@ -128,7 +128,7 @@ class TestRun:
         with pytest.raises(RuntimeError, match="yt-dlp failed"):
             _run(["yt-dlp", "--version"])
 
-    @patch("analyze_loudness.download._subprocess_kwargs", return_value={})
+    @patch("analyze_loudness.download._ffmpeg_kwargs", return_value={})
     @patch("analyze_loudness.download.subprocess.run")
     def test_stderr_truncated_to_500(self, mock_run, mock_kwargs):
         long_stderr = "x" * 1000
@@ -191,3 +191,73 @@ class TestDownloadAudio:
         opts = mock_ydl_cls.call_args[0][0]
         assert opts["postprocessors"][0]["preferredcodec"] == "opus"
         assert str(tmp_path) in opts["outtmpl"]
+
+
+class TestComputeMiddleBoundary:
+    """V-10: Boundary values for compute_middle."""
+
+    def test_zero_total_sec_raises(self):
+        with pytest.raises(ValueError, match="positive"):
+            compute_middle(0, 10.0)
+
+    def test_negative_total_sec_raises(self):
+        with pytest.raises(ValueError, match="positive"):
+            compute_middle(-100.0, 10.0)
+
+    def test_zero_duration_min_raises(self):
+        with pytest.raises(ValueError, match="positive"):
+            compute_middle(600.0, 0)
+
+    def test_negative_duration_min_raises(self):
+        with pytest.raises(ValueError, match="positive"):
+            compute_middle(600.0, -5.0)
+
+    def test_very_small_duration(self):
+        ss, dur, msg = compute_middle(600.0, 0.001)
+        # 0.001 min = 0.06 sec, much less than 600s
+        assert dur == pytest.approx(0.06)
+        assert ss > 0
+
+    def test_very_large_total(self):
+        ss, dur, msg = compute_middle(1e7, 10.0)
+        assert dur == 600.0
+        assert ss == pytest.approx((1e7 - 600.0) / 2)
+
+    def test_barely_shorter_uses_full(self):
+        # total_sec barely less than extract_sec
+        ss, dur, msg = compute_middle(599.9, 10.0)
+        assert ss == 0.0
+        assert dur == 599.9
+        assert "full duration" in msg
+
+
+class TestSanitizeFilenameWindowsReserved:
+    """V-13: Windows reserved device names."""
+
+    @pytest.mark.parametrize("name", ["CON", "PRN", "AUX", "NUL",
+                                       "COM1", "COM9", "LPT1", "LPT9"])
+    def test_reserved_name_prefixed(self, name):
+        result = sanitize_filename(name)
+        assert result.startswith("_")
+        assert name in result
+
+    def test_reserved_name_case_insensitive(self):
+        result = sanitize_filename("con")
+        assert result.startswith("_")
+
+    def test_reserved_name_with_extension(self):
+        result = sanitize_filename("CON.txt")
+        assert result.startswith("_")
+
+    def test_non_reserved_unchanged(self):
+        result = sanitize_filename("CONE")
+        assert not result.startswith("_")
+
+    def test_null_byte_removed(self):
+        result = sanitize_filename("test\x00file")
+        assert "\x00" not in result
+
+    def test_control_chars_removed(self):
+        result = sanitize_filename("test\x01\x1ffile")
+        assert "\x01" not in result
+        assert "\x1f" not in result
