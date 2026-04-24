@@ -253,15 +253,19 @@ loadBtn.addEventListener("click", async () => {
   statusEl.textContent = window.i18n.t("status.opening_file");
 
   let endedAbnormally = false;
+  const loadAbort = new AbortController();
+  const loadTimer = setTimeout(function () { loadAbort.abort(); }, 120000);
   try {
     const resp = await fetch(window.location.origin + "/load", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{}",
+      signal: loadAbort.signal,
     });
     if (!resp.ok) {
       endedAbnormally = true;
-      showError(window.i18n.t("err.load_failed_http") + resp.status);
+      const errBody = await resp.json().catch(function () { return {}; });
+      showError(errBody.error || window.i18n.t("err.load_failed_http") + resp.status);
       return;
     }
     const result = await resp.json();
@@ -283,8 +287,13 @@ loadBtn.addEventListener("click", async () => {
     render(result.data);
   } catch (err) {
     endedAbnormally = true;
-    showError(err.message);
+    if (err.name === "AbortError") {
+      showError(window.i18n.t("err.dialog_timeout"));
+    } else {
+      showError(err.message);
+    }
   } finally {
+    clearTimeout(loadTimer);
     _setBusy(false);
     if (endedAbnormally) loadBtn.focus();
   }

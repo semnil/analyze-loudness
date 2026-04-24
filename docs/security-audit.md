@@ -167,7 +167,7 @@
 | CLI args | Local | N/A | argparse + `_positive_float` |
 | GUI HTTP | 127.0.0.1 only | N/A (localhost) | URL + duration + JSON body validation |
 | Frontend SPA | pywebview (WebView2) | N/A | Static files, no SSR |
-| File dialogs | Native OS | User interaction required | pywebview SAVE_DIALOG / OPEN_DIALOG |
+| File dialogs | Native OS | User interaction required | pywebview SAVE_DIALOG / OPEN_DIALOG, `_dialog_lock` non-blocking try-lock (409 on concurrent) |
 
 ### Abuse Scenarios
 

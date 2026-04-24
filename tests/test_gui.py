@@ -500,6 +500,72 @@ class TestCacheLruEviction:
             gui_mod._cache_seq = old_seq
 
 
+class TestDialogBusyRejection:
+    """Concurrent dialog requests should be rejected with 409."""
+
+    def test_load_rejected_while_dialog_open(self, server, mock_window):
+        """A second /load while the first dialog is still open returns 409."""
+        import analyze_loudness.gui as gui_mod
+
+        dialog_entered = threading.Event()
+        dialog_release = threading.Event()
+
+        def blocking_dialog(*args, **kwargs):
+            dialog_entered.set()
+            dialog_release.wait(timeout=5)
+            return None
+
+        mock_window.create_file_dialog.side_effect = blocking_dialog
+
+        first_result = {}
+
+        def first_load():
+            first_result.update(dict(zip(
+                ("status", "body"),
+                _serve_post(server, "/load", {}),
+            )))
+
+        t1 = threading.Thread(target=first_load)
+        t1.start()
+        dialog_entered.wait(timeout=5)
+
+        status2, body2 = _serve_post(server, "/load", {})
+        assert status2 == 409
+        assert "dialog" in body2["error"].lower()
+
+        dialog_release.set()
+        t1.join(timeout=5)
+        assert first_result["status"] == 200
+
+    def test_save_rejected_while_dialog_open(self, server, mock_window):
+        """A /save while a /load dialog is open returns 409."""
+        import analyze_loudness.gui as gui_mod
+
+        dialog_entered = threading.Event()
+        dialog_release = threading.Event()
+
+        def blocking_dialog(*args, **kwargs):
+            dialog_entered.set()
+            dialog_release.wait(timeout=5)
+            return None
+
+        mock_window.create_file_dialog.side_effect = blocking_dialog
+
+        def first_load():
+            _serve_post(server, "/load", {})
+
+        t1 = threading.Thread(target=first_load)
+        t1.start()
+        dialog_entered.wait(timeout=5)
+
+        status2, body2 = _serve_post(server, "/save", {"data": {"x": 1}})
+        assert status2 == 409
+        assert "dialog" in body2["error"].lower()
+
+        dialog_release.set()
+        t1.join(timeout=5)
+
+
 class TestMetaGeneration:
     def test_meta_fields_present(self):
         from analyze_loudness import __version__
