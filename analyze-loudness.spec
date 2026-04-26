@@ -2,9 +2,18 @@
 """PyInstaller spec for analyze-loudness GUI application."""
 
 import os
+import re
 import sys
 
 ROOT = os.path.abspath(".")
+
+def _read_version():
+    init = os.path.join(ROOT, "src", "analyze_loudness", "__init__.py")
+    with open(init) as f:
+        match = re.search(r'__version__\s*=\s*"([^"]+)"', f.read())
+    return match.group(1)
+
+_VERSION = _read_version()
 IS_WINDOWS = sys.platform == "win32"
 IS_MAC = sys.platform == "darwin"
 
@@ -94,12 +103,12 @@ if IS_MAC:
         name="Loudness Analyzer.app",
         icon=_ICON,
         bundle_identifier="com.semnil.loudness-analyzer",
-        version="1.2.0",
+        version=_VERSION,
         info_plist={
             "CFBundleName": "Loudness Analyzer",
             "CFBundleDisplayName": "Loudness Analyzer",
-            "CFBundleShortVersionString": "1.2.0",
-            "CFBundleVersion": "1.2.0",
+            "CFBundleShortVersionString": _VERSION,
+            "CFBundleVersion": _VERSION,
             "LSMinimumSystemVersion": "11.0",
             "NSHighResolutionCapable": True,
             "LSEnvironment": {"PYTHONIOENCODING": "utf-8"},

@@ -227,6 +227,18 @@ All items implemented and tested.
 5. `tests/` -- pytest (analysis, cli, download, gui, init)
 6. `docs/` -- 設計ドキュメント + セキュリティ監査レポート (15 findings, 0 open)
 
+## バージョン管理
+
+唯一の定義元は `src/analyze_loudness/__init__.py` の `__version__`。他のファイルはすべてここから動的に取得する:
+
+| ファイル | 取得方式 |
+|----------|----------|
+| `pyproject.toml` | `[tool.hatch.version]` `path` (regex 抽出、import なし) |
+| `analyze-loudness.spec` | `_read_version()` で regex 読み取り |
+| `installer.iss` | `build.py` の `_build_inno()` が `/DMyAppVersion=` で注入 |
+
+バージョンバンプ時は `__init__.py` の `__version__` のみ変更する。
+
 ## Known limitations / future work
 
 - yt-dlp の YouTube 仕様変更追従 -> Python 依存のため `pip install -U yt-dlp` / リリース時に依存更新
