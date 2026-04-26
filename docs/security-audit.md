@@ -28,10 +28,11 @@
 
 - **Risk**: LOW -> RESOLVED
 - **Location**: [build.py](../build.py), [build_assets/checksums.json](../build_assets/checksums.json)
-- **Resolution**: `build_assets/checksums.json` にダウンロード済みアセットの SHA256 ハッシュを記録。ビルド時に全アセットのハッシュを照合し、不一致で停止する。
+- **Resolution**: `build_assets/checksums.json` にダウンロード済みアセット (ffmpeg, ffprobe, deno, uPlot) の SHA256 ハッシュをプラットフォーム別 (`windows` / `macos`) に記録。ビルド時に `_PLATFORM_KEY` で現在のプラットフォームのハッシュを照合し、不一致で停止する。
   - `python build.py --update-checksums`: ダウンロード + ハッシュ算出 + checksums.json 更新
   - `python build.py`: ダウンロード + checksums.json と照合 (不一致で停止)
   - checksums.json は git 管理対象
+  - JSON 構造は analyze-spectrum と統一 (`{ "windows": {...}, "macos": {...} }`)
 
 ### SEC-02: ローカル HTTP サーバーがループバック以外からアクセス可能 -- RESOLVED
 
