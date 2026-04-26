@@ -40,6 +40,7 @@ graph LR
 | `_handle_save_image()` | base64 PNG → バイナリ保存 (ネイティブファイルダイアログ) |
 | `_handle_load()` | JSON 読み込み + バリデーション (ネイティブファイルダイアログ) |
 | `_speed_factor` | runtime-calibrated 速度係数。分析時間から次回の推定時間を算出 |
+| `_set_application_user_model_id()` | Windows AppUserModelID 設定 (タスクバーアイコン反映) |
 | `main()` | HTTPServer (127.0.0.1:0) 起動 + pywebview ウインドウ表示 |
 
 ### Frontend (`frontend/`)

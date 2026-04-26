@@ -658,7 +658,17 @@ def _resolve_background_color(storage_key: str) -> str:
     return _BG_DARK if mode == "dark" else _BG_LIGHT
 
 
+def _set_application_user_model_id():
+    """Set Windows AppUserModelID so the taskbar shows the application icon."""
+    if sys.platform == "win32":
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "com.semnil.loudness-analyzer"
+        )
+
+
 def main():
+    _set_application_user_model_id()
     # When frozen, add bundled binaries (ffmpeg, ffprobe, deno) to PATH
     if getattr(sys, "frozen", False):
         bin_dir = str(Path(sys._MEIPASS) / "bin")
