@@ -606,8 +606,8 @@ _BG_LIGHT = "#fafafa"
 _BG_DARK = "#1a1a2e"
 
 
-from desktop_app_common.platform import IS_WINDOWS, IS_MAC  # noqa: E402
-from desktop_app_common.theme import is_dark_mode  # noqa: E402
+from analyze_common.platform import IS_WINDOWS, IS_MAC  # noqa: E402
+from analyze_common.theme import is_dark_mode  # noqa: E402
 
 
 def _read_theme_from_leveldb(ls_dir: Path, storage_key: str) -> str | None:

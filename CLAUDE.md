@@ -99,7 +99,7 @@ python build.py --skip-download  # skip asset download
 - `numpy` -- statistics computation
 - `yt-dlp` -- Python ライブラリとしてバンドル (PyInstaller が自動的に含める)
 - ffmpeg, ffprobe, deno -- bundled in build_assets/bin/ (PyInstaller frozen mode)
-- `py-desktop-app-common` -- git submodule (`vendor/py-desktop-app-common`)。OS 判定・subprocess kwargs・ダークモード検出を提供。pyproject.toml には記載せず `sys.path` 注入で利用
+- `py-analyze-common` -- git submodule (`vendor/py-analyze-common`)。OS 判定・subprocess kwargs・ダークモード検出・ffmpeg/ffprobe ラッパー・yt-dlp ダウンロード・JSON 安全化を提供。pyproject.toml には記載せず `sys.path` 注入で利用
 
 ## Design decisions
 

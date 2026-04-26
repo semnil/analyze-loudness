@@ -8,7 +8,7 @@ import pytest
 
 from analyze_loudness.download import (
     sanitize_filename, compute_middle, probe_duration,
-    _run, download_audio,
+    download_audio,
 )
 
 
@@ -79,66 +79,21 @@ class TestComputeMiddle:
 
 
 class TestProbeDuration:
-    @patch("analyze_loudness.download._run")
-    def test_returns_duration(self, mock_run):
-        mock_run.return_value = MagicMock(
-            stdout='{"format": {"duration": "123.456"}}'
-        )
+    @patch("analyze_loudness.download.probe_info", return_value=(2, 123.456))
+    def test_returns_duration(self, mock_probe):
         result = probe_duration("/fake/audio.opus")
         assert result == pytest.approx(123.456)
+        mock_probe.assert_called_once_with("/fake/audio.opus")
 
-    @patch("analyze_loudness.download._run")
-    def test_missing_duration_raises(self, mock_run):
-        mock_run.return_value = MagicMock(stdout='{"format": {}}')
+    @patch("analyze_loudness.download.probe_info", side_effect=RuntimeError("could not determine duration"))
+    def test_missing_duration_raises(self, mock_probe):
         with pytest.raises(RuntimeError, match="could not determine duration"):
             probe_duration("/fake/audio.opus")
 
-    @patch("analyze_loudness.download._run")
-    def test_missing_format_raises(self, mock_run):
-        mock_run.return_value = MagicMock(stdout='{}')
-        with pytest.raises(RuntimeError, match="could not determine duration"):
-            probe_duration("/fake/audio.opus")
-
-    @patch("analyze_loudness.download._run")
-    def test_calls_ffprobe_with_correct_args(self, mock_run):
-        mock_run.return_value = MagicMock(
-            stdout='{"format": {"duration": "60.0"}}'
-        )
-        probe_duration("/path/to/file.opus")
-        cmd = mock_run.call_args[0][0]
-        assert cmd[0] == "ffprobe"
-        assert "/path/to/file.opus" in cmd
-
-
-class TestRun:
-    @patch("analyze_loudness.download._ffmpeg_kwargs", return_value={})
-    @patch("analyze_loudness.download.subprocess.run")
-    def test_success(self, mock_run, mock_kwargs):
-        mock_run.return_value = MagicMock(returncode=0, stdout="ok\n")
-        result = _run(["echo", "hello"])
-        assert result.stdout == "ok\n"
-        mock_run.assert_called_once()
-
-    @patch("analyze_loudness.download._ffmpeg_kwargs", return_value={})
-    @patch("analyze_loudness.download.subprocess.run")
-    def test_calledprocesserror_raises_runtime(self, mock_run, mock_kwargs):
-        mock_run.side_effect = subprocess.CalledProcessError(
-            1, "yt-dlp", stderr="some error text"
-        )
-        with pytest.raises(RuntimeError, match="yt-dlp failed"):
-            _run(["yt-dlp", "--version"])
-
-    @patch("analyze_loudness.download._ffmpeg_kwargs", return_value={})
-    @patch("analyze_loudness.download.subprocess.run")
-    def test_stderr_truncated_to_500(self, mock_run, mock_kwargs):
-        long_stderr = "x" * 1000
-        mock_run.side_effect = subprocess.CalledProcessError(
-            1, "cmd", stderr=long_stderr
-        )
-        with pytest.raises(RuntimeError) as exc_info:
-            _run(["cmd"])
-        # The message includes at most 500 chars of stderr
-        assert len(exc_info.value.args[0]) < 600
+    @patch("analyze_loudness.download.probe_info", return_value=(1, 60.0))
+    def test_discards_channels(self, mock_probe):
+        result = probe_duration("/path/to/file.opus")
+        assert result == 60.0
 
 
 class TestDownloadAudio:
@@ -149,7 +104,7 @@ class TestDownloadAudio:
         ctx.extract_info = MagicMock(return_value=info)
         return ctx
 
-    @patch("analyze_loudness.download.YoutubeDL")
+    @patch("analyze_common.download.YoutubeDL")
     def test_returns_file_and_title(self, mock_ydl_cls, tmp_path):
         fake_file = tmp_path / "abc123.opus"
         fake_file.write_text("fake audio")
@@ -158,13 +113,13 @@ class TestDownloadAudio:
         result = download_audio("https://example.com", str(tmp_path))
         assert result == (str(fake_file), "Test Title")
 
-    @patch("analyze_loudness.download.YoutubeDL")
+    @patch("analyze_common.download.YoutubeDL")
     def test_no_file_raises(self, mock_ydl_cls, tmp_path):
         mock_ydl_cls.return_value = self._mock_ydl({"title": "Title"})
         with pytest.raises(FileNotFoundError, match="no audio file"):
             download_audio("https://example.com", str(tmp_path))
 
-    @patch("analyze_loudness.download.YoutubeDL")
+    @patch("analyze_common.download.YoutubeDL")
     def test_missing_title_falls_back_to_untitled(self, mock_ydl_cls, tmp_path):
         fake_file = tmp_path / "abc.opus"
         fake_file.write_text("data")
@@ -173,7 +128,7 @@ class TestDownloadAudio:
         _, title = download_audio("https://example.com", str(tmp_path))
         assert title == "Untitled"
 
-    @patch("analyze_loudness.download.YoutubeDL")
+    @patch("analyze_common.download.YoutubeDL")
     def test_extract_info_error_raises_runtime(self, mock_ydl_cls, tmp_path):
         ctx = self._mock_ydl({})
         ctx.extract_info.side_effect = Exception("network error")
@@ -181,7 +136,7 @@ class TestDownloadAudio:
         with pytest.raises(RuntimeError, match="yt-dlp failed"):
             download_audio("https://example.com", str(tmp_path))
 
-    @patch("analyze_loudness.download.YoutubeDL")
+    @patch("analyze_common.download.YoutubeDL")
     def test_passes_opus_postprocessor(self, mock_ydl_cls, tmp_path):
         fake_file = tmp_path / "abc.opus"
         fake_file.write_text("data")
@@ -214,7 +169,6 @@ class TestComputeMiddleBoundary:
 
     def test_very_small_duration(self):
         ss, dur, msg = compute_middle(600.0, 0.001)
-        # 0.001 min = 0.06 sec, much less than 600s
         assert dur == pytest.approx(0.06)
         assert ss > 0
 
@@ -224,7 +178,6 @@ class TestComputeMiddleBoundary:
         assert ss == pytest.approx((1e7 - 600.0) / 2)
 
     def test_barely_shorter_uses_full(self):
-        # total_sec barely less than extract_sec
         ss, dur, msg = compute_middle(599.9, 10.0)
         assert ss == 0.0
         assert dur == 599.9
