@@ -230,7 +230,6 @@ form.addEventListener("submit", async (e) => {
     const data = await readNdjsonStream(resp, activeAbort.signal);
     statusEl.textContent = "";
     render(data);
-    resultsEl.scrollIntoView({ behavior: "smooth", block: "start" });
     resultsEl.focus({ preventScroll: true });
   } catch (err) {
     endedAbnormally = true;
