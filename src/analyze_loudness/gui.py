@@ -678,9 +678,8 @@ def main():
         width=1100,
         height=800,
         background_color=bg,
-        icon=icon,
     )
-    webview.start()
+    webview.start(icon=icon)
     server.shutdown()
 
 
