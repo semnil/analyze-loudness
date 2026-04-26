@@ -159,7 +159,7 @@ CSS 変数 (`--bg`, `--fg`, `--accent` 等) + `[data-theme="dark"]` でテーマ
 `theme.js` の `getTheme()` がチャート描画時のカラーパレットを返す。
 fixed top-right pill ボタン (☾/☀/◐) で light → dark → auto をサイクル。
 `auto` は OS の `prefers-color-scheme` に追従し、`matchMedia` の `change` イベントでリアルタイム反映。
-選択は `localStorage("loudness-theme")` に永続化。UI は analyze-eq プロジェクトと統一。
+選択は `localStorage("loudness-theme")` に永続化。UI は analyze-spectrum プロジェクトと統一。
 
 ### 9. Analysis cancel (AbortController)
 

@@ -99,6 +99,7 @@ python build.py --skip-download  # skip asset download
 - `numpy` -- statistics computation
 - `yt-dlp` -- Python ライブラリとしてバンドル (PyInstaller が自動的に含める)
 - ffmpeg, ffprobe, deno -- bundled in build_assets/bin/ (PyInstaller frozen mode)
+- `py-desktop-app-common` -- git submodule (`vendor/py-desktop-app-common`)。OS 判定・subprocess kwargs・ダークモード検出を提供。pyproject.toml には記載せず `sys.path` 注入で利用
 
 ## Design decisions
 
@@ -151,7 +152,7 @@ NDJSON ストリーミングでリアルタイム進捗表示。runtime-calibrat
 
 CSS 変数 + `[data-theme="dark"]` でライト/ダーク/auto の 3 ステートテーマ切替。
 デフォルトは `auto` (OS の `prefers-color-scheme` に追従)。選択は `localStorage("loudness-theme")` に保存。
-テーマ切替 UI は fixed top-right pill ボタン (☾/☀/◐)。analyze-eq と統一。
+テーマ切替 UI は fixed top-right pill ボタン (☾/☀/◐)。analyze-spectrum と統一。
 チャート色は `theme.js` の `getTheme()` で一元管理し、テーマ切替時にチャートを再描画。
 
 ### 分析キャンセル
