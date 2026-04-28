@@ -3,6 +3,8 @@
 YouTube 動画の音声ラウドネスを BS.1770 / EBU R128 準拠で分析するツール。
 CLI 版と Windows GUI アプリケーション版の 2 形態を持つ。
 
+![Loudness Analyzer](docs/screenshot.png)
+
 ## 機能
 
 - YouTube 動画の音声をダウンロード (yt_dlp Python API, opus 形式)
