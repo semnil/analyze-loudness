@@ -28,6 +28,11 @@ graph LR
 
 GUI は pywebview (WebView2) + ローカル HTTP サーバーで構成。
 
+## 動作環境
+
+- Windows (x64)
+- macOS: **v1.3.0 以降は Apple Silicon (M1 以降) 専用**。Intel Mac (x86_64) は非対応 (macOS 26 で表示される「Intel プロセッサ用アプリの対応は終了します」警告への対応として、同梱する ffmpeg / ffprobe を Apple Silicon ネイティブビルドのみに切り替えたため)。Intel Mac をご利用の場合は [v1.2.0](../../releases/tag/v1.2.0) をご利用ください
+
 ## ローカル環境構築
 
 ### 前提条件
