@@ -16,7 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 gui = ["pywebview"]
-dev = ["pytest"]
+dev = ["pytest", "playwright>=1.40"]
 
 [project.scripts]
 analyze-loudness = "analyze_loudness.cli:main"
