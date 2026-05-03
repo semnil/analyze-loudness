@@ -148,8 +148,74 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && activeAbort) {
     e.preventDefault();
     _cancelActive();
+    return;
   }
+  if (e.key === "Escape" && _tipEl) _hideTip();
 });
+
+// Tooltip system -- positions dynamically to stay within viewport.
+var _TIP_KEYS = {
+  "table.duration": "tip.duration",
+  "table.integrated": "tip.integrated",
+  "table.true_peak": "tip.true_peak",
+  "table.lra": "tip.lra",
+  "table.sterm_median": "tip.sterm_median",
+  "table.sterm_p10p90": "tip.sterm_p10p90",
+  "table.mom_median": "tip.mom_median",
+  "table.mom_p10p90": "tip.mom_p10p90",
+  "table.silence": "tip.silence",
+  "chart.timeline_title": "tip.chart_timeline",
+};
+
+function _tipFor(key) {
+  var tipKey = _TIP_KEYS[key];
+  return tipKey ? () => window.i18n.t(tipKey) : undefined;
+}
+
+var _tipEl = null;
+var _tipTimer = null;
+var _tipAnchor = null;
+var _tipSeq = 0;
+
+function _showTip(anchor, text) {
+  _hideTip();
+  _tipAnchor = anchor;
+  _tipTimer = setTimeout(() => {
+    _tipEl = document.createElement("div");
+    _tipEl.className = "tip-popup";
+    _tipEl.setAttribute("role", "tooltip");
+    _tipEl.id = anchor.getAttribute("aria-describedby") || ("tip-" + (++_tipSeq));
+    anchor.setAttribute("aria-describedby", _tipEl.id);
+    _tipEl.textContent = text;
+    document.body.appendChild(_tipEl);
+    var r = anchor.getBoundingClientRect();
+    var tw = 300, th = _tipEl.offsetHeight;
+    var left = r.left + r.width / 2 - tw / 2;
+    var top = r.bottom + 6;
+    if (left < 4) left = 4;
+    if (left + tw > window.innerWidth - 4) left = window.innerWidth - tw - 4;
+    if (top + th > window.innerHeight - 4) top = r.top - th - 6;
+    _tipEl.style.left = left + "px";
+    _tipEl.style.top = top + "px";
+  }, 200);
+}
+
+function _hideTip() {
+  clearTimeout(_tipTimer);
+  if (_tipAnchor) _tipAnchor.removeAttribute("aria-describedby");
+  _tipAnchor = null;
+  if (_tipEl) { _tipEl.remove(); _tipEl = null; }
+}
+
+function _addTip(cell, textOrFn) {
+  cell.className = (cell.className ? cell.className + " " : "") + "has-tip";
+  cell.tabIndex = 0;
+  var resolve = typeof textOrFn === "function" ? textOrFn : () => textOrFn;
+  cell.addEventListener("mouseenter", () => _showTip(cell, resolve()));
+  cell.addEventListener("mouseleave", _hideTip);
+  cell.addEventListener("focus", () => _showTip(cell, resolve()));
+  cell.addEventListener("blur", _hideTip);
+}
 
 function _buildSummaryTable(ariaKey, headerKeys, valueStrings) {
   const table = document.createElement("table");
@@ -161,6 +227,8 @@ function _buildSummaryTable(ariaKey, headerKeys, valueStrings) {
     const th = document.createElement("th");
     th.setAttribute("scope", "col");
     th.textContent = window.i18n.t(key);
+    const tip = _tipFor(key);
+    if (tip) _addTip(th, tip);
     headerRow.appendChild(th);
   }
   thead.appendChild(headerRow);
@@ -480,6 +548,8 @@ function render(data) {
   silenceTh.setAttribute("scope", "row");
   silenceTh.setAttribute("colspan", "3");
   silenceTh.textContent = window.i18n.t("table.silence");
+  const silenceTip = _tipFor("table.silence");
+  if (silenceTip) _addTip(silenceTh, silenceTip);
   silenceRow.appendChild(silenceTh);
   const silenceTd = document.createElement("td");
   silenceTd.textContent = fmt(summary.silence_pct, 1) + "%";
@@ -499,6 +569,8 @@ function _renderCharts(data) {
   timeHeading.className = "chart-title";
   timeHeading.setAttribute("data-chart-block", "1");
   timeHeading.textContent = window.i18n.t("chart.timeline_title");
+  const timeTip = _tipFor("chart.timeline_title");
+  if (timeTip) _addTip(timeHeading, timeTip);
   resultsEl.appendChild(timeHeading);
   const timeDiv = document.createElement("div");
   timeDiv.className = "chart-row";
