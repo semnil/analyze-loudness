@@ -42,7 +42,7 @@ function renderSegments(canvas, t, S, integrated, silenceThreshold) {
   canvas.height = h * dpr;
   ctx.scale(dpr, dpr);
 
-  const pad = { top: 30, right: 20, bottom: 40, left: 70 };
+  const pad = { top: 12, right: 20, bottom: 40, left: 70 };
   const pw = w - pad.left - pad.right;
   const ph = h - pad.top - pad.bottom;
 
@@ -127,13 +127,9 @@ function renderSegments(canvas, t, S, integrated, silenceThreshold) {
     ctx.setLineDash([]);
   }
 
-  // title
-  ctx.fillStyle = th.fg;
-  ctx.font = "bold 13px 'Segoe UI', 'Meiryo', sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText(window.i18n.t("chart.seg_title"), w / 2, 16);
-
   // axis label
+  ctx.fillStyle = th.fg;
   ctx.font = "12px 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.textAlign = "center";
   ctx.fillText(window.i18n.t("chart.seg_axis"), w / 2, h - 4);
 }

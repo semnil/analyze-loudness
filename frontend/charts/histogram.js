@@ -42,7 +42,7 @@ function renderHistogram(canvas, values, label, integrated, silenceThreshold) {
   canvas.height = h * dpr;
   ctx.scale(dpr, dpr);
 
-  const pad = { top: 30, right: 20, bottom: 40, left: 50 };
+  const pad = { top: 12, right: 20, bottom: 40, left: 50 };
   const pw = w - pad.left - pad.right;
   const ph = h - pad.top - pad.bottom;
 
@@ -88,10 +88,6 @@ function renderHistogram(canvas, values, label, integrated, silenceThreshold) {
   ctx.font = "12px 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "center";
   ctx.fillText(window.i18n.t("chart.hist_axis", { label }), w / 2, h - 4);
-
-  // title
-  ctx.font = "bold 13px 'Segoe UI', 'Meiryo', sans-serif";
-  ctx.fillText(window.i18n.t("chart.hist_title", { label }), w / 2, 16);
 
   // x ticks
   ctx.font = "10px 'Segoe UI', 'Meiryo', sans-serif";

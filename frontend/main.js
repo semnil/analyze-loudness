@@ -165,6 +165,8 @@ var _TIP_KEYS = {
   "table.mom_p10p90": "tip.mom_p10p90",
   "table.silence": "tip.silence",
   "chart.timeline_title": "tip.chart_timeline",
+  "chart.histogram": "tip.chart_histogram",
+  "chart.segments": "tip.chart_segments",
 };
 
 function _tipFor(key) {
@@ -582,16 +584,17 @@ function _renderCharts(data) {
   activeUPlots.push(uplot);
   if (uplot.ctx) chartCanvasRefs.push(uplot.ctx.canvas);
 
-  const histHeading = document.createElement("h3");
-  histHeading.className = "visually-hidden";
-  histHeading.setAttribute("data-chart-block", "1");
-  histHeading.textContent = window.i18n.t("chart.histograms_heading");
-  resultsEl.appendChild(histHeading);
   const histRow = document.createElement("div");
   histRow.className = "chart-pair";
   histRow.setAttribute("data-chart-block", "1");
 
   const histS = document.createElement("div");
+  const histSTitle = document.createElement("h3");
+  histSTitle.className = "chart-title";
+  histSTitle.textContent = window.i18n.t("chart.hist_title", { label: window.i18n.t("chart.label_short_term") });
+  const histTip = _tipFor("chart.histogram");
+  if (histTip) _addTip(histSTitle, histTip);
+  histS.appendChild(histSTitle);
   histS.setAttribute("role", "img");
   histS.setAttribute("aria-label", _histogramAriaLabel(window.i18n.t("chart.label_short_term"), st));
   const canvasS = document.createElement("canvas");
@@ -600,6 +603,11 @@ function _renderCharts(data) {
   histRow.appendChild(histS);
 
   const histM = document.createElement("div");
+  const histMTitle = document.createElement("h3");
+  histMTitle.className = "chart-title";
+  histMTitle.textContent = window.i18n.t("chart.hist_title", { label: window.i18n.t("chart.label_momentary") });
+  if (histTip) _addTip(histMTitle, histTip);
+  histM.appendChild(histMTitle);
   histM.setAttribute("role", "img");
   histM.setAttribute("aria-label", _histogramAriaLabel(window.i18n.t("chart.label_momentary"), mo));
   const canvasM = document.createElement("canvas");
@@ -613,9 +621,11 @@ function _renderCharts(data) {
   chartCanvasRefs.push(canvasS, canvasM);
 
   const segHeading = document.createElement("h3");
-  segHeading.className = "visually-hidden";
+  segHeading.className = "chart-title";
   segHeading.setAttribute("data-chart-block", "1");
-  segHeading.textContent = window.i18n.t("chart.segments_heading");
+  segHeading.textContent = window.i18n.t("chart.seg_title");
+  const segTip = _tipFor("chart.segments");
+  if (segTip) _addTip(segHeading, segTip);
   resultsEl.appendChild(segHeading);
   const segDiv = document.createElement("div");
   segDiv.className = "chart-row";
@@ -731,7 +741,12 @@ function captureImage(data) {
 
   // Chart titles baked into the composite PNG only.  The HTML uses .chart-title
   // above each canvas; the canvas bitmap itself has no text, so we redraw it here.
-  const chartTitles = [window.i18n.t("chart.timeline_title"), null, null, null];
+  const chartTitles = [
+    window.i18n.t("chart.timeline_title"),
+    window.i18n.t("chart.hist_title", { label: window.i18n.t("chart.label_short_term") }),
+    window.i18n.t("chart.hist_title", { label: window.i18n.t("chart.label_momentary") }),
+    window.i18n.t("chart.seg_title"),
+  ];
 
   // Chart heights (in CSS pixels)
   const chartSizes = [];
