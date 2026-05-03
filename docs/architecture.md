@@ -48,11 +48,12 @@ graph LR
 | File | Responsibility |
 |------|---------------|
 | `index.html` | SPA entry point, local vendor files |
-| `main.js` | Fetch orchestration, NDJSON progress parsing, DOM rendering, save/load/image capture, theme toggle, cancel (AbortController) |
+| `main.js` | Fetch orchestration, NDJSON progress parsing, DOM rendering, save/load/image capture, theme toggle, language toggle, cancel (AbortController), `_addTip` ツールチップ |
 | `theme.js` | `isDark()`, `getTheme()` — theme detection + chart color provider |
+| `i18n.js` | en / ja DICT + `window.i18n.t / setLang / onChange / applyStatic` |
 | `charts/timeline.js` | uPlot time series (60-frame moving average, theme-aware) |
-| `charts/histogram.js` | Canvas density histogram (theme-aware) |
-| `charts/segments.js` | Canvas 5-min segment bar chart (theme-aware) |
+| `charts/histogram.js` | Canvas density histogram (theme-aware, タイトルは HTML 側) |
+| `charts/segments.js` | Canvas 5-min segment bar chart (theme-aware, タイトルは HTML 側) |
 | `style.css` | CSS variables + `[data-theme="dark"]` rules, purple accent (#9C27B0) |
 | `vendor/` | uPlot.iife.min.js, uPlot.min.css (bundled) |
 
@@ -224,5 +225,6 @@ Build pipeline:
 | Segment size | 5 min | plot.py, segments.js | Bar chart segment width |
 | Moving average window | 60 frames | plot.py, timeline.js | Timeline smoothing window |
 | Downsample target | ~3000 points | plot.py | Plot responsiveness |
-| Default theme | "system" | main.js | OS prefers-color-scheme 追従 |
-| Theme storage key | "theme" | main.js | localStorage persistence key |
+| Default theme | "auto" | main.js | OS prefers-color-scheme 追従 |
+| Theme storage key | "loudness-theme" | main.js | localStorage persistence key |
+| Language storage key | "loudness-lang" | i18n.js | localStorage persistence key (en/ja) |
