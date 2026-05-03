@@ -11,7 +11,7 @@ const statusEl = document.getElementById("status");
 const resultsEl = document.getElementById("results");
 
 // Theme: "light" | "dark" | "auto" (follows system)
-const _THEME_ICONS = { light: "\u2600\uFE0F", dark: "\u263E\uFE0F", auto: "\u25D0\uFE0F" };
+const _THEME_ICONS = { light: "\u2600", dark: "\u263E", auto: "\u25D0" };
 
 function _systemDark() {
   return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
