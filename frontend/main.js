@@ -588,17 +588,22 @@ function _renderCharts(data) {
   histRow.className = "chart-pair";
   histRow.setAttribute("data-chart-block", "1");
 
+  // role="img" belongs on the canvas itself (as in analyze-spectrum), not on the
+  // column: ARIA marks the children of an image presentational, so a heading
+  // nested inside it -- and the tooltip description it carries -- can be dropped
+  // from the accessibility tree.
+  const histTip = _tipFor("chart.histogram");
+
   const histS = document.createElement("div");
   const histSTitle = document.createElement("h3");
   histSTitle.className = "chart-title";
   histSTitle.textContent = window.i18n.t("chart.hist_title", { label: window.i18n.t("chart.label_short_term") });
-  const histTip = _tipFor("chart.histogram");
   if (histTip) _addTip(histSTitle, histTip);
   histS.appendChild(histSTitle);
-  histS.setAttribute("role", "img");
-  histS.setAttribute("aria-label", _histogramAriaLabel(window.i18n.t("chart.label_short_term"), st));
   const canvasS = document.createElement("canvas");
   canvasS.className = "histogram-canvas";
+  canvasS.setAttribute("role", "img");
+  canvasS.setAttribute("aria-label", _histogramAriaLabel(window.i18n.t("chart.label_short_term"), st));
   histS.appendChild(canvasS);
   histRow.appendChild(histS);
 
@@ -608,10 +613,10 @@ function _renderCharts(data) {
   histMTitle.textContent = window.i18n.t("chart.hist_title", { label: window.i18n.t("chart.label_momentary") });
   if (histTip) _addTip(histMTitle, histTip);
   histM.appendChild(histMTitle);
-  histM.setAttribute("role", "img");
-  histM.setAttribute("aria-label", _histogramAriaLabel(window.i18n.t("chart.label_momentary"), mo));
   const canvasM = document.createElement("canvas");
   canvasM.className = "histogram-canvas";
+  canvasM.setAttribute("role", "img");
+  canvasM.setAttribute("aria-label", _histogramAriaLabel(window.i18n.t("chart.label_momentary"), mo));
   histM.appendChild(canvasM);
   histRow.appendChild(histM);
 
