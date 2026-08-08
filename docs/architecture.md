@@ -174,7 +174,9 @@ NDJSON `ReadableStream.getReader()` に渡し、キャンセル時にストリ�
 PyInstaller frozen mode では `subprocess.STARTUPINFO` + `STARTF_USESHOWWINDOW` で
 ffmpeg / ffprobe のコンソールウインドウを非表示にする。yt-dlp は Python API として動作するため subprocess 起動しない。
 
-## Accessibility (prefers-reduced-motion)
+## Accessibility
+
+### prefers-reduced-motion
 
 `@media (prefers-reduced-motion: reduce)` で CSS animation / transition を一括無効化している。
 
@@ -184,6 +186,17 @@ WCAG 2.3.3 が対象とするアニメーションには該当しない。
 
 カウントダウン表示は `matchMedia("(prefers-reduced-motion: reduce)")` で更新間隔を
 1 秒 → 5 秒に変更済み (main.js)。
+
+### チャートの `role="img"` 配置
+
+各チャートには統計値を含む説明文を `aria-label` として持つ `role="img"` ノードを置く。
+histogram は canvas 自体に付与し (analyze-spectrum の `_addCanvasChart` と同形)、
+timeline / segments は uPlot が DOM を生成する都合上コンテナ div に付与する。
+
+タイトルの `<h3 class="chart-title">` は必ずこのノードの**外側**に置く。
+ARIA は `role="img"` の子孫を presentational として扱うため、内側に入れると
+タイトルと `_addTip()` が張る `aria-describedby` (ツールチップ本文) が
+支援技術に渡らないエンジンが生じる。
 
 ## Build & Distribution
 
