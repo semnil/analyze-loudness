@@ -264,6 +264,8 @@ Build pipeline:
 | SILENCE_THRESHOLD | -60 LUFS | analysis.py | Stats exclude frames <= this |
 | GATE_ABSOLUTE | -70 LUFS | gate.js | BS.1770 絶対ゲート |
 | GATE_BLOCK_SEC | 0.4 s | gate.js | Momentary 窓長。ウォームアップフレームの判定に使う |
+| SHORT_TERM_WINDOW_SEC | 3.0 s | analysis.py | Short-term 窓長。無音率のウォームアップ判定に使う |
+| SILENCE_PCT_THRESHOLD | -40 LUFS | analysis.py | 無音率の判定しきい値 |
 | GATE_RELATIVE_OFFSET | -10 LU | gate.js | BS.1770 相対ゲート (通過ブロック平均からのオフセット) |
 | GATE_LANE_H | 12 px | timeline.js | GATE 帯の高さ |
 | _speed_factor | 55.0 (initial) | gui.py | Runtime-calibrated analysis speed |

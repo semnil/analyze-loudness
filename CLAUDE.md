@@ -123,7 +123,11 @@ analyze-loudness-gui
 
 ### 無音閾値
 
-統計計算時は Short-term > -60 LUFS のフレームのみ使用 (`SILENCE_THRESHOLD`)。無音率は S < -40 LUFS で算出。
+統計計算時は Short-term > -60 LUFS のフレームのみ使用 (`SILENCE_THRESHOLD`)。無音率は S < -40 LUFS
+(`SILENCE_PCT_THRESHOLD`) で算出する。ただし **ebur128 のウォームアップフレームは分母から外す** —
+S は 3 秒窓なので先頭 29 フレームは窓が埋まらず無音フロア -120.7 が出る。除外しないと 36 秒クリップの
+無音が 8.1% と出る (実測、実体は 0.0%)。判定は `analysis.py` の `first_full_window()` / `compute_silence_pct()`
+に集約し、CLI・GUI・matplotlib プロットの 3 箇所から共用する。
 
 ### 中盤抽出
 
@@ -188,7 +192,8 @@ ffmpeg は 100 ms ごとにフレームを出すが Momentary 窓は 400 ms の�
 (t = 0.1 / 0.2 / 0.3) は窓が埋まっておらず、無音フロア -120.7 が出る**。これらはゲート対象ブロックでは
 ないので `computeGate` は `series.t` から先頭を判定して除外する (`_firstGatedIndex`)。除外しないと
 無音率と分母の両方が膨らみ、実測では 36 秒クリップの無音 0.91% がすべてこのウォームアップだった。
-判定は `t[0]` 相対で行うため `-ss` で切り出した場合も効く。S (3 秒窓) のウォームアップは 29 フレーム。
+判定は `t[0]` 相対で行うため `-ss` で切り出した場合も効く。S (3 秒窓) のウォームアップは 29 フレームで、
+こちらは summary の無音率が同じ規則で除外する ([無音閾値](#無音閾値))。
 
 相対ゲートの値は `summary.gate_threshold` (schema 2) を使い、無い場合のみ `frontend/gate.js` の
 `computeGate()` が `series.M` から再計算する。schema 1 で保存した JSON はこのフォールバック経路に乗る。
@@ -210,7 +215,7 @@ ffmpeg の Integrated をより忠実に再現するのは 13 本中 12 本で 1
 | ver | 追加 |
 |-----|------|
 | 1 | 初版 |
-| 2 | `summary.gate_threshold` — ffmpeg の相対ゲート。無い場合はフロントエンドが `series.M` から再計算 |
+| 2 | `summary.gate_threshold` — ffmpeg の相対ゲート。無い場合はフロントエンドが `series.M` から再計算。あわせて `summary.silence_pct` が ebur128 のウォームアップフレームを分母から外すようになった (schema 1 で保存済みの値は旧算出のまま) |
 
 `/load` は `meta.schema_version` が int であることだけを検証し、値では弾かない。
 新フィールドは**バージョン番号ではなく有無で分岐する** — 手編集された JSON で欠落しうるため。

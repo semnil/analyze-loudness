@@ -6,10 +6,9 @@ import shutil
 import tempfile
 from pathlib import Path
 
-import numpy as np
 
 from analyze_loudness.download import download_audio, probe_duration, compute_middle, sanitize_filename
-from analyze_loudness.analysis import run_ebur128, compute_stats
+from analyze_loudness.analysis import run_ebur128, compute_stats, compute_silence_pct
 from analyze_loudness.plot import plot_analysis
 
 
@@ -64,7 +63,7 @@ def main(argv: list[str] | None = None) -> None:
     # Step 3: Summary + plot
     st = compute_stats(S, "Short-term")
     mo = compute_stats(M, "Momentary")
-    silence_pct = (np.sum(np.isnan(S) | (S < -40)) / len(S) * 100) if len(S) else 0.0
+    silence_pct = compute_silence_pct(t, S)
 
     dur_label = f"_{int(args.duration)}m" if args.duration is not None else ""
     label = f"{title}{dur_label}"
