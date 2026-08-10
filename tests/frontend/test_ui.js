@@ -189,6 +189,48 @@ function fakeResult(sourceUrl) {
   assertEqual(_isBusy, false, "Not busy after analysis completes");
 
   // ================================================
+  suite("Gate caption accompanies the timeline");
+  // ================================================
+
+  var caption = resultsEl.querySelector(".gate-caption");
+  assert(caption !== null, "Gate caption rendered under the timeline");
+  assertEqual(caption.getAttribute("data-chart-block"), "1",
+    "Gate caption is torn down with the charts on theme/lang change");
+  assertEqual(caption.querySelector(".gate-pct").textContent, "100.0%",
+    "Counted share shown for an all-counted sample");
+  assertEqual(caption.querySelectorAll(".gate-swatch").length, 3,
+    "Legend has counted / gated out / silence swatches");
+  assert(resultsEl.querySelector(".chart-row.has-gate") !== null,
+    "Timeline row is flagged so the caption sits tight under the chart");
+  assert(resultsEl.querySelector(".chart-row").getAttribute("aria-label")
+    .indexOf("Gate lane") !== -1, "Timeline aria-label describes the gate lane");
+
+  // ================================================
+  suite("computeGate: BS.1770 absolute + relative gating");
+  // ================================================
+
+  assertEqual(computeGate([]), null, "Empty series yields no gate");
+  assertEqual(computeGate([-80, -90]), null, "All-silent series yields no gate");
+
+  // Four blocks at -20 LUFS: relative threshold lands 10 LU below them.
+  var flat = computeGate([-20, -20, -20, -20]);
+  assert(Math.abs(flat.threshold - -30) < 1e-9, "Relative gate is mean - 10 LU");
+  assertEqual(flat.counted, 4, "Blocks above the relative gate are counted");
+  assertEqual(flat.silent, 0, "No silent blocks in a flat series");
+
+  // -100 clears neither gate; -45 clears the absolute gate but not the relative one.
+  var mixed = computeGate([-20, -20, -45, -100]);
+  assertEqual(mixed.silent, 1, "Blocks at or below -70 LUFS count as silence");
+  assertEqual(mixed.counted, 2, "Blocks above the relative gate stay counted");
+  assertEqual(mixed.below, 1, "Blocks between the two gates are below gate");
+  assertEqual(mixed.total, 4, "Every block lands in exactly one state");
+  assertEqual(mixed.countedPct, 50, "Counted share is reported as a percentage");
+
+  var nulls = computeGate([-20, -20, null]);
+  assertEqual(nulls.silent, 1, "Null blocks (non-finite in ffmpeg output) count as silence");
+
+
+  // ================================================
   suite("Submit failure (non-OK response) shows error");
   // ================================================
 
@@ -288,6 +330,8 @@ function fakeResult(sourceUrl) {
     "tip.chart_histogram", "tip.chart_segments",
     "chart.timeline_title", "chart.hist_title", "chart.seg_title",
     "chart.no_data_silence",
+    "gate.lane_label", "gate.counted", "gate.out", "gate.silence",
+    "gate.counted_of_timeline", "gate.excluded_detail", "aria.gate_lane",
   ];
   window.i18n.setLang("en");
   for (var i = 0; i < requiredKeys.length; i++) {

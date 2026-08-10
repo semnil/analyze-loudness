@@ -38,9 +38,10 @@ analyze-loudness/
 │   ├── index.html
 │   ├── main.js                 # fetch + NDJSON progress + DOM rendering + theme toggle
 │   ├── theme.js                # getTheme() -- chart color provider (light/dark)
+│   ├── gate.js                 # computeGate() -- BS.1770 gating rebuilt from series.M
 │   ├── i18n.js                 # en/ja DICT + window.i18n.t / setLang / onChange
 │   ├── charts/
-│   │   ├── timeline.js         # uPlot wrapper (theme-aware)
+│   │   ├── timeline.js         # uPlot wrapper (theme-aware, GATE lane plugin)
 │   │   ├── histogram.js        # Canvas histogram (theme-aware, no internal title)
 │   │   └── segments.js         # Canvas segment bars (theme-aware, no internal title)
 │   ├── style.css               # CSS variables + [data-theme="dark"] rules
@@ -176,6 +177,25 @@ CSS 変数 + `[data-theme="dark"]` でライト/ダーク/auto の 3 ステー�
 各チャート (timeline / histogram x2 / segments) のタイトルは HTML `<h3 class="chart-title">` のみで描画し、Canvas / uPlot の `ctx.fillText` や `title:` オプションは使わない。canvas 内描画は二重表示と PNG エクスポート時の重複を招くため禁止 (`captureImage()` が `chartTitles` 配列で composite PNG にタイトルを焼き込む)。HTML タイトルは `_addTip()` でツールチップ (`tip.chart_timeline` / `tip.chart_histogram` / `tip.chart_segments`) を持つ。
 
 `role="img"` + `aria-label` は histogram では canvas 自体に、timeline / segments ではコンテナ div に付与する。タイトルは必ずそのノードの外側に置く (ARIA が `role="img"` の子孫を presentational 扱いするため、内側だとタイトルとツールチップ本文が支援技術に渡らない)。
+
+### GATE レーン (タイムラインの除外区間表示)
+
+Integrated は BS.1770 の絶対ゲート (-70 LUFS) と相対ゲート (絶対ゲート通過ブロックの平均 -10 LU) を
+越えた 400 ms ブロックのみを集計する。Timeline の x 軸ガター (プロット下端とメモリラベルの間) に
+高さ 12 px の帯を置き、除外ブロックを琥珀色 (相対ゲート以下) / スレート (絶対ゲート以下) で示す。
+
+ゲート状態は `frontend/gate.js` の `computeGate()` が `series.M` から再構成する。ffmpeg Summary の
+`Threshold:` はパースしない — 再構成した Integrated は保存済み JSON 13 本すべてで保存値と 0.05 LU 以内に
+一致し、バックエンド・スキーマを変えずに過去の保存 JSON でも同じ帯が出る。`series.M` の長さが
+`series.t` と一致しない JSON では帯を出さない (時間軸との対応が保証できないため)。
+
+帯の場所は x 軸の `gap` / `size` とチャート高さを同じ 11 px ずつ広げて作る。プロット bbox は帯の
+有無で変わらない (2160x540 device px, 実測)。1 画素列に算入・除外が混在する場合は除外として描くため、
+長尺では帯の塗り面積が実際の除外率を上回る。ドラッグズームすると実際の除外区間に収束する。
+
+色は `theme.js` の `gateTrack` / `gateOut` / `gateSilent` と CSS 変数
+`--gate-track` / `--gate-out` / `--gate-silent` の 2 か所に定義がある (canvas 用と凡例 chip 用)。
+片方だけ変えると凡例と帯の色がずれる。
 
 ### フロントエンド UI テスト
 

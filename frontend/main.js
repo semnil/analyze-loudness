@@ -1,6 +1,7 @@
 let activeUPlots = [];
 let chartCanvasRefs = [];
 let lastRenderedData = null;
+let lastGate = null;
 let activeAbort = null;
 
 const form = document.getElementById("analyze-form");
@@ -566,6 +567,10 @@ function _renderCharts(data) {
   const { summary, series } = data;
   const st = summary.short_term || {};
   const mo = summary.momentary || {};
+  // A loaded JSON is user-supplied: only gate when M lines up with the time
+  // axis, otherwise the lane would map states onto the wrong instants.
+  lastGate = (series.M && series.t && series.M.length === series.t.length)
+    ? computeGate(series.M) : null;
 
   const timeHeading = document.createElement("h3");
   timeHeading.className = "chart-title";
@@ -575,14 +580,15 @@ function _renderCharts(data) {
   if (timeTip) _addTip(timeHeading, timeTip);
   resultsEl.appendChild(timeHeading);
   const timeDiv = document.createElement("div");
-  timeDiv.className = "chart-row";
+  timeDiv.className = lastGate ? "chart-row has-gate" : "chart-row";
   timeDiv.setAttribute("data-chart-block", "1");
   timeDiv.setAttribute("role", "img");
   timeDiv.setAttribute("aria-label", _timelineAriaLabel(summary, series, st));
   resultsEl.appendChild(timeDiv);
-  const uplot = renderTimeline(timeDiv, series.t, series.S, summary.integrated);
+  const uplot = renderTimeline(timeDiv, series.t, series.S, summary.integrated, lastGate);
   activeUPlots.push(uplot);
   if (uplot.ctx) chartCanvasRefs.push(uplot.ctx.canvas);
+  if (lastGate) resultsEl.appendChild(_buildGateCaption(lastGate));
 
   const histRow = document.createElement("div");
   histRow.className = "chart-pair";
@@ -654,13 +660,61 @@ function _reRenderCharts() {
   _renderCharts(lastRenderedData);
 }
 
+// Reading row under the timeline: what the GATE lane adds up to, plus the key
+// to its colors.  The lane itself carries no text.
+function _buildGateCaption(gate) {
+  const row = document.createElement("div");
+  row.className = "gate-caption";
+  row.setAttribute("data-chart-block", "1");
+
+  const facts = document.createElement("p");
+  const pct = document.createElement("strong");
+  pct.className = "gate-pct";
+  pct.textContent = fmt(gate.countedPct, 1) + "%";
+  facts.appendChild(pct);
+  facts.appendChild(document.createTextNode(
+    " " + window.i18n.t("gate.counted_of_timeline") + " \u00b7 " +
+    window.i18n.t("gate.excluded_detail", {
+      below: fmt(gate.belowPct, 1),
+      threshold: fmt(gate.threshold, 1),
+      silent: fmt(gate.silentPct, 1),
+    })));
+  row.appendChild(facts);
+
+  const legend = document.createElement("p");
+  legend.className = "gate-legend";
+  for (const [cls, key] of [["counted", "gate.counted"],
+                            ["out", "gate.out"],
+                            ["silent", "gate.silence"]]) {
+    const item = document.createElement("span");
+    item.className = "gate-key";
+    const swatch = document.createElement("span");
+    swatch.className = "gate-swatch " + cls;
+    swatch.setAttribute("aria-hidden", "true");
+    item.appendChild(swatch);
+    item.appendChild(document.createTextNode(window.i18n.t(key)));
+    legend.appendChild(item);
+  }
+  row.appendChild(legend);
+  return row;
+}
+
 function _timelineAriaLabel(summary, series, st) {
-  return window.i18n.t("aria.timeline", {
+  let label = window.i18n.t("aria.timeline", {
     mins: fmt(summary.duration_sec / 60, 1),
     integrated: summary.integrated != null ? fmt(summary.integrated, 1) + " LUFS" : "unavailable",
     lo: fmt(st.p10, 1),
     hi: fmt(st.p90, 1),
   });
+  if (lastGate) {
+    label += " " + window.i18n.t("aria.gate_lane", {
+      counted: fmt(lastGate.countedPct, 1),
+      below: fmt(lastGate.belowPct, 1),
+      threshold: fmt(lastGate.threshold, 1),
+      silent: fmt(lastGate.silentPct, 1),
+    });
+  }
+  return label;
 }
 
 function _histogramAriaLabel(kind, stats) {
@@ -815,7 +869,8 @@ function captureImage(data) {
      `${tImg("table.mom_median")}: ${fmt(mo.median, 1)} LUFS`],
     [`${tImg("table.sterm_p10p90")}: ${fmt(st.p10, 1)} / ${fmt(st.p90, 1)} LUFS`,
      `${tImg("table.mom_p10p90")}: ${fmt(mo.p10, 1)} / ${fmt(mo.p90, 1)} LUFS`],
-    [`${tImg("table.silence")}: ${fmt(summary.silence_pct, 1)}%`, ""],
+    [`${tImg("table.silence")}: ${fmt(summary.silence_pct, 1)}%`,
+     lastGate ? `${tImg("gate.counted")}: ${fmt(lastGate.countedPct, 1)}% (${tImg("gate.out")} ${fmt(lastGate.belowPct, 1)}% @ ${fmt(lastGate.threshold, 1)} LUFS)` : ""],
   ];
 
   for (const [left, right] of lines) {

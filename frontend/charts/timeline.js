@@ -1,7 +1,95 @@
 /**
  * Short-term loudness timeline using uPlot.
  * Renders raw S data as a filled area and 60-frame moving average as a bold line.
+ * When gate data is available a GATE lane sits in the x-axis gutter, directly
+ * under the plot, marking the blocks that did not count toward Integrated.
  */
+
+var TL_HEIGHT = 350;
+var GATE_LANE_H = 12;      // lane height, CSS px
+var GATE_LANE_TOP_GAP = 6; // plot bottom -> lane top
+var GATE_LANE_BOT_GAP = 8; // lane bottom -> x-axis values
+var GATE_LANE_LABEL_GAP = 6; // lane left edge -> "GATE" label
+
+// uPlot axis defaults the lane has to make room in: values are drawn at
+// plotBottom + ticks.size + gap, inside a gutter of a fixed `size` (the axis
+// label gets its own labelSize on top).
+var UPLOT_TICK_SIZE = 10;
+var UPLOT_AXIS_GAP = 5;
+var UPLOT_X_AXIS_SIZE = 50;
+
+// Push the axis values below the lane, then widen the gutter and the chart by
+// the same amount so the plot area keeps the height it has without a lane.
+var _gateAxisGap = GATE_LANE_TOP_GAP + GATE_LANE_H + GATE_LANE_BOT_GAP - UPLOT_TICK_SIZE;
+var _gateExtra = _gateAxisGap - UPLOT_AXIS_GAP;
+
+/**
+ * Draw the gate lane in the space reserved below the plot.  Each device pixel
+ * column takes the highest state of the blocks that land in it, so a column
+ * holding both counted and excluded blocks reads as excluded.
+ */
+function gateLanePlugin(gate) {
+  return {
+    hooks: {
+      draw: function (u) {
+        var ctx = u.ctx;
+        var bb = u.bbox;
+        // uPlot draws in device pixels; derive the ratio it actually used
+        // rather than devicePixelRatio, which can drift from it.
+        var r = u.ctx.canvas.width / u.width;
+        var laneTop = bb.top + bb.height + GATE_LANE_TOP_GAP * r;
+        var laneH = GATE_LANE_H * r;
+        var w = Math.round(bb.width);
+        if (w <= 0) return;
+
+        var th = getTheme();
+        ctx.save();
+
+        ctx.fillStyle = th.gateTrack;
+        ctx.fillRect(bb.left, laneTop, bb.width, laneH);
+
+        var xs = u.data[0];
+        var idxs = u.series[0].idxs || [0, xs.length - 1];
+        var cols = new Uint8Array(w);
+        for (var i = idxs[0]; i <= idxs[1]; i++) {
+          var s = gate.state[i];
+          if (s === GATE_COUNTED) continue;
+          // A block spans up to the next sample; keep at least one column so
+          // sub-pixel blocks stay visible at full-length zoom.
+          var from = Math.floor(u.valToPos(xs[i], "x", true) - bb.left);
+          var to = i + 1 < xs.length
+            ? Math.ceil(u.valToPos(xs[i + 1], "x", true) - bb.left) - 1
+            : from;
+          if (to < from) to = from;
+          if (from < 0) from = 0;
+          if (to >= w) to = w - 1;
+          for (var c = from; c <= to; c++) {
+            if (s > cols[c]) cols[c] = s;
+          }
+        }
+
+        var x = 0;
+        while (x < w) {
+          var v = cols[x];
+          if (v === GATE_COUNTED) { x++; continue; }
+          var start = x;
+          while (x < w && cols[x] === v) x++;
+          ctx.fillStyle = v === GATE_SILENT ? th.gateSilent : th.gateOut;
+          ctx.fillRect(bb.left + start, laneTop, x - start, laneH);
+        }
+
+        ctx.fillStyle = th.fgMuted;
+        ctx.font = (10 * r) + "px 'Segoe UI', 'Meiryo', sans-serif";
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        ctx.fillText(window.i18n.t("gate.lane_label"),
+                     bb.left - GATE_LANE_LABEL_GAP * r, laneTop + laneH / 2);
+
+        ctx.restore();
+      },
+    },
+  };
+}
 
 function movingAvg(arr, w) {
   const out = new Float64Array(arr.length);
@@ -16,7 +104,7 @@ function movingAvg(arr, w) {
   return out;
 }
 
-function renderTimeline(container, t, S, integrated) {
+function renderTimeline(container, t, S, integrated, gate) {
   const tMin = t.map(v => v / 60);
   const sSmooth = movingAvg(S, 60);
   const th = getTheme();
@@ -53,9 +141,10 @@ function renderTimeline(container, t, S, integrated) {
     value: () => "-23.0",
   });
 
+  const laneOn = gate != null;
   const opts = {
     width: container.clientWidth,
-    height: 350,
+    height: TL_HEIGHT + (laneOn ? _gateExtra : 0),
     scales: {
       x: { time: false },
       y: {
@@ -78,6 +167,8 @@ function renderTimeline(container, t, S, integrated) {
         stroke: th.fg,
         grid: { stroke: th.gridStroke },
         ticks: { stroke: th.gridStroke },
+        gap: laneOn ? _gateAxisGap : UPLOT_AXIS_GAP,
+        size: UPLOT_X_AXIS_SIZE + (laneOn ? _gateExtra : 0),
       },
       {
         label: i("chart.tl_y_label"),
@@ -88,6 +179,7 @@ function renderTimeline(container, t, S, integrated) {
     ],
     series,
   };
+  if (laneOn) opts.plugins = [gateLanePlugin(gate)];
 
   const targetLine = new Float64Array(t.length).fill(-23);
   const data = [tMin, S, sSmooth];
