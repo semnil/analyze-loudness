@@ -380,6 +380,7 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
                 "integrated": summary_raw.get("integrated"),
                 "true_peak": summary_raw.get("true_peak"),
                 "lra": summary_raw.get("lra"),
+                "gate_threshold": _round1(summary_raw.get("gate_threshold")),
                 "short_term": {
                     "median": _round1(st["median"]),
                     "mean": _round1(st["mean"]),

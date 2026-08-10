@@ -182,10 +182,12 @@ Integrated は BS.1770 の絶対ゲート (-70 LUFS) と相対ゲート (絶対�
 Timeline の x 軸ガター (プロット領域とメモリラベルの間) に高さ 12 px の GATE 帯を置き、
 除外ブロックを琥珀色 (相対ゲート以下) / スレート (絶対ゲート以下) で示す。
 
-- **ゲート状態は `series.M` から再構成する** (`gate.js` の `computeGate()`)。
-  ffmpeg の Summary が出力する `Threshold:` はパースしていない。保存済み JSON 13 本で検証したところ、
-  再構成した Integrated は保存値と 0.05 LU 以内で一致する。バックエンド・スキーマの変更が不要で、
-  過去に保存した JSON の再表示でも同じ帯が出る。
+- **相対ゲートは `summary.gate_threshold` (schema 2) を使い、無ければ `series.M` から再計算する**
+  (`gate.js` の `computeGate(M, threshold)`)。schema 1 の保存済み JSON はフォールバック経路に乗る。
+  再計算した Integrated は保存済み JSON 13 本すべてで保存値と 0.05 LU 以内で一致する。
+  最長ファイル (116,299 ブロック) で `computeGate` は 1.03 ms → 0.25 ms。
+  ffmpeg の値は小数 1 桁に丸められているため 2 経路の結果は完全一致せず、しきい値ちょうどに乗った
+  ブロックの判定だけが変わる (実測最大 303 / 95,957 ブロック = 算入率で 0.3 ポイント)。
 - **プロット領域は不変**。x 軸の `gap` / `size` とチャート高さを同じ 11 px ずつ広げて帯の場所を作るため、
   帯の有無でプロット bbox は 2160x540 device px のまま変わらない (実測)。
 - **1 画素列に算入・除外が混在する場合は除外として描く** (案 C の 2 値化)。
@@ -254,6 +256,7 @@ Build pipeline:
 
 | Constant | Value | Location | Description |
 |----------|-------|----------|-------------|
+| SCHEMA_VERSION | 2 | \_\_init\_\_.py | 結果 JSON のスキーマ版数 (2 = `summary.gate_threshold` 追加) |
 | SILENCE_THRESHOLD | -60 LUFS | analysis.py | Stats exclude frames <= this |
 | GATE_ABSOLUTE | -70 LUFS | gate.js | BS.1770 絶対ゲート |
 | GATE_RELATIVE_OFFSET | -10 LU | gate.js | BS.1770 相対ゲート (通過ブロック平均からのオフセット) |

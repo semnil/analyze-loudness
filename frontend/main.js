@@ -570,7 +570,7 @@ function _renderCharts(data) {
   // A loaded JSON is user-supplied: only gate when M lines up with the time
   // axis, otherwise the lane would map states onto the wrong instants.
   lastGate = (series.M && series.t && series.M.length === series.t.length)
-    ? computeGate(series.M) : null;
+    ? computeGate(series.M, summary.gate_threshold) : null;
 
   const timeHeading = document.createElement("h3");
   timeHeading.className = "chart-title";

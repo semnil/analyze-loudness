@@ -107,6 +107,20 @@ class TestRunEbur128Parsing:
         assert summary["integrated"] == pytest.approx(-22.0)
 
     @patch("analyze_loudness.analysis.subprocess.run")
+    def test_parses_gate_threshold_not_lra_threshold(self, mock_run):
+        """The Summary has two Threshold: lines; take the Integrated one."""
+        mock_run.return_value = MagicMock(returncode=0, stderr=MOCK_EBUR128_STDERR)
+        _, _, _, summary = run_ebur128("/fake/audio.opus")
+        assert summary["gate_threshold"] == pytest.approx(-32.0)
+
+    @patch("analyze_loudness.analysis.subprocess.run")
+    def test_gate_threshold_absent_without_summary_block(self, mock_run):
+        stderr = MOCK_EBUR128_STDERR.split("Summary:")[0]
+        mock_run.return_value = MagicMock(returncode=0, stderr=stderr)
+        _, _, _, summary = run_ebur128("/fake/audio.opus")
+        assert "gate_threshold" not in summary
+
+    @patch("analyze_loudness.analysis.subprocess.run")
     def test_parses_summary_lra(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stderr=MOCK_EBUR128_STDERR)
         _, _, _, summary = run_ebur128("/fake/audio.opus")

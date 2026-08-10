@@ -59,6 +59,13 @@ def run_ebur128(
         m = re.search(rf"I:\s*({_num})\s*LUFS", summary_text)
         if m:
             summary["integrated"] = float(m.group(1))
+        # The Summary carries two "Threshold:" lines -- the BS.1770 gating
+        # threshold under "Integrated loudness" and an unrelated one under
+        # "Loudness range".  Anchor to the I: line to pick the former.
+        m = re.search(
+            rf"I:\s*{_num}\s*LUFS\s*\n\s*Threshold:\s*({_num})\s*LUFS", summary_text)
+        if m:
+            summary["gate_threshold"] = float(m.group(1))
         m = re.search(rf"LRA:\s*({_num})\s*LU", summary_text)
         if m:
             summary["lra"] = float(m.group(1))

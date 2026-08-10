@@ -229,6 +229,32 @@ function fakeResult(sourceUrl) {
   var nulls = computeGate([-20, -20, null]);
   assertEqual(nulls.silent, 1, "Null blocks (non-finite in ffmpeg output) count as silence");
 
+  // ================================================
+  suite("computeGate: schema 2 threshold replaces the recompute");
+  // ================================================
+
+  var blocks = [-20, -20, -25, -100];
+  var derived = computeGate(blocks);
+  var supplied = computeGate(blocks, -22);
+  assert(Math.abs(derived.threshold - -31.1) < 0.1, "Schema 1 path derives the gate from M");
+  assertEqual(supplied.threshold, -22, "Schema 2 path uses the stored threshold verbatim");
+  assertEqual(derived.counted, 3, "Derived gate keeps the -25 block");
+  assertEqual(supplied.counted, 2, "A -22 gate drops the -25 block");
+  assertEqual(computeGate(blocks, null).threshold, derived.threshold,
+    "null threshold (non-finite in ffmpeg output) falls back to M");
+  assertEqual(computeGate(blocks, undefined).threshold, derived.threshold,
+    "Absent threshold (schema 1) falls back to M");
+  assertEqual(computeGate(blocks, "-22").threshold, derived.threshold,
+    "Non-numeric threshold falls back to M");
+  assertEqual(computeGate([-80, -90], -50), null,
+    "All-silent series stays ungated even with a stored threshold");
+
+  resetState();
+  var v2 = fakeResult();
+  v2.summary.gate_threshold = -22.5;
+  render(v2);
+  assert(resultsEl.querySelector(".gate-caption").textContent.indexOf("-22.5 LUFS") !== -1,
+    "Caption reports the stored threshold for a schema 2 result");
 
   // ================================================
   suite("Submit failure (non-OK response) shows error");
