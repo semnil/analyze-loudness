@@ -9,7 +9,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 
-from analyze_loudness.analysis import SILENCE_THRESHOLD, compute_stats
+from analyze_loudness.analysis import SILENCE_THRESHOLD, compute_stats, compute_silence_pct
 
 # Use a CJK-capable font if available, fallback to sans-serif
 for _font in ("Meiryo", "Yu Gothic", "Noto Sans CJK JP", "MS Gothic"):
@@ -53,7 +53,7 @@ def plot_analysis(
 
     st = compute_stats(S, "Short-term")
     mo = compute_stats(M, "Momentary")
-    silence_pct = (np.sum(np.isnan(S) | (S < -40)) / len(S) * 100) if len(S) else 0.0
+    silence_pct = compute_silence_pct(t, S)
 
     fig = plt.figure(figsize=(16, 16))
     gs = GridSpec(

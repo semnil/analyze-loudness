@@ -96,7 +96,13 @@ function fakeResult(sourceUrl) {
       momentary: { median: -20.8, mean: -21.3, p10: -26.9, p90: -14.4 },
       silence_pct: 1.0,
     },
-    series: { t: [0, 0.1, 0.2], S: [-20, -21, -22], M: [-21, -22, -23] },
+    // The first three frames are ffmpeg's warm-up (no complete 400 ms window
+    // yet); the gate only sees the five that follow.
+    series: {
+      t: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+      S: [-120.7, -120.7, -120.7, -20, -21, -22, -20, -21],
+      M: [-120.7, -120.7, -120.7, -21, -22, -23, -21, -22],
+    },
     meta: {
       version: "1.0.0",
       analyzed_at: "2026-01-01T00:00:00Z",
@@ -187,6 +193,99 @@ function fakeResult(sourceUrl) {
   assert(resultsEl.classList.contains("visible"), "Results made visible after analysis");
   assert(resultsEl.querySelector(".video-title") !== null, "Video title rendered");
   assertEqual(_isBusy, false, "Not busy after analysis completes");
+
+  // ================================================
+  suite("Gate caption accompanies the timeline");
+  // ================================================
+
+  var caption = resultsEl.querySelector(".gate-caption");
+  assert(caption !== null, "Gate caption rendered under the timeline");
+  assertEqual(caption.getAttribute("data-chart-block"), "1",
+    "Gate caption is torn down with the charts on theme/lang change");
+  assertEqual(caption.querySelector(".gate-pct").textContent, "100.0%",
+    "Counted share shown for an all-counted sample");
+  assertEqual(caption.querySelectorAll(".gate-swatch").length, 3,
+    "Legend has counted / gated out / silence swatches");
+  assert(resultsEl.querySelector(".chart-row.has-gate") !== null,
+    "Timeline row is flagged so the caption sits tight under the chart");
+  assert(resultsEl.querySelector(".chart-row").getAttribute("aria-label")
+    .indexOf("Gate lane") !== -1, "Timeline aria-label describes the gate lane");
+
+  // ================================================
+  suite("computeGate: BS.1770 absolute + relative gating");
+  // ================================================
+
+  assertEqual(computeGate([]), null, "Empty series yields no gate");
+  assertEqual(computeGate([-80, -90]), null, "All-silent series yields no gate");
+
+  // Four blocks at -20 LUFS: relative threshold lands 10 LU below them.
+  var flat = computeGate([-20, -20, -20, -20]);
+  assert(Math.abs(flat.threshold - -30) < 1e-9, "Relative gate is mean - 10 LU");
+  assertEqual(flat.counted, 4, "Blocks above the relative gate are counted");
+  assertEqual(flat.silent, 0, "No silent blocks in a flat series");
+
+  // -100 clears neither gate; -45 clears the absolute gate but not the relative one.
+  var mixed = computeGate([-20, -20, -45, -100]);
+  assertEqual(mixed.silent, 1, "Blocks at or below -70 LUFS count as silence");
+  assertEqual(mixed.counted, 2, "Blocks above the relative gate stay counted");
+  assertEqual(mixed.below, 1, "Blocks between the two gates are below gate");
+  assertEqual(mixed.total, 4, "Every block lands in exactly one state");
+  assertEqual(mixed.countedPct, 50, "Counted share is reported as a percentage");
+
+  var nulls = computeGate([-20, -20, null]);
+  assertEqual(nulls.silent, 1, "Null blocks (non-finite in ffmpeg output) count as silence");
+
+  // ================================================
+  suite("computeGate: schema 2 threshold replaces the recompute");
+  // ================================================
+
+  var blocks = [-20, -20, -25, -100];
+  var derived = computeGate(blocks);
+  var supplied = computeGate(blocks, null, -22);
+  assert(Math.abs(derived.threshold - -31.1) < 0.1, "Schema 1 path derives the gate from M");
+  assertEqual(supplied.threshold, -22, "Schema 2 path uses the stored threshold verbatim");
+  assertEqual(derived.counted, 3, "Derived gate keeps the -25 block");
+  assertEqual(supplied.counted, 2, "A -22 gate drops the -25 block");
+  assertEqual(computeGate(blocks, null, null).threshold, derived.threshold,
+    "null threshold (non-finite in ffmpeg output) falls back to M");
+  assertEqual(computeGate(blocks, null, undefined).threshold, derived.threshold,
+    "Absent threshold (schema 1) falls back to M");
+  assertEqual(computeGate(blocks, null, "-22").threshold, derived.threshold,
+    "Non-numeric threshold falls back to M");
+  assertEqual(computeGate([-80, -90], null, -50), null,
+    "All-silent series stays ungated even with a stored threshold");
+
+  // ================================================
+  suite("computeGate: ffmpeg's warm-up frames are not gating blocks");
+  // ================================================
+
+  // 0.5 s tone -- ffmpeg emits three frames at its silence floor before the
+  // first complete 400 ms window exists.
+  var warm = computeGate([-120.7, -120.7, -120.7, -21.8, -21.8],
+                         [0.1, 0.2, 0.3, 0.4, 0.5]);
+  assertEqual(warm.total, 2, "Only the frames with a complete window are gated");
+  assertEqual(warm.silent, 0, "Warm-up frames are not silence");
+  assertEqual(warm.counted, 2, "Both complete blocks clear the gate");
+  assertEqual(warm.countedPct, 100, "A steady tone reads as 100% counted");
+  assertEqual(warm.state.length, 5, "state stays aligned with the series");
+  assertEqual(warm.state[0], GATE_COUNTED, "Warm-up frames draw nothing in the lane");
+
+  var realSilence = computeGate([-120.7, -120.7, -120.7, -21.8, -120.7],
+                                [0.1, 0.2, 0.3, 0.4, 0.5]);
+  assertEqual(realSilence.silent, 1, "Silence past the warm-up still counts as silence");
+  assertEqual(realSilence.total, 2, "...without changing the denominator");
+
+  assertEqual(computeGate([-20, -20, -20, -20]).total, 4,
+    "No time axis -> nothing is skipped");
+  assertEqual(computeGate([-120.7, -120.7, -120.7], [0.1, 0.2, 0.3]), null,
+    "A clip shorter than the momentary window has no gating blocks");
+
+  resetState();
+  var v2 = fakeResult();
+  v2.summary.gate_threshold = -22.5;
+  render(v2);
+  assert(resultsEl.querySelector(".gate-caption").textContent.indexOf("-22.5 LUFS") !== -1,
+    "Caption reports the stored threshold for a schema 2 result");
 
   // ================================================
   suite("Submit failure (non-OK response) shows error");
@@ -288,6 +387,8 @@ function fakeResult(sourceUrl) {
     "tip.chart_histogram", "tip.chart_segments",
     "chart.timeline_title", "chart.hist_title", "chart.seg_title",
     "chart.no_data_silence",
+    "gate.lane_label", "gate.counted", "gate.out", "gate.silence",
+    "gate.counted_of_timeline", "gate.excluded_detail", "aria.gate_lane",
   ];
   window.i18n.setLang("en");
   for (var i = 0; i < requiredKeys.length; i++) {

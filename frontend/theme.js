@@ -19,5 +19,10 @@ function getTheme() {
     separator: dark ? "#4a3a5e" : "#E1BEE7",
     titleColor: dark ? "#E1BEE7" : "#4A148C",
     green: dark ? "#66BB6A" : "#4CAF50",
+    // Gate lane: amber reads as "excluded" without colliding with the purple
+    // accent (S raw / Integrated) or the green target line.
+    gateTrack: dark ? "#232C4A" : "#E9EAEE",
+    gateOut: dark ? "#E9A93C" : "#B26A00",
+    gateSilent: dark ? "#C8D2E6" : "#33405A",
   };
 }

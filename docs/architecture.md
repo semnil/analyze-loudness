@@ -51,7 +51,8 @@ graph LR
 | `main.js` | Fetch orchestration, NDJSON progress parsing, DOM rendering, save/load/image capture, theme toggle, language toggle, cancel (AbortController), `_addTip` ツールチップ |
 | `theme.js` | `isDark()`, `getTheme()` — theme detection + chart color provider |
 | `i18n.js` | en / ja DICT + `window.i18n.t / setLang / onChange / applyStatic` |
-| `charts/timeline.js` | uPlot time series (60-frame moving average, theme-aware) |
+| `gate.js` | `computeGate()` — BS.1770 の絶対 / 相対ゲートを `series.M` から再構成 |
+| `charts/timeline.js` | uPlot time series (60-frame moving average, GATE lane, theme-aware) |
 | `charts/histogram.js` | Canvas density histogram (theme-aware, タイトルは HTML 側) |
 | `charts/segments.js` | Canvas 5-min segment bar chart (theme-aware, タイトルは HTML 側) |
 | `style.css` | CSS variables + `[data-theme="dark"]` rules, purple accent (#9C27B0) |
@@ -174,6 +175,32 @@ NDJSON `ReadableStream.getReader()` に渡し、キャンセル時にストリ�
 PyInstaller frozen mode では `subprocess.STARTUPINFO` + `STARTF_USESHOWWINDOW` で
 ffmpeg / ffprobe のコンソールウインドウを非表示にする。yt-dlp は Python API として動作するため subprocess 起動しない。
 
+### 11. GATE lane (案 C)
+
+Integrated は BS.1770 の絶対ゲート (-70 LUFS) と相対ゲート (絶対ゲート通過ブロックの平均 -10 LU) を
+越えた 400 ms ブロックだけを集計するが、タイムラインはこの取捨を表示していなかった。
+Timeline の x 軸ガター (プロット領域とメモリラベルの間) に高さ 12 px の GATE 帯を置き、
+除外ブロックを琥珀色 (相対ゲート以下) / スレート (絶対ゲート以下) で示す。
+
+- **ffmpeg のウォームアップ 3 フレームを除外する**。100 ms ごとに出力されるが Momentary 窓は 400 ms
+  のため、t = 0.1 / 0.2 / 0.3 は窓が埋まらず無音フロア -120.7 になる。ゲート対象ブロックではないので
+  `_firstGatedIndex()` が `series.t` から先頭を判定し、統計の分母からも外す。
+  実測で 36 秒クリップの無音 0.91% はすべてこのフレームだった (修正後 0.00%)。
+- **相対ゲートは `summary.gate_threshold` (schema 2) を使い、無ければ `series.M` から再計算する**
+  (`gate.js` の `computeGate(M, threshold)`)。schema 1 の保存済み JSON はフォールバック経路に乗る。
+  再計算した Integrated は保存済み JSON 13 本すべてで保存値と 0.05 LU 以内で一致する。
+  最長ファイル (116,299 ブロック) で `computeGate` は 1.03 ms → 0.25 ms。
+  ffmpeg の値は小数 1 桁に丸められているため 2 経路の結果は完全一致せず、しきい値ちょうどに乗った
+  ブロックの判定だけが変わる (実測最大 303 / 95,957 ブロック = 算入率で 0.3 ポイント)。
+- **プロット領域は不変**。x 軸の `gap` / `size` とチャート高さを同じ 11 px ずつ広げて帯の場所を作るため、
+  帯の有無でプロット bbox は 2160x540 device px のまま変わらない (実測)。
+- **1 画素列に算入・除外が混在する場合は除外として描く** (案 C の 2 値化)。
+  この丸めのため、長尺では帯の塗り面積が実際の除外率を上回る (61-193 分の実ファイルで
+  除外 10-25% に対し帯の塗り 27-80%)。x 軸をドラッグズームすると 1 列あたりのブロック数が減り、
+  帯は実際の除外区間に収束する。
+- 数値サマリー (算入率 / 除外率 / しきい値) はチャート直下の `.gate-caption` に置き、
+  composite PNG には summary テキストの 1 行として焼き込む。
+
 ## Accessibility
 
 ### prefers-reduced-motion
@@ -233,7 +260,14 @@ Build pipeline:
 
 | Constant | Value | Location | Description |
 |----------|-------|----------|-------------|
+| SCHEMA_VERSION | 2 | \_\_init\_\_.py | 結果 JSON のスキーマ版数 (2 = `summary.gate_threshold` 追加) |
 | SILENCE_THRESHOLD | -60 LUFS | analysis.py | Stats exclude frames <= this |
+| GATE_ABSOLUTE | -70 LUFS | gate.js | BS.1770 絶対ゲート |
+| GATE_BLOCK_SEC | 0.4 s | gate.js | Momentary 窓長。ウォームアップフレームの判定に使う |
+| SHORT_TERM_WINDOW_SEC | 3.0 s | analysis.py | Short-term 窓長。無音率のウォームアップ判定に使う |
+| SILENCE_PCT_THRESHOLD | -40 LUFS | analysis.py | 無音率の判定しきい値 |
+| GATE_RELATIVE_OFFSET | -10 LU | gate.js | BS.1770 相対ゲート (通過ブロック平均からのオフセット) |
+| GATE_LANE_H | 12 px | timeline.js | GATE 帯の高さ |
 | _speed_factor | 55.0 (initial) | gui.py | Runtime-calibrated analysis speed |
 | Segment size | 5 min | plot.py, segments.js | Bar chart segment width |
 | Moving average window | 60 frames | plot.py, timeline.js | Timeline smoothing window |

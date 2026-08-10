@@ -8,6 +8,33 @@ import numpy as np
 from analyze_loudness import _ffmpeg_kwargs
 
 SILENCE_THRESHOLD = -60
+SILENCE_PCT_THRESHOLD = -40
+SHORT_TERM_WINDOW_SEC = 3.0
+
+
+def first_full_window(t: np.ndarray, window_sec: float) -> int:
+    """Index of the first frame with a complete measurement window behind it.
+
+    ebur128 emits a frame every 100 ms, but its momentary / short-term windows
+    are 400 ms / 3 s wide: the leading frames come out at the filter's silence
+    floor (-120.7) with nothing measured behind them.  They are not silence --
+    on a 36 s clip those 29 short-term frames were the whole reported figure.
+    """
+    if len(t) == 0:
+        return 0
+    frame = float(t[1] - t[0]) if len(t) > 1 else 0.0
+    # Half a frame of tolerance: ffmpeg reports 2.999977 for the 3 s mark.
+    full = float(t[0]) + window_sec - frame * 1.5
+    return int(np.searchsorted(t, full, side="left"))
+
+
+def compute_silence_pct(t: np.ndarray, S: np.ndarray) -> float:
+    """Percentage of short-term frames below -40 LUFS, warm-up excluded."""
+    v = S[first_full_window(t, SHORT_TERM_WINDOW_SEC):]
+    if len(v) == 0:
+        return 0.0
+    silent = np.isnan(v) | (v < SILENCE_PCT_THRESHOLD)
+    return float(np.sum(silent) / len(v) * 100)
 
 
 def run_ebur128(
@@ -59,6 +86,13 @@ def run_ebur128(
         m = re.search(rf"I:\s*({_num})\s*LUFS", summary_text)
         if m:
             summary["integrated"] = float(m.group(1))
+        # The Summary carries two "Threshold:" lines -- the BS.1770 gating
+        # threshold under "Integrated loudness" and an unrelated one under
+        # "Loudness range".  Anchor to the I: line to pick the former.
+        m = re.search(
+            rf"I:\s*{_num}\s*LUFS\s*\n\s*Threshold:\s*({_num})\s*LUFS", summary_text)
+        if m:
+            summary["gate_threshold"] = float(m.group(1))
         m = re.search(rf"LRA:\s*({_num})\s*LU", summary_text)
         if m:
             summary["lra"] = float(m.group(1))

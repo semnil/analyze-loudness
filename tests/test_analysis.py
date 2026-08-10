@@ -5,7 +5,10 @@ from unittest.mock import patch, MagicMock
 import numpy as np
 import pytest
 
-from analyze_loudness.analysis import SILENCE_THRESHOLD, compute_stats, run_ebur128
+from analyze_loudness.analysis import (
+    SHORT_TERM_WINDOW_SEC, SILENCE_THRESHOLD, compute_silence_pct, compute_stats,
+    first_full_window, run_ebur128,
+)
 
 
 class TestComputeStats:
@@ -105,6 +108,20 @@ class TestRunEbur128Parsing:
         mock_run.return_value = MagicMock(returncode=0, stderr=MOCK_EBUR128_STDERR)
         _, _, _, summary = run_ebur128("/fake/audio.opus")
         assert summary["integrated"] == pytest.approx(-22.0)
+
+    @patch("analyze_loudness.analysis.subprocess.run")
+    def test_parses_gate_threshold_not_lra_threshold(self, mock_run):
+        """The Summary has two Threshold: lines; take the Integrated one."""
+        mock_run.return_value = MagicMock(returncode=0, stderr=MOCK_EBUR128_STDERR)
+        _, _, _, summary = run_ebur128("/fake/audio.opus")
+        assert summary["gate_threshold"] == pytest.approx(-32.0)
+
+    @patch("analyze_loudness.analysis.subprocess.run")
+    def test_gate_threshold_absent_without_summary_block(self, mock_run):
+        stderr = MOCK_EBUR128_STDERR.split("Summary:")[0]
+        mock_run.return_value = MagicMock(returncode=0, stderr=stderr)
+        _, _, _, summary = run_ebur128("/fake/audio.opus")
+        assert "gate_threshold" not in summary
 
     @patch("analyze_loudness.analysis.subprocess.run")
     def test_parses_summary_lra(self, mock_run):
@@ -237,3 +254,50 @@ class TestRunEbur128InfNanFrames:
 class TestSilenceThreshold:
     def test_value(self):
         assert SILENCE_THRESHOLD == -60
+
+
+class TestWarmupFrames:
+    """ebur128 emits its silence floor until the measurement window is full."""
+
+    @staticmethod
+    def _times(n, first=0.1, step=0.1):
+        return np.array([first + step * i for i in range(n)])
+
+    def test_short_term_window_starts_at_frame_29(self):
+        assert first_full_window(self._times(60), SHORT_TERM_WINDOW_SEC) == 29
+
+    def test_momentary_window_starts_at_frame_3(self):
+        assert first_full_window(self._times(60), 0.4) == 3
+
+    def test_tolerates_ffmpeg_frame_times(self):
+        """ffmpeg reports 2.999977 for the 3 s mark, not 3.0."""
+        t = self._times(40, first=0.0999773, step=0.0999997)
+        assert first_full_window(t, SHORT_TERM_WINDOW_SEC) == 29
+
+    def test_empty_series(self):
+        assert first_full_window(np.array([]), SHORT_TERM_WINDOW_SEC) == 0
+        assert compute_silence_pct(np.array([]), np.array([])) == 0.0
+
+    def test_warmup_is_not_silence(self):
+        t = self._times(40)
+        S = np.full(40, -20.0)
+        S[:29] = -120.7
+        assert compute_silence_pct(t, S) == 0.0
+
+    def test_silence_after_warmup_still_counts(self):
+        t = self._times(40)
+        S = np.full(40, -20.0)
+        S[:29] = -120.7
+        S[29:33] = -50.0
+        assert compute_silence_pct(t, S) == pytest.approx(4 / 11 * 100)
+
+    def test_nan_frames_count_as_silence(self):
+        t = self._times(40)
+        S = np.full(40, -20.0)
+        S[:29] = -120.7
+        S[30] = np.nan
+        assert compute_silence_pct(t, S) == pytest.approx(1 / 11 * 100)
+
+    def test_clip_shorter_than_the_window_has_no_gated_frames(self):
+        t = self._times(10)
+        assert compute_silence_pct(t, np.full(10, -120.7)) == 0.0

@@ -40,6 +40,9 @@
   --copy-fg: #666;
   --title-accent: #0D47A1;
   --focus-ring: #9C27B0;
+  --gate-track: #E9EAEE;
+  --gate-out: #B26A00;
+  --gate-silent: #33405A;
 }
 
 [data-theme="dark"] {
@@ -70,6 +73,9 @@
   --copy-fg: #bbb;
   --title-accent: #64b5f6;
   --focus-ring: #D1A3DC;
+  --gate-track: #232C4A;
+  --gate-out: #E9A93C;
+  --gate-silent: #C8D2E6;
 }
 
 body {
@@ -307,6 +313,46 @@ button:focus-visible, input:focus-visible {
   border: 1px solid var(--border-light);
   border-radius: 4px;
 }
+
+/* Reading row for the GATE lane drawn inside the timeline chart */
+.chart-row.has-gate { margin-bottom: 6px; }
+
+.gate-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 20px;
+  margin-bottom: 24px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.gate-pct {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.gate-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+.gate-key { display: inline-flex; align-items: center; gap: 5px; }
+
+.gate-swatch {
+  width: 14px;
+  height: 9px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--gate-track);
+}
+
+.gate-swatch.out { background: var(--gate-out); }
+.gate-swatch.silent { background: var(--gate-silent); }
 
 .chart-pair {
   display: flex;

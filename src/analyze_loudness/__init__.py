@@ -12,4 +12,6 @@ from analyze_common.json_util import json_safe as _json_safe  # noqa: E402,F401
 
 __version__ = "1.3.1"
 
-SCHEMA_VERSION = 1
+# 2: summary.gate_threshold (ffmpeg's own gating threshold).  Results without
+# it -- schema 1 files -- stay loadable; the frontend recomputes from series.M.
+SCHEMA_VERSION = 2

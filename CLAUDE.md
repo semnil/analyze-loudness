@@ -38,9 +38,10 @@ analyze-loudness/
 │   ├── index.html
 │   ├── main.js                 # fetch + NDJSON progress + DOM rendering + theme toggle
 │   ├── theme.js                # getTheme() -- chart color provider (light/dark)
+│   ├── gate.js                 # computeGate() -- BS.1770 gating rebuilt from series.M
 │   ├── i18n.js                 # en/ja DICT + window.i18n.t / setLang / onChange
 │   ├── charts/
-│   │   ├── timeline.js         # uPlot wrapper (theme-aware)
+│   │   ├── timeline.js         # uPlot wrapper (theme-aware, GATE lane plugin)
 │   │   ├── histogram.js        # Canvas histogram (theme-aware, no internal title)
 │   │   └── segments.js         # Canvas segment bars (theme-aware, no internal title)
 │   ├── style.css               # CSS variables + [data-theme="dark"] rules
@@ -122,7 +123,11 @@ analyze-loudness-gui
 
 ### 無音閾値
 
-統計計算時は Short-term > -60 LUFS のフレームのみ使用 (`SILENCE_THRESHOLD`)。無音率は S < -40 LUFS で算出。
+統計計算時は Short-term > -60 LUFS のフレームのみ使用 (`SILENCE_THRESHOLD`)。無音率は S < -40 LUFS
+(`SILENCE_PCT_THRESHOLD`) で算出する。ただし **ebur128 のウォームアップフレームは分母から外す** —
+S は 3 秒窓なので先頭 29 フレームは窓が埋まらず無音フロア -120.7 が出る。除外しないと 36 秒クリップの
+無音が 8.1% と出る (実測、実体は 0.0%)。判定は `analysis.py` の `first_full_window()` / `compute_silence_pct()`
+に集約し、CLI・GUI・matplotlib プロットの 3 箇所から共用する。
 
 ### 中盤抽出
 
@@ -177,6 +182,52 @@ CSS 変数 + `[data-theme="dark"]` でライト/ダーク/auto の 3 ステー�
 
 `role="img"` + `aria-label` は histogram では canvas 自体に、timeline / segments ではコンテナ div に付与する。タイトルは必ずそのノードの外側に置く (ARIA が `role="img"` の子孫を presentational 扱いするため、内側だとタイトルとツールチップ本文が支援技術に渡らない)。
 
+### GATE レーン (タイムラインの除外区間表示)
+
+Integrated は BS.1770 の絶対ゲート (-70 LUFS) と相対ゲート (絶対ゲート通過ブロックの平均 -10 LU) を
+越えた 400 ms ブロックのみを集計する。Timeline の x 軸ガター (プロット下端とメモリラベルの間) に
+高さ 12 px の帯を置き、除外ブロックを琥珀色 (相対ゲート以下) / スレート (絶対ゲート以下) で示す。
+
+ffmpeg は 100 ms ごとにフレームを出すが Momentary 窓は 400 ms のため、**先頭 3 フレーム
+(t = 0.1 / 0.2 / 0.3) は窓が埋まっておらず、無音フロア -120.7 が出る**。これらはゲート対象ブロックでは
+ないので `computeGate` は `series.t` から先頭を判定して除外する (`_firstGatedIndex`)。除外しないと
+無音率と分母の両方が膨らみ、実測では 36 秒クリップの無音 0.91% がすべてこのウォームアップだった。
+判定は `t[0]` 相対で行うため `-ss` で切り出した場合も効く。S (3 秒窓) のウォームアップは 29 フレームで、
+こちらは summary の無音率が同じ規則で除外する ([無音閾値](#無音閾値))。
+
+相対ゲートの値は `summary.gate_threshold` (schema 2) を使い、無い場合のみ `frontend/gate.js` の
+`computeGate()` が `series.M` から再計算する。schema 1 で保存した JSON はこのフォールバック経路に乗る。
+再計算した Integrated は保存済み JSON 13 本すべてで保存値と 0.05 LU 以内に一致するため、
+どちらの経路でも帯は出る。`series.M` の長さが `series.t` と一致しない JSON では帯を出さない
+(時間軸との対応が保証できないため)。
+
+ffmpeg の Summary には `Threshold:` が **2 行**ある (Integrated 側と LRA 側)。
+`analysis.py` の正規表現は `I:` の行に錨を打って前者を取る。後者は別物。
+
+ffmpeg が出す値は小数 1 桁に丸められているため、2 経路の結果は完全一致しない。丸めで判定が変わるのは
+しきい値ちょうどに乗ったブロックだけで、実測では最大 303 / 95,957 ブロック (算入率で 0.3 ポイント)。
+ffmpeg の Integrated をより忠実に再現するのは 13 本中 12 本で 1 桁側だった。
+
+### JSON schema version
+
+`SCHEMA_VERSION` は `src/analyze_loudness/__init__.py`。`__version__` (アプリ版数) とは独立に上げる。
+
+| ver | 追加 |
+|-----|------|
+| 1 | 初版 |
+| 2 | `summary.gate_threshold` — ffmpeg の相対ゲート。無い場合はフロントエンドが `series.M` から再計算。あわせて `summary.silence_pct` が ebur128 のウォームアップフレームを分母から外すようになった (schema 1 で保存済みの値は旧算出のまま) |
+
+`/load` は `meta.schema_version` が int であることだけを検証し、値では弾かない。
+新フィールドは**バージョン番号ではなく有無で分岐する** — 手編集された JSON で欠落しうるため。
+
+帯の場所は x 軸の `gap` / `size` とチャート高さを同じ 11 px ずつ広げて作る。プロット bbox は帯の
+有無で変わらない (2160x540 device px, 実測)。1 画素列に算入・除外が混在する場合は除外として描くため、
+長尺では帯の塗り面積が実際の除外率を上回る。ドラッグズームすると実際の除外区間に収束する。
+
+色は `theme.js` の `gateTrack` / `gateOut` / `gateSilent` と CSS 変数
+`--gate-track` / `--gate-out` / `--gate-silent` の 2 か所に定義がある (canvas 用と凡例 chip 用)。
+片方だけ変えると凡例と帯の色がずれる。
+
 ### フロントエンド UI テスト
 
 `tests/frontend/test_ui.html` + `test_ui.js` を `tests/test_frontend.py` (Playwright + headless Chromium) で実行。`fmt`, `_setBusy`, `_addTip`, theme/lang トグル, /analyze + /load の fetch モック経路, 辞書キー網羅性などを検証。`test_ui.html` は `<script>localStorage.setItem("loudness-lang","en")</script>` を `i18n.js` 読み込み前に置いて言語決定性を確保する (項目 103, 104)。
@@ -212,6 +263,7 @@ Result event:
   "type": "result",
   "data": {
     "meta": {
+      "schema_version": 2,
       "version": "1.0.0",
       "analyzed_at": "2026-04-03T12:34:56+00:00",
       "source_url": "https://www.youtube.com/watch?v=..."
@@ -220,6 +272,7 @@ Result event:
     "summary": {
       "duration_sec": 600, "frames": 5999,
       "integrated": -18.1, "true_peak": 0.8, "lra": 9.3,
+      "gate_threshold": -28.5,
       "short_term": { "median": -19.4, "mean": -20.5, "p10": -24.1, "p90": -15.4 },
       "momentary": { "median": -20.8, "mean": -21.3, "p10": -26.9, "p90": -14.4 },
       "silence_pct": 1.0

@@ -18,11 +18,10 @@ from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-import numpy as np
 import webview
 
 from analyze_loudness import SCHEMA_VERSION, __version__, _json_safe
-from analyze_loudness.analysis import run_ebur128, compute_stats
+from analyze_loudness.analysis import run_ebur128, compute_stats, compute_silence_pct
 from analyze_loudness.download import (
     download_audio, probe_duration, compute_middle, sanitize_filename,
 )
@@ -359,9 +358,8 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
 
         st = compute_stats(S, "Short-term")
         mo = compute_stats(M, "Momentary")
-        # Treat NaN/-inf frames as silence as well (np.isnan(NaN) or S < -40).
-        silent_mask = np.isnan(S) | (S < -40)
-        silence_pct = float(np.sum(silent_mask) / len(S) * 100) if len(S) else 0.0
+        # Treats NaN/-inf frames as silence and skips ffmpeg's warm-up frames.
+        silence_pct = compute_silence_pct(t, S)
 
         def _round1(v):
             return round(v, 1) if v is not None else None
@@ -380,6 +378,7 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
                 "integrated": summary_raw.get("integrated"),
                 "true_peak": summary_raw.get("true_peak"),
                 "lra": summary_raw.get("lra"),
+                "gate_threshold": _round1(summary_raw.get("gate_threshold")),
                 "short_term": {
                     "median": _round1(st["median"]),
                     "mean": _round1(st["mean"]),

@@ -101,6 +101,9 @@
   - `title` -> `textContent` (HTML パース不可)
   - `innerHTML` テーブル -> `fmt()` の `.toFixed()` 出力のみ (数値 -> 文字列)
   - ユーザー由来文字列は `innerHTML` パスに含まれない
+  - GATE レーンの caption (`_buildGateCaption`) も `textContent` / `createTextNode` のみ。
+    値は `computeGate()` が `series.M` から算出した数値を `fmt()` で整形したもので、
+    読み込んだ JSON の文字列は経由しない
 
 ### SEC-10: エラーメッセージによる内部情報 -- ACCEPTED
 
