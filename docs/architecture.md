@@ -182,6 +182,10 @@ Integrated は BS.1770 の絶対ゲート (-70 LUFS) と相対ゲート (絶対�
 Timeline の x 軸ガター (プロット領域とメモリラベルの間) に高さ 12 px の GATE 帯を置き、
 除外ブロックを琥珀色 (相対ゲート以下) / スレート (絶対ゲート以下) で示す。
 
+- **ffmpeg のウォームアップ 3 フレームを除外する**。100 ms ごとに出力されるが Momentary 窓は 400 ms
+  のため、t = 0.1 / 0.2 / 0.3 は窓が埋まらず無音フロア -120.7 になる。ゲート対象ブロックではないので
+  `_firstGatedIndex()` が `series.t` から先頭を判定し、統計の分母からも外す。
+  実測で 36 秒クリップの無音 0.91% はすべてこのフレームだった (修正後 0.00%)。
 - **相対ゲートは `summary.gate_threshold` (schema 2) を使い、無ければ `series.M` から再計算する**
   (`gate.js` の `computeGate(M, threshold)`)。schema 1 の保存済み JSON はフォールバック経路に乗る。
   再計算した Integrated は保存済み JSON 13 本すべてで保存値と 0.05 LU 以内で一致する。
@@ -259,6 +263,7 @@ Build pipeline:
 | SCHEMA_VERSION | 2 | \_\_init\_\_.py | 結果 JSON のスキーマ版数 (2 = `summary.gate_threshold` 追加) |
 | SILENCE_THRESHOLD | -60 LUFS | analysis.py | Stats exclude frames <= this |
 | GATE_ABSOLUTE | -70 LUFS | gate.js | BS.1770 絶対ゲート |
+| GATE_BLOCK_SEC | 0.4 s | gate.js | Momentary 窓長。ウォームアップフレームの判定に使う |
 | GATE_RELATIVE_OFFSET | -10 LU | gate.js | BS.1770 相対ゲート (通過ブロック平均からのオフセット) |
 | GATE_LANE_H | 12 px | timeline.js | GATE 帯の高さ |
 | _speed_factor | 55.0 (initial) | gui.py | Runtime-calibrated analysis speed |

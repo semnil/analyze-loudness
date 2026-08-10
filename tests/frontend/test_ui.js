@@ -96,7 +96,13 @@ function fakeResult(sourceUrl) {
       momentary: { median: -20.8, mean: -21.3, p10: -26.9, p90: -14.4 },
       silence_pct: 1.0,
     },
-    series: { t: [0, 0.1, 0.2], S: [-20, -21, -22], M: [-21, -22, -23] },
+    // The first three frames are ffmpeg's warm-up (no complete 400 ms window
+    // yet); the gate only sees the five that follow.
+    series: {
+      t: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+      S: [-120.7, -120.7, -120.7, -20, -21, -22, -20, -21],
+      M: [-120.7, -120.7, -120.7, -21, -22, -23, -21, -22],
+    },
     meta: {
       version: "1.0.0",
       analyzed_at: "2026-01-01T00:00:00Z",
@@ -235,19 +241,44 @@ function fakeResult(sourceUrl) {
 
   var blocks = [-20, -20, -25, -100];
   var derived = computeGate(blocks);
-  var supplied = computeGate(blocks, -22);
+  var supplied = computeGate(blocks, null, -22);
   assert(Math.abs(derived.threshold - -31.1) < 0.1, "Schema 1 path derives the gate from M");
   assertEqual(supplied.threshold, -22, "Schema 2 path uses the stored threshold verbatim");
   assertEqual(derived.counted, 3, "Derived gate keeps the -25 block");
   assertEqual(supplied.counted, 2, "A -22 gate drops the -25 block");
-  assertEqual(computeGate(blocks, null).threshold, derived.threshold,
+  assertEqual(computeGate(blocks, null, null).threshold, derived.threshold,
     "null threshold (non-finite in ffmpeg output) falls back to M");
-  assertEqual(computeGate(blocks, undefined).threshold, derived.threshold,
+  assertEqual(computeGate(blocks, null, undefined).threshold, derived.threshold,
     "Absent threshold (schema 1) falls back to M");
-  assertEqual(computeGate(blocks, "-22").threshold, derived.threshold,
+  assertEqual(computeGate(blocks, null, "-22").threshold, derived.threshold,
     "Non-numeric threshold falls back to M");
-  assertEqual(computeGate([-80, -90], -50), null,
+  assertEqual(computeGate([-80, -90], null, -50), null,
     "All-silent series stays ungated even with a stored threshold");
+
+  // ================================================
+  suite("computeGate: ffmpeg's warm-up frames are not gating blocks");
+  // ================================================
+
+  // 0.5 s tone -- ffmpeg emits three frames at its silence floor before the
+  // first complete 400 ms window exists.
+  var warm = computeGate([-120.7, -120.7, -120.7, -21.8, -21.8],
+                         [0.1, 0.2, 0.3, 0.4, 0.5]);
+  assertEqual(warm.total, 2, "Only the frames with a complete window are gated");
+  assertEqual(warm.silent, 0, "Warm-up frames are not silence");
+  assertEqual(warm.counted, 2, "Both complete blocks clear the gate");
+  assertEqual(warm.countedPct, 100, "A steady tone reads as 100% counted");
+  assertEqual(warm.state.length, 5, "state stays aligned with the series");
+  assertEqual(warm.state[0], GATE_COUNTED, "Warm-up frames draw nothing in the lane");
+
+  var realSilence = computeGate([-120.7, -120.7, -120.7, -21.8, -120.7],
+                                [0.1, 0.2, 0.3, 0.4, 0.5]);
+  assertEqual(realSilence.silent, 1, "Silence past the warm-up still counts as silence");
+  assertEqual(realSilence.total, 2, "...without changing the denominator");
+
+  assertEqual(computeGate([-20, -20, -20, -20]).total, 4,
+    "No time axis -> nothing is skipped");
+  assertEqual(computeGate([-120.7, -120.7, -120.7], [0.1, 0.2, 0.3]), null,
+    "A clip shorter than the momentary window has no gating blocks");
 
   resetState();
   var v2 = fakeResult();
