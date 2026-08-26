@@ -1,7 +1,7 @@
 # analyze-loudness
 
 YouTube 動画の音声ラウドネスを BS.1770 / EBU R128 準拠で分析するツール。
-CLI 版と Windows GUI アプリケーション版の 2 形態を持つ。
+CLI 版と GUI アプリケーション版 (Windows / macOS) の 2 形態を持つ。
 
 ## Architecture overview
 
@@ -22,12 +22,14 @@ GUI は pywebview (WebView2) + ローカル HTTP サーバーで構成。
 
 ```
 analyze-loudness/
+├── .github/workflows/          # ci.yaml (PR/push), release.yaml (v* タグ)
 ├── .gitignore
 ├── .venv/                      # Python venv (git 管理外)
 ├── CLAUDE.md
+├── README.md
 ├── pyproject.toml              # CLI tool (pip install -e ".[dev]")
 ├── src/analyze_loudness/       # Python package
-│   ├── __init__.py             # _subprocess_kwargs() helper
+│   ├── __init__.py             # vendor への sys.path 注入, SCHEMA_VERSION
 │   ├── __main__.py
 │   ├── cli.py                  # argparse + main orchestration (CLI)
 │   ├── gui.py                  # pywebview + local HTTP server (GUI)
@@ -47,6 +49,7 @@ analyze-loudness/
 │   ├── style.css               # CSS variables + [data-theme="dark"] rules
 │   └── vendor/                 # uPlot (bundled)
 ├── tests/                      # pytest
+│   ├── __init__.py
 │   ├── conftest.py
 │   ├── test_analysis.py
 │   ├── test_cli.py
@@ -58,7 +61,9 @@ analyze-loudness/
 │       └── test_ui.js          # browser-based UI state tests
 ├── docs/
 │   ├── architecture.md
+│   ├── screenshot.png
 │   └── security-audit.md
+├── vendor/py-analyze-common/   # git submodule (sys.path 注入で利用)
 ├── build.py                    # Build script (asset download + PyInstaller + Inno Setup)
 ├── analyze-loudness.spec       # PyInstaller spec
 ├── installer.iss               # Inno Setup script
@@ -95,12 +100,18 @@ analyze-loudness-gui
 ### Build & Distribution
 
 ```bash
+# Windows
 .venv/Scripts/python build.py              # download assets + PyInstaller bundle
 .venv/Scripts/python build.py --installer  # + Inno Setup installer (.exe)
-.venv/Scripts/python build.py --skip-download  # skip asset download
+
+# macOS (要 create-dmg: brew install create-dmg)
+.venv/bin/python build.py
+.venv/bin/python build.py --installer      # + DMG
 ```
 
-> **注意**: 必ずプロジェクト固有の `.venv/Scripts/python` で実行すること。親ディレクトリの `python` や他プロジェクトの venv を使うと PyInstaller が依存を解決できない。
+フラグ: `--skip-download` (外部アセット取得をスキップ) / `--skip-build` (PyInstaller をスキップ、`dist/` がある前提) / `--update-checksums` (アセットを取得して `checksums.json` を更新)。
+
+> **注意**: 必ずプロジェクト固有の venv の python (`.venv/bin/python` / `.venv/Scripts/python`) で実行すること。親ディレクトリの `python` や他プロジェクトの venv を使うと PyInstaller が依存を解決できない。
 
 ### GUI dependencies
 
@@ -109,6 +120,15 @@ analyze-loudness-gui
 - `yt-dlp` -- Python ライブラリとしてバンドル (PyInstaller が自動的に含める)
 - ffmpeg, ffprobe, deno -- bundled in build_assets/bin/ (PyInstaller frozen mode)
 - `py-analyze-common` -- git submodule (`vendor/py-analyze-common`)。OS 判定・subprocess kwargs・ダークモード検出・ffmpeg/ffprobe ラッパー・yt-dlp ダウンロード・JSON 安全化を提供。pyproject.toml には記載せず `sys.path` 注入で利用
+
+## テスト
+
+```bash
+pytest -q                                          # 全テスト
+python -m playwright install --with-deps chromium  # 初回のみ (test_frontend.py が使う)
+```
+
+ブラウザバイナリの扱いは [フロントエンド UI テスト](#フロントエンド-ui-テスト) を参照。
 
 ## Design decisions
 
@@ -316,8 +336,17 @@ All items implemented and tested.
 2. `src/analyze_loudness/gui.py` -- pywebview GUI (NDJSON progress, runtime time estimation, save/load/image)
 3. `frontend/` -- SPA (uPlot + 自前チャート, NDJSON progress, JSON/Image save, JSON load + 再可視化)
 4. `build.py` + `analyze-loudness.spec` + `installer.iss` -- ビルド + インストーラー (SHA256 検証)
-5. `tests/` -- pytest (analysis, cli, download, gui, init)
-6. `docs/` -- 設計ドキュメント + セキュリティ監査レポート (15 findings, 0 open)
+5. `tests/` -- pytest (analysis, cli, download, gui, frontend)
+6. `docs/` -- 設計ドキュメント + セキュリティ監査レポート (`docs/security-audit.md`)
+
+## リリース手順
+
+1. `src/analyze_loudness/__init__.py` の `__version__` を上げる PR を出す (版上げは他の変更を含めない)
+2. マージ後、master の HEAD に `vX.Y.Z` タグを打って push する
+3. `release.yaml` が Windows インストーラー (`LoudnessAnalyzer-X.Y.Z-setup.exe`) と macOS DMG (`Loudness-Analyzer.dmg`) をビルドし、Release を作成する (`draft: true`)
+4. Release の publish は人が行う
+
+タグ push が唯一のリリーストリガー (他に `workflow_dispatch`)。マージだけではリリースされない。
 
 ## バージョン管理
 
