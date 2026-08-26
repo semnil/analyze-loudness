@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
     "numpy",
     "matplotlib",
-    "yt-dlp",
+    "yt-dlp==2026.8.19",  # pinned per release; mirrored in py-analyze-common
     "static-ffmpeg",
 ]
 

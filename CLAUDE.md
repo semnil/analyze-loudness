@@ -143,6 +143,23 @@ opus (非圧縮 WAV より大幅に小さい)。`yt_dlp.YoutubeDL` の Python AP
 
 `yt-dlp_macos` のような PyInstaller onefile バイナリを同梱すると、CI の codesign 再署名で内部 `Python.framework` の Team ID 不一致が発生する (macOS hardened runtime)。`yt-dlp` を Python 依存としてインストールし `YoutubeDL` クラスを直接使用することでこの問題を回避している。Windows / Linux でも同方式で統一。
 
+### yt-dlp のバージョン固定
+
+`pyproject.toml` で `yt-dlp==<version>` の完全一致ピンを持つ。ピン値は analyze-loudness / analyze-spectrum / py-analyze-common の 3 つの `pyproject.toml` が持つミラーで、必ず同時に更新する。
+
+固定する理由: 出荷物は PyInstaller が yt-dlp を PYZ に焼き込むため、インストール後に更新できない。無指定にするとビルドした時点の解決結果で版が決まり、出荷物に入った版を事後に特定できない。
+
+ピンの更新はリリース作業の一部として行う:
+
+1. `pip install -U yt-dlp` で候補版を入れる
+2. **全長ダウンロード**で確認する。`--test` (先頭 10 KiB のみ取得) では 403 を検出できない:
+   `.venv/bin/python -m yt_dlp -f bestaudio -o <tmpdir>/%(id)s.%(ext)s <URL>`
+   通常動画・ライブアーカイブ・Shorts の 3 種で確認する
+3. 通った版を 3 つの `pyproject.toml` に書く。py-analyze-common を先にコミットし、submodule ポインタを更新する
+4. 出荷物を再ビルドする
+
+この節は analyze-spectrum の CLAUDE.md と同一内容のミラー。
+
 ### macOS は Apple Silicon (arm64) 専用 (v1.3.0+)
 
 ffmpeg / ffprobe は osxexperts.net の arm64 ネイティブビルドを SHA256 ハードコード検証付きで取得する (`build.py` の `_OSXEXPERTS_ARM64`)。evermeet.cx (x86_64) は (a) bundle に Intel Mach-O が混入すると macOS 26 で「Intel プロセッサ用アプリの対応は終了します」警告が出る、(b) GitHub Actions macos runner から接続タイムアウトが発生するため不採用。Intel Mac サポートは v1.2.0 までで打ち切り。osxexperts URL はバージョン埋め込み (`ffmpeg81arm.zip` 等) のため ffmpeg メジャー更新時は URL + SHA256 を更新する。
@@ -316,6 +333,6 @@ All items implemented and tested.
 
 ## Known limitations / future work
 
-- yt-dlp の YouTube 仕様変更追従 -> Python 依存のため `pip install -U yt-dlp` / リリース時に依存更新
+- yt-dlp の YouTube 仕様変更追従 -> リリースごとに `pyproject.toml` のピンを更新する
 - 比較モード未実装 (2 URL のオーバーレイ比較グラフ)
 - `_speed_factor` はグローバル変数で複数リクエスト間で共有 (GUI は単一ユーザー想定のため実質問題なし)
