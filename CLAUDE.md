@@ -51,7 +51,6 @@ analyze-loudness/
 ├── tests/                      # pytest
 │   ├── __init__.py
 │   ├── conftest.py
-│   ├── test_data.json          # 分析結果 JSON のサンプル (コードからの参照は無い)
 │   ├── test_analysis.py
 │   ├── test_cli.py
 │   ├── test_download.py
