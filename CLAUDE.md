@@ -22,7 +22,7 @@ GUI は pywebview (WebView2) + ローカル HTTP サーバーで構成。
 
 ```
 analyze-loudness/
-├── .github/workflows/          # ci.yaml (PR/push), release.yaml (v* タグ)
+├── .github/workflows/          # ci.yaml (PR/push), release.yaml (v* タグ), workflow-checks.yml (全 PR で uses: の SHA 固定を検査)
 ├── .gitignore
 ├── .venv/                      # Python venv (git 管理外)
 ├── CLAUDE.md
