@@ -1,8 +1,8 @@
 # Security Audit Report
 
-**Date**: 2026-04-04 (CI/CD 節のみ 2026-09-30 に確認)
+**Date**: 2026-04-04 (初版は 2026-04-03、SEC-16 と Summary の件数は 2026-04-04 に追加、CI/CD 節は 2026-09-30 に確認)
 **Scope**:
-- 2026-04-04 の監査: CLI (`src/analyze_loudness/`), GUI (`src/analyze_loudness/gui.py`), Frontend SPA (`frontend/`), Build/Distribution (`build.py`, `analyze-loudness.spec`, `installer.iss`)
+- 2026-04-03〜04 の監査: CLI (`src/analyze_loudness/`), GUI (`src/analyze_loudness/gui.py`), Frontend SPA (`frontend/`), Build/Distribution (`build.py`, `analyze-loudness.spec`, `installer.iss`)
 - 2026-09-30 の確認: CI (`.github/workflows/`, `.github/tests/`) の action の固定と検査 (CI/CD 節)
 
 ## Summary
@@ -22,7 +22,7 @@
 
 **Open: 0** / Resolved: 7 / Accepted (risk acknowledged): 9
 
-この表と SEC 番号付きの指摘は 2026-04-04 の監査の結果で、2026-09-30 の CI/CD 節の確認は含まない。
+Summary の件数は 2026-04-04 に SEC-16 を追加した時点のもの (2026-04-03 の初版は SEC-01〜SEC-15 の 15 件、Accepted 8)。個々の指摘の本文は、その後のコード変更に合わせて更新されている (履歴は `git log -- docs/security-audit.md`)。2026-09-30 の CI/CD 節の確認はこの表に含まない。
 
 ---
 
@@ -154,6 +154,7 @@
 
 ### SEC-16: クライアント切断時の subprocess orphaning -- ACCEPTED
 
+- **Added**: 2026-04-04 (2026-04-03 の初版の後に追加。Summary の件数もこの時点で更新)
 - **Risk**: LOW
 - **Location**: [gui.py:116-148](../src/analyze_loudness/gui.py), [download.py](../src/analyze_loudness/download.py)
 - **Analysis**: フロントエンドの Cancel (AbortController) でストリーム読み取りを中断すると、サーバー側の `_send_event()` が `_ClientDisconnected` を発生させて分析を中断する。ただし `yt_dlp.YoutubeDL.extract_info()` や `subprocess.run()` (ffmpeg) がブロッキング中の場合、該当処理は完了まで実行が継続する。
@@ -168,7 +169,7 @@
 
 ## CI/CD (GitHub Actions)
 
-**確認日**: 2026-09-30。各ワークフローの実物と、master のルールセット・Actions の許可ポリシーの現在値を確認した。2026-04-04 の監査には含まれない。
+**確認日**: 2026-09-30。各ワークフローの実物と、master のルールセット・Actions の許可ポリシーの現在値を確認した。2026-04-03〜04 の監査には含まれない。
 
 | 項目 | 対策 |
 |------|------|
