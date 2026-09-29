@@ -1,7 +1,9 @@
 # Security Audit Report
 
-**Date**: 2026-04-04
-**Scope**: CLI (`src/analyze_loudness/`), GUI (`src/analyze_loudness/gui.py`), Frontend SPA (`frontend/`), Build/Distribution (`build.py`, `analyze-loudness.spec`, `installer.iss`), CI (`.github/workflows/`, `.github/tests/`)
+**Date**: 2026-04-04 (CI/CD 節のみ 2026-09-30 に確認)
+**Scope**:
+- 2026-04-04 の監査: CLI (`src/analyze_loudness/`), GUI (`src/analyze_loudness/gui.py`), Frontend SPA (`frontend/`), Build/Distribution (`build.py`, `analyze-loudness.spec`, `installer.iss`)
+- 2026-09-30 の確認: CI (`.github/workflows/`, `.github/tests/`) の action の固定と検査 (CI/CD 節)
 
 ## Summary
 
@@ -19,6 +21,8 @@
 | **Total** | **16** | **0** | **7** | **9** |
 
 **Open: 0** / Resolved: 7 / Accepted (risk acknowledged): 9
+
+この表と SEC 番号付きの指摘は 2026-04-04 の監査の結果で、2026-09-30 の CI/CD 節の確認は含まない。
 
 ---
 
@@ -163,6 +167,8 @@
 ---
 
 ## CI/CD (GitHub Actions)
+
+**確認日**: 2026-09-30。各ワークフローの実物と、master のルールセット・Actions の許可ポリシーの現在値を確認した。2026-04-04 の監査には含まれない。
 
 | 項目 | 対策 |
 |------|------|
