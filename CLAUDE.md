@@ -22,7 +22,8 @@ GUI は pywebview (WebView2) + ローカル HTTP サーバーで構成。
 
 ```
 analyze-loudness/
-├── .github/workflows/          # ci.yaml (PR/push), release.yaml (v* タグ), workflow-checks.yml (全 PR で uses: の SHA 固定を検査)
+├── .github/workflows/          # ci.yaml (PR/push), release.yaml (v* タグ), workflow-checks.yml (全 PR で uses: の SHA 固定と同一リポジトリ参照の規則を検査), workflow-checks-test.yml (検査のフィクスチャテストを実行)
+├── .github/tests/              # workflow-checks-test.sh (workflow-checks.yml を偽の gh とフィクスチャの git tree で実行するテスト)
 ├── .gitignore
 ├── .venv/                      # Python venv (git 管理外)
 ├── CLAUDE.md
