@@ -162,7 +162,7 @@ uPlot のインラインスタイル上書きは `!important` の正当なユー
 
 ### 8. Dark mode (light / dark / auto)
 
-CSS 変数 (`--bg`, `--fg`, `--accent` 等) + `[data-theme="dark"]` でテーマを切り替え。
+CSS 変数 (`--bg`, `--text`, `--accent` 等。共通分は `analyze_common/web/common.css`) + `[data-theme="dark"]` でテーマを切り替え。
 `theme.js` の `getTheme()` がチャート描画時のカラーパレットを返す。
 fixed top-right pill ボタン (太陽 / 三日月 / 半分を塗った円の SVG) で light → dark → auto をサイクル。
 `auto` は OS の `prefers-color-scheme` に追従し、`matchMedia` の `change` イベントでリアルタイム反映。

@@ -225,6 +225,7 @@ POST は Content-Type が `application/json` (`/upload` は `application/octet-s
 ### ダークモード
 
 CSS 変数 + `[data-theme="dark"]` でライト/ダーク/auto の 3 ステートテーマ切替。
+CSS 変数名は analyze-spectrum と共通 (`--text` / `--bg-card` / `--text-secondary` / `--text-muted` 等)。両アプリで同じ CSS 変数と規則は py-analyze-common の `analyze_common/web/common.css` に置き、`gui.py` が `/common/common.css` として配信する (PyInstaller の spec が `analyze_common/web` に同梱)。`index.html` はこれを `style.css` より先に読み込み、`style.css` は残りの変数 (アクセントカラー等) と固有の規則を持つ。狭い画面向けの `@media (max-width: 480px)` の `h1` は各 `style.css` の `h1` より後に置く必要があるため、`style.css` に残す。
 デフォルトは `auto` (OS の `prefers-color-scheme` に追従)。選択は `localStorage("loudness-theme")` に保存。
 テーマ切替 UI は fixed top-right pill ボタン (太陽 / 三日月 / 半分を塗った円の SVG。`_createThemeIcon()` が生成)。analyze-spectrum と統一。
 チャート色は `theme.js` の `getTheme()` で一元管理し、テーマ切替時にチャートを再描画。
