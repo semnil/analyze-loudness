@@ -74,7 +74,6 @@ h1 {
   border: 2px solid var(--input-border);
   border-radius: 6px;
   font-size: 14px;
-  outline: none;
   background: var(--bg-card);
   color: var(--text);
 }
