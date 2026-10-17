@@ -697,3 +697,52 @@ class TestLoadComparison:
         status, body = _serve_post(server, "/load", {})
         assert status == 400
         assert "tracks" in body["error"]
+
+
+class TestContentTypeGate:
+    """Simple (no-preflight) cross-origin content types are refused."""
+
+    @pytest.mark.parametrize("ctype", ["text/plain", "application/x-www-form-urlencoded", ""])
+    def test_analyze_rejects_simple_types(self, server, tmp_path, ctype):
+        import http.client
+        body = json.dumps({"url": str(tmp_path / "a.wav")}).encode()
+        t = threading.Thread(target=server.handle_request)
+        t.start()
+        conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1])
+        headers = {"Content-Length": str(len(body))}
+        if ctype:
+            headers["Content-Type"] = ctype
+        conn.request("POST", "/analyze", body=body, headers=headers)
+        resp = conn.getresponse()
+        resp.read()
+        conn.close()
+        t.join(timeout=5)
+        assert resp.status == 415
+
+    def test_json_with_charset_accepted(self, server, tmp_path):
+        import http.client
+        body = json.dumps({"url": str(tmp_path / "a.wav")}).encode()
+        t = threading.Thread(target=server.handle_request)
+        t.start()
+        conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1])
+        conn.request("POST", "/analyze", body=body, headers={
+            "Content-Type": "application/json; charset=utf-8", "Content-Length": str(len(body))})
+        resp = conn.getresponse()
+        resp.read()
+        conn.close()
+        t.join(timeout=5)
+        assert resp.status == 400  # reached validation: the file does not exist
+
+    def test_upload_needs_octet_stream(self, server):
+        import http.client
+        from urllib.parse import quote
+        t = threading.Thread(target=server.handle_request)
+        t.start()
+        conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1])
+        conn.request("POST", "/upload", body=b"x", headers={
+            "Content-Type": "text/plain", "Content-Length": "1", "X-Filename": quote("a.wav")})
+        resp = conn.getresponse()
+        resp.read()
+        conn.close()
+        t.join(timeout=5)
+        assert resp.status == 415
