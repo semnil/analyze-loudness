@@ -43,6 +43,15 @@ def _segment_stats(t: np.ndarray, S: np.ndarray, seg_sec: float = 5 * 60):
     return starts, np.array(means), np.array(p10s), np.array(p90s)
 
 
+def _draw_p10_p90(ax, x: np.ndarray, p10s: np.ndarray, p90s: np.ndarray) -> None:
+    """P10-P90 range per segment, drawn at its own positions: the range does
+    not have to contain the mean bar (a short loud burst lifts the mean above
+    P90)."""
+    ax.vlines(x, p10s, p90s, colors="gray", alpha=0.6, linewidth=1)
+    for ends in (p10s, p90s):
+        ax.hlines(ends, x - 0.08, x + 0.08, colors="gray", alpha=0.6, linewidth=1)
+
+
 def plot_analysis(
     t: np.ndarray,
     M: np.ndarray,
@@ -202,11 +211,7 @@ def plot_analysis(
     segments, means_a, p10s_a, p90s_a = _segment_stats(t, S, seg_sec)
     x = np.arange(len(segments))
     ax3.bar(x, means_a, color=c, alpha=0.7)
-    ax3.errorbar(
-        x, means_a,
-        yerr=[means_a - p10s_a, p90s_a - means_a],
-        fmt="none", ecolor="gray", alpha=0.5, capsize=3,
-    )
+    _draw_p10_p90(ax3, x, p10s_a, p90s_a)
     ax3.set_xticks(x)
     ax3.set_xticklabels(
         [f"{int(s / 60)}\u2013{int((s + seg_sec) / 60)}" for s in segments], fontsize=8,
@@ -325,8 +330,7 @@ def plot_compare(doc: dict, stats: list[dict], out_path: str) -> None:
         x = np.arange(len(starts))
         color = TRACK_COLORS[i]
         ax.bar(x, means, color=color, alpha=0.75)
-        ax.errorbar(x, means, yerr=[means - p10s, p90s - means],
-                    fmt="none", ecolor="gray", alpha=0.6, capsize=3)
+        _draw_p10_p90(ax, x, p10s, p90s)
         ax.set_xticks(x)
         ax.set_xticklabels([f"{int(s / 60)}\u2013{int((s + 300) / 60)}" for s in starts], fontsize=8)
         title = tracks[i].get("title") or "untitled"
