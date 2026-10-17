@@ -18,6 +18,14 @@ AUDIO_EXTENSIONS = (
 )
 
 
+def is_network_path(source: str) -> bool:
+    r"""True for UNC and device paths (two leading slashes or backslashes, as in
+    \\host\share, //host/share, \\?\ and \\.\).  These are refused before
+    the path is resolved or opened: on Windows, resolving or opening one
+    connects to the named host."""
+    return source[:2].replace("/", "\\") == "\\\\"
+
+
 def local_path(source: str) -> str:
     """Absolute path of a local source (``~`` expanded)."""
     return str(Path(source).expanduser().resolve())
@@ -30,6 +38,8 @@ def resolve_source(source: str, workdir: str) -> tuple[str, str]:
     """
     if is_url(source):
         return download_audio(source, workdir)
+    if is_network_path(source):
+        raise ValueError(f"Network (UNC) paths are not accepted: {source}")
     path = Path(local_path(source))
     if not path.is_file():
         raise FileNotFoundError(f"File not found: {source}")

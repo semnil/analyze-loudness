@@ -844,3 +844,13 @@ class TestContentTypeGate:
         conn.close()
         t.join(timeout=5)
         assert resp.status == 415
+
+
+class TestNetworkPathRejected:
+    @pytest.mark.parametrize("path", [r"\\host\share\a.wav", "//host/share/a.wav", r"\\?\C:\a.wav"])
+    def test_rejected_before_any_file_access(self, server, path):
+        with patch("analyze_loudness.gui.os.path.isfile", side_effect=AssertionError("touched the path")), \
+             patch("analyze_loudness.gui.local_path", side_effect=AssertionError("resolved the path")):
+            status, body = _serve_post(server, "/analyze", {"url": path})
+        assert status == 400
+        assert "network" in body["error"].lower()

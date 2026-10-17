@@ -103,3 +103,21 @@ class TestResolveSource:
         import os
         from analyze_loudness.download import local_path
         assert local_path("~/x.wav") == os.path.realpath(os.path.expanduser("~/x.wav"))
+
+
+class TestNetworkPaths:
+    UNC = [r"\\host\share\a.wav", "//host/share/a.wav", r"\\?\C:\a.wav", r"\\.\pipe\x", "\\/host/share/a.wav"]
+
+    def test_detected(self):
+        from analyze_loudness.download import is_network_path
+        for p in self.UNC:
+            assert is_network_path(p), p
+        for p in ["/Users/me/a.wav", r"C:\music\a.wav", "a.wav", "~/a.wav", "https://example.com/v"]:
+            assert not is_network_path(p), p
+
+    @patch("analyze_loudness.download.local_path", side_effect=AssertionError("resolved a network path"))
+    def test_resolve_source_refuses_before_touching_the_path(self, _resolve, tmp_path):
+        from analyze_loudness.download import resolve_source
+        for p in self.UNC:
+            with pytest.raises(ValueError, match="(?i)network"):
+                resolve_source(p, str(tmp_path))

@@ -26,7 +26,7 @@ from analyze_loudness.compare import (
     validate_compare, validate_single, validate_tracks,
 )
 from analyze_loudness.download import (
-    AUDIO_EXTENSIONS, compute_middle, is_url, local_path, probe_duration,
+    AUDIO_EXTENSIONS, compute_middle, is_network_path, is_url, local_path, probe_duration,
     resolve_source, sanitize_filename,
 )
 
@@ -285,6 +285,9 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             if not is_url(url):
                 self._json_error(400, "'url' must use http or https scheme, or be a local file path")
                 return
+        elif is_network_path(url):
+            self._json_error(400, "Network (UNC) paths are not accepted; copy the file to this computer")
+            return
         else:
             url = local_path(url)
             if not os.path.isfile(url):

@@ -686,6 +686,8 @@ function fakeStats() {
   assertEqual(_sourceKind("C:\\music\\a.wav"), "file", "Windows path is a file");
   assertEqual(_sourceKind("file:///tmp/a.wav"), null, "file:// is refused");
   assertEqual(_sourceKind("javascript:alert(1)"), null, "javascript: is refused");
+  assertEqual(_sourceKind("\\\\host\\share\\a.wav"), "network", "UNC path is a network path");
+  assertEqual(_sourceKind("//host/share/a.wav"), "network", "//host path is a network path");
 
   resetState();
   urlInput.value = "/Users/me/a.wav";
@@ -696,6 +698,10 @@ function fakeStats() {
   urlInput.value = "file:///tmp/a.wav";
   addBtn.click();
   assertEqual(compareQueue.length, 1, "file:// is not queued");
+  urlInput.value = "\\\\host\\share\\a.wav";
+  addBtn.click();
+  assertEqual(compareQueue.length, 1, "A typed UNC path is not queued");
+  assert(statusEl.textContent.indexOf("UNC") !== -1, "The network path error names UNC paths");
 
   // ================================================
   suite("Browse fills the field");

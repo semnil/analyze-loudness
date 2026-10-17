@@ -473,9 +473,12 @@ function _queueTrack(item) {
 
 // Mirror of the /analyze check in src/analyze_loudness/gui.py: anything
 // scheme-like must be http(s); everything else is a local path.
+// UNC and device paths (two leading slashes or backslashes) are "network"
+// and refused, as is_network_path in src/analyze_loudness/download.py.
 function _sourceKind(source) {
   if (/^https?:\/\//i.test(source)) return "url";
   if (source.indexOf("://") !== -1 || /^javascript:/i.test(source)) return null;
+  if (/^[\\/]{2}/.test(source)) return "network";
   return "file";
 }
 
@@ -485,8 +488,8 @@ function _queueUrlInput() {
   const source = urlInput.value.trim();
   if (!source) return true;
   const kind = _sourceKind(source);
-  if (!kind) {
-    showError(window.i18n.t("err.url_scheme"));
+  if (!kind || kind === "network") {
+    showError(window.i18n.t(kind ? "err.network_path" : "err.url_scheme"));
     return false;
   }
   // The source of the single result on screen queues that result itself:

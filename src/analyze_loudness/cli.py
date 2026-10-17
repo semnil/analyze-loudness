@@ -137,7 +137,7 @@ def _load_track(source: str) -> dict:
 def _resolve(source: str, workdir: str) -> tuple[str, str]:
     try:
         return resolve_source(source, workdir)
-    except FileNotFoundError as e:
+    except (FileNotFoundError, ValueError) as e:
         raise SystemExit(f"error: {e}")
 
 
