@@ -13,6 +13,7 @@ CLI 版と Windows GUI アプリケーション版の 2 形態を持つ。
 - CLI: 4 段構成の PNG グラフ生成 (matplotlib)
 - GUI: ブラウザ上でインタラクティブなグラフ描画 (uPlot + Canvas)
 - 分析結果の JSON 保存
+- 比較モード: 2〜6 本の結果を重ねて比較 (一番短いトラックの長さにそろえる)。URL と保存済み JSON を混在でき、比較結果も JSON と画像で保存できる
 
 ## アーキテクチャ
 
@@ -63,13 +64,18 @@ analyze-loudness "https://www.youtube.com/watch?v=XXXXX"
 analyze-loudness "https://www.youtube.com/watch?v=XXXXX" \
     --duration 10 \
     --output-dir ./out
+
+# 比較 (2〜6 本。保存済みの単体 JSON も渡せる)
+analyze-loudness "https://www.youtube.com/watch?v=AAAAA" ./loudness_B.json
 ```
+
+比較では `loudness_compare.json` と `loudness_compare.png` を出力する (同名のファイルがあるときは `_2`, `_3` … を付ける)。比較に `--duration` は使えない。
 
 #### CLI オプション
 
 | オプション | デフォルト | 説明 |
 |---|---|---|
-| `--duration` | なし (全尺) | 分析対象の長さ (分)。動画の中央部分を切り出して分析する |
+| `--duration` | なし (全尺) | 分析対象の長さ (分)。動画の中央部分を切り出して分析する (単体のみ) |
 | `--output-dir` | `.` | PNG 出力ディレクトリ |
 
 #### CLI 出力例
@@ -96,6 +102,8 @@ analyze-loudness "https://www.youtube.com/watch?v=XXXXX" \
 pip install -e ".[gui]"
 analyze-loudness-gui
 ```
+
+比較するときは、URL を入れて「+ Add Track」で待ち行列に並べる。待ち行列が空でないときの「Load JSON」は、保存済みの単体 JSON を待ち行列に加える。2 本以上並べて「Compare」を押すと、URL の行を順に分析して比較を表示する。保存済みの比較 JSON は、待ち行列が空のときに「Load JSON」で開ける。
 
 GUI は URL 入力のみを受け付け、常に全尺を分析する。`--duration` 相当 (分析対象長の指定) は GUI に実装しない。中盤のみを分析したい場合は CLI の `--duration` オプションを使用する。
 
@@ -131,6 +139,7 @@ analyze-loudness/
 │   ├── gui.py                  # pywebview + local HTTP server (GUI)
 │   ├── download.py             # yt_dlp.YoutubeDL API, ffprobe duration
 │   ├── analysis.py             # ebur128 stderr parsing, compute_stats
+│   ├── compare.py              # result / comparison JSON, truncated statistics
 │   └── plot.py                 # matplotlib figure generation (CLI only)
 ├── frontend/
 │   ├── index.html

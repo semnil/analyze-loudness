@@ -27,18 +27,20 @@ graph LR
 | `cli.py` | argparse + orchestration, static-ffmpeg PATH setup |
 | `download.py` | `yt_dlp.YoutubeDL` Python API でダウンロード + タイトル取得, ffprobe duration, filename sanitization |
 | `analysis.py` | ffmpeg ebur128 stderr parsing, numpy-based statistics |
-| `plot.py` | matplotlib 4-row figure generation (timeline, histograms, segments) |
+| `plot.py` | matplotlib 4-row figure generation (timeline, histograms, segments); comparison figure (`plot_compare`) |
+| `compare.py` | 単体結果 JSON の組み立て (`build_result`)・検証 (`validate_single`)、比較 JSON の組み立て (`build_compare`)・検証 (`validate_compare`)、切り詰めた範囲の統計 (`truncated_stats`) |
 
 ### GUI Application (`src/analyze_loudness/gui.py`)
 
 | Component | Responsibility |
 |-----------|---------------|
 | `AnalyzeHandler` | `SimpleHTTPRequestHandler` 継承。frontend 配信 + POST エンドポイント処理 |
-| `do_POST()` | `/analyze`, `/save`, `/save-image`, `/load` のルーティング |
+| `do_POST()` | `/analyze`, `/compare`, `/save`, `/save-image`, `/load` のルーティング |
 | `_run_analysis()` | download -> probe -> ebur128 (計時) -> stats -> result の NDJSON ストリーム |
 | `_handle_save()` | JSON 保存 (ネイティブファイルダイアログ) |
 | `_handle_save_image()` | base64 PNG → バイナリ保存 (ネイティブファイルダイアログ) |
-| `_handle_load()` | JSON 読み込み + バリデーション (ネイティブファイルダイアログ) |
+| `_handle_compare()` | 2〜6 本の単体結果を受け取り、比較 JSON と切り詰めた範囲の統計を返す |
+| `_handle_load()` | JSON 読み込み + バリデーション (ネイティブファイルダイアログ)。比較 JSON は統計を添えて返し、キャッシュには入れない |
 | `_speed_factor` | runtime-calibrated 速度係数。分析時間から次回の推定時間を算出 |
 | `_set_application_user_model_id()` | Windows AppUserModelID 設定 (タスクバーアイコン反映) |
 | `main()` | HTTPServer (127.0.0.1:0) 起動 + pywebview ウインドウ表示 |
@@ -48,13 +50,13 @@ graph LR
 | File | Responsibility |
 |------|---------------|
 | `index.html` | SPA entry point, local vendor files |
-| `main.js` | Fetch orchestration, NDJSON progress parsing, DOM rendering, save/load/image capture, theme toggle, language toggle, cancel (AbortController), `_addTip` ツールチップ |
-| `theme.js` | `isDark()`, `getTheme()` — theme detection + chart color provider |
+| `main.js` | Fetch orchestration, NDJSON progress parsing, DOM rendering, save/load/image capture, theme toggle, language toggle, cancel (AbortController), `_addTip` ツールチップ, 比較の待ち行列 (`compareQueue`) と比較表示 (`renderCompare`) |
+| `theme.js` | `isDark()`, `getTheme()` — theme detection + chart color provider (比較トラックの 6 色 `trackColors` を含む) |
 | `i18n.js` | en / ja DICT + `window.i18n.t / setLang / onChange / applyStatic` |
 | `gate.js` | `computeGate()` — BS.1770 の絶対 / 相対ゲートを `series.M` から再構成 |
-| `charts/timeline.js` | uPlot time series (60-frame moving average, GATE lane, theme-aware) |
-| `charts/histogram.js` | Canvas density histogram (theme-aware, タイトルは HTML 側) |
-| `charts/segments.js` | Canvas 5-min segment bar chart (theme-aware, タイトルは HTML 側) |
+| `charts/timeline.js` | uPlot time series (60-frame moving average, GATE lane, theme-aware)。比較用 `renderCompareTimeline` (トラックごとの線と GATE 帯、線の右端にトラック番号) |
+| `charts/histogram.js` | Canvas density histogram (theme-aware, タイトルは HTML 側)。比較用 `renderHistogramCompare` (トラックごとの輪郭線、最頻ビンにトラック番号) |
+| `charts/segments.js` | Canvas 5-min segment bar chart (theme-aware, タイトルは HTML 側)。比較ではトラック色を渡してトラックごとに 1 枚描く |
 | `style.css` | CSS variables + `[data-theme="dark"]` rules, purple accent (#9C27B0) |
 | `vendor/` | uPlot.iife.min.js, uPlot.min.css (bundled) |
 
@@ -201,6 +203,36 @@ Timeline の x 軸ガター (プロット領域とメモリラベルの間) に�
 - 数値サマリー (算入率 / 除外率 / しきい値) はチャート直下の `.gate-caption` に置き、
   composite PNG には summary テキストの 1 行として焼き込む。
 
+### 12. Comparison mode
+
+2〜6 本の結果を先頭から重ね、一番短いトラックの長さで全トラックを切り詰めて比べる。
+
+- **入力**: GUI は待ち行列 (`+ Add Track` で URL、待ち行列が空でないときの Load JSON で保存済みの単体 JSON) を
+  Compare で処理する。URL の行は `/analyze` で順に分析し、全トラックを `/compare` へ送る。
+  CLI は位置引数を 2〜6 個受け取り、`.json` で終わるローカルパスを保存済みの単体 JSON として読む。
+  比較では `--duration` を受け付けない。
+- **切り詰め**: `compare.common_frames()` が一番短いトラックの最終時刻 (+ 半フレーム) までのフレーム数を
+  各トラックで数え、その最小値で全トラックの `series` を切る。全トラックのフレーム数が揃うので、
+  タイムラインは 1 本の時間軸を共有する。
+- **統計は Python の 1 か所で計算する**。切り詰めた範囲の Integrated・S/M の中央値と P10/P90・無音率は
+  `compare.truncated_stats()` が保存済みの系列から算出し、`/compare` と `/load` の応答に `stats` として添える。
+  比較 JSON には保存しない。True Peak と LRA は系列から算出できない (True Peak) か ffmpeg と同じ値になる保証がない
+  (LRA) ため、各トラックの全長の値を「(full)」と明示して表示する。
+- **切り詰めた範囲の Integrated は相対ゲートを切り詰めた範囲で計算し直す**。全長の `summary.gate_threshold`
+  を使わない。同梱 ffmpeg 8.1 で、全長の系列 M の先頭 T 秒から再計算した値と、同じ音声を `-t T` で測った
+  ffmpeg の Integrated (`ebur128=metadata=1` の `lavfi.r128.I`、小数 3 桁) を照合した結果、
+  4 本の音声 (33 秒〜144.5 分) × T = 20 / 37.3 / 60 / 300 / 1800 / 3600 秒のうち音声より短い 17 件で
+  差は最大 0.014 LU。全長の `gate_threshold` を流用すると最大 2.92 LU ずれる。
+  `-t T` で測った t / M / S は全長の先頭フレームと一致する (差 0)。
+  フロントエンドの GATE 帯も `computeGate(M, t, null)` で相対ゲートを計算し直す。
+- **比較 JSON** (schema 3): `{"meta": {...}, "compare": {"truncate_sec": T, "tracks": [単体結果, ...]}}`。
+  各トラックの `summary` は全長の値、`series` は切り詰めた範囲。一番上に `summary` / `series` を置かないので、
+  schema 2 以前の版は「missing summary or series」で読み込みを拒む。読み込みの分岐は `compare` の有無で行う。
+  待ち行列が空でないときの比較 JSON の読み込みは拒否する。
+- **トラックの区別**: 色は `theme.js` の `trackColors` (ライト / ダーク各 6 色、チャート背景とのコントラスト比は
+  最小 3.05)。色だけに頼らないよう、タイムラインの線の右端・ヒストグラムの最頻ビン・GATE 帯のラベル・
+  セグメントの見出しにトラック番号を描く。CLI の図はライトの 6 色 (`plot.py` の `TRACK_COLORS`) を使う。
+
 ## Accessibility
 
 ### prefers-reduced-motion
@@ -260,13 +292,14 @@ Build pipeline:
 
 | Constant | Value | Location | Description |
 |----------|-------|----------|-------------|
-| SCHEMA_VERSION | 2 | \_\_init\_\_.py | 結果 JSON のスキーマ版数 (2 = `summary.gate_threshold` 追加) |
+| SCHEMA_VERSION | 3 | \_\_init\_\_.py | 結果 JSON のスキーマ版数 (2 = `summary.gate_threshold` 追加, 3 = 比較 JSON 追加) |
+| MIN_TRACKS / MAX_TRACKS | 2 / 6 | compare.py, main.js | 比較できるトラック数 |
 | SILENCE_THRESHOLD | -60 LUFS | analysis.py | Stats exclude frames <= this |
-| GATE_ABSOLUTE | -70 LUFS | gate.js | BS.1770 絶対ゲート |
-| GATE_BLOCK_SEC | 0.4 s | gate.js | Momentary 窓長。ウォームアップフレームの判定に使う |
+| GATE_ABSOLUTE | -70 LUFS | gate.js, compare.py | BS.1770 絶対ゲート |
+| GATE_BLOCK_SEC | 0.4 s | gate.js, compare.py | Momentary 窓長。ウォームアップフレームの判定に使う |
 | SHORT_TERM_WINDOW_SEC | 3.0 s | analysis.py | Short-term 窓長。無音率のウォームアップ判定に使う |
 | SILENCE_PCT_THRESHOLD | -40 LUFS | analysis.py | 無音率の判定しきい値 |
-| GATE_RELATIVE_OFFSET | -10 LU | gate.js | BS.1770 相対ゲート (通過ブロック平均からのオフセット) |
+| GATE_RELATIVE_OFFSET | -10 LU | gate.js, compare.py | BS.1770 相対ゲート (通過ブロック平均からのオフセット) |
 | GATE_LANE_H | 12 px | timeline.js | GATE 帯の高さ |
 | _speed_factor | 55.0 (initial) | gui.py | Runtime-calibrated analysis speed |
 | Segment size | 5 min | plot.py, segments.js | Bar chart segment width |
