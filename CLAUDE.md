@@ -34,7 +34,7 @@ analyze-loudness/
 │   ├── __main__.py
 │   ├── cli.py                  # argparse + main orchestration (CLI)
 │   ├── gui.py                  # pywebview + local HTTP server (GUI)
-│   ├── download.py             # yt_dlp.YoutubeDL API, ffprobe duration
+│   ├── download.py             # yt_dlp.YoutubeDL API, ローカルファイルの解決 (resolve_source), ffprobe duration
 │   ├── analysis.py             # ebur128 stderr parsing, compute_stats
 │   ├── compare.py              # 単体 / 比較 JSON の組み立てと検証, 切り詰めた範囲の統計
 │   └── plot.py                 # matplotlib figure generation (CLI only)
@@ -82,6 +82,7 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 analyze-loudness "https://www.youtube.com/watch?v=XXXXX"
 analyze-loudness "https://..." --duration 10 --output-dir ./out
+analyze-loudness ./recording.wav                       # ローカルの音声ファイル
 analyze-loudness "https://..." ./loudness_saved.json   # 比較 (2-6 本、--duration 不可)
 ```
 
@@ -159,6 +160,15 @@ S は 3 秒窓なので先頭 29 フレームは窓が埋まらず無音フロ�
 
 この機能は CLI の `--duration` オプション (単体の分析のみ) で公開する。GUI には分数入力 UI を実装しない方針 (URL 入力だけのシンプルなワークフローを維持、常に全尺分析)。GUI バックエンドの `/analyze` エンドポイントは `duration` フィールドを受理する validation を残しているが、フロントエンドからは送出されない。
 
+### ローカルファイル
+
+入力欄は URL とローカルのパスを受け付ける。`://` を含むか `javascript:` で始まる入力は http(s) のときだけ URL、
+それ以外はローカルのパスとして扱う (サーバーは `gui.py` の `/analyze`、フロントエンドは `main.js` の `_sourceKind` が
+同じ規則のミラー)。ローカルファイルは絶対パスにして `meta.source_url` にそのまま残し、タイトルは拡張子を除いた
+ファイル名。キャッシュのキーにはファイルの更新時刻を加え、`/load` で読んだ結果のうちローカルの source は
+キャッシュに入れない。ドロップしたファイルは `/upload` が一時ディレクトリ (終了時に削除) に置くので、
+その結果の `meta.source_url` は一時ディレクトリのパスになる。
+
 ### ダウンロード形式
 
 opus (非圧縮 WAV より大幅に小さい)。`yt_dlp.YoutubeDL` の Python API を直接呼び出し、`FFmpegExtractAudio` postprocessor で抽出。`extract_info(download=True)` の戻り値からタイトルを取得するため、タイトル取得とダウンロードを並行実行する必要がない。
@@ -201,11 +211,15 @@ NDJSON ストリーミングでリアルタイム進捗表示。runtime-calibrat
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/analyze` | POST | URL から音声をダウンロードし EBU R128 分析。NDJSON ストリーム応答 |
+| `/analyze` | POST | URL から音声をダウンロード、またはローカルファイルをそのまま使って EBU R128 分析。NDJSON ストリーム応答 |
 | `/save` | POST | 分析結果 JSON をネイティブファイルダイアログで保存 |
 | `/save-image` | POST | チャート composite PNG (base64) をネイティブダイアログで保存 |
 | `/compare` | POST | 2-6 本の単体結果を一番短いトラックに切り詰めた比較 JSON と、切り詰めた範囲の統計 (`stats`) を返す |
 | `/load` | POST | ネイティブダイアログで JSON を選択し、結果を再可視化。比較 JSON には `stats` を添え、単体結果のキャッシュには入れない |
+| `/browse` | POST | ネイティブダイアログでローカルの音声ファイルを選び、パスを返す |
+| `/upload` | POST | ドロップされたファイル (本文そのまま、名前は `X-Filename`) を一時ディレクトリに置き、パスを返す。上限 500 MB、拡張子は `download.AUDIO_EXTENSIONS` |
+
+POST は Content-Type が `application/json` (`/upload` は `application/octet-stream`) のときだけ受け付け、それ以外は 415。
 
 ### ダークモード
 

@@ -25,7 +25,7 @@ graph LR
 | Module | Responsibility |
 |--------|---------------|
 | `cli.py` | argparse + orchestration, static-ffmpeg PATH setup |
-| `download.py` | `yt_dlp.YoutubeDL` Python API でダウンロード + タイトル取得, ffprobe duration, filename sanitization |
+| `download.py` | `yt_dlp.YoutubeDL` Python API でダウンロード + タイトル取得、ローカルファイルの解決 (`resolve_source`)、ffprobe duration, filename sanitization |
 | `analysis.py` | ffmpeg ebur128 stderr parsing, numpy-based statistics |
 | `plot.py` | matplotlib 4-row figure generation (timeline, histograms, segments); comparison figure (`plot_compare`) |
 | `compare.py` | 単体結果 JSON の組み立て (`build_result`)・検証 (`validate_single`)、比較 JSON の組み立て (`build_compare`)・検証 (`validate_compare`)、切り詰めた範囲の統計 (`truncated_stats`) |
@@ -35,7 +35,9 @@ graph LR
 | Component | Responsibility |
 |-----------|---------------|
 | `AnalyzeHandler` | `SimpleHTTPRequestHandler` 継承。frontend 配信 + POST エンドポイント処理 |
-| `do_POST()` | `/analyze`, `/compare`, `/save`, `/save-image`, `/load` のルーティング |
+| `do_POST()` | `/analyze`, `/compare`, `/save`, `/save-image`, `/load`, `/browse`, `/upload` のルーティング。Content-Type の検査 (`_check_content_type`) |
+| `_handle_browse()` | ローカルの音声ファイルを選ぶネイティブダイアログ |
+| `_handle_upload()` | ドロップされたファイルを一時ディレクトリ `_upload_dir` に保存 |
 | `_run_analysis()` | download -> probe -> ebur128 (計時) -> stats -> result の NDJSON ストリーム |
 | `_handle_save()` | JSON 保存 (ネイティブファイルダイアログ) |
 | `_handle_save_image()` | base64 PNG → バイナリ保存 (ネイティブファイルダイアログ) |
