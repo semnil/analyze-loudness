@@ -24,6 +24,25 @@ def _moving_avg(x: np.ndarray, w: int = 60) -> np.ndarray:
     return np.convolve(padded, kernel, mode="valid")[: len(x)]
 
 
+def _segment_stats(t: np.ndarray, S: np.ndarray, seg_sec: float = 5 * 60):
+    starts = np.arange(0, t[-1], seg_sec)
+    means, p10s, p90s = [], [], []
+    for s in starts:
+        i0 = np.searchsorted(t, s, side="left")
+        i1 = np.searchsorted(t, s + seg_sec, side="left")
+        sv = S[i0:i1]
+        sv = sv[sv > SILENCE_THRESHOLD]
+        if len(sv) > 0:
+            means.append(np.mean(sv))
+            p10s.append(np.percentile(sv, 10))
+            p90s.append(np.percentile(sv, 90))
+        else:
+            means.append(np.nan)
+            p10s.append(np.nan)
+            p90s.append(np.nan)
+    return starts, np.array(means), np.array(p10s), np.array(p90s)
+
+
 def plot_analysis(
     t: np.ndarray,
     M: np.ndarray,
@@ -180,26 +199,8 @@ def plot_analysis(
     # ---- Row 3: 5-minute segment bars ----
     ax3 = fig.add_subplot(gs[3, :])
     seg_sec = 5 * 60
-    segments = np.arange(0, t[-1], seg_sec)
-    means, p10s, p90s = [], [], []
-    for s in segments:
-        i0 = np.searchsorted(t, s, side="left")
-        i1 = np.searchsorted(t, s + seg_sec, side="left")
-        sv = S[i0:i1]
-        sv = sv[sv > SILENCE_THRESHOLD]
-        if len(sv) > 0:
-            means.append(np.mean(sv))
-            p10s.append(np.percentile(sv, 10))
-            p90s.append(np.percentile(sv, 90))
-        else:
-            means.append(np.nan)
-            p10s.append(np.nan)
-            p90s.append(np.nan)
-
+    segments, means_a, p10s_a, p90s_a = _segment_stats(t, S, seg_sec)
     x = np.arange(len(segments))
-    means_a = np.array(means)
-    p10s_a = np.array(p10s)
-    p90s_a = np.array(p90s)
     ax3.bar(x, means_a, color=c, alpha=0.7)
     ax3.errorbar(
         x, means_a,
@@ -215,6 +216,124 @@ def plot_analysis(
     ax3.set_title("5-Minute Segment Average (error bars: P10\u2013P90)")
     ax3.axhline(intg, color=c, linestyle="-", alpha=0.5, linewidth=1)
     ax3.grid(True, alpha=0.3, axis="y")
+
+    plt.savefig(out_path, dpi=150, bbox_inches="tight", facecolor="white", edgecolor="none")
+    plt.close(fig)
+    print(f"[output] Plot saved: {out_path}")
+
+
+# Track colours on a white background.  Mirror of trackColors (light) in
+# frontend/theme.js; change both together.
+TRACK_COLORS = ["#B71C1C", "#1A237E", "#CC79A7", "#7E57C2", "#006064", "#3E2723"]
+
+
+def plot_compare(doc: dict, stats: list[dict], out_path: str) -> None:
+    """Comparison figure: per-track table, overlaid timeline and histograms,
+    and one 5-minute segment chart per track.  Every line carries its track
+    number so the figure reads without colour."""
+    tracks = doc["compare"]["tracks"]
+    n = len(tracks)
+    arrays = []
+    for tr in tracks:
+        s = tr["series"]
+        arrays.append(tuple(
+            np.array([np.nan if v is None else float(v) for v in s[k]], dtype=float)
+            for k in ("t", "S", "M")))
+
+    fig = plt.figure(figsize=(16, 11 + 1.6 * n))
+    gs = GridSpec(
+        3 + n, 2, figure=fig,
+        height_ratios=[0.12 * (n + 1), 2, 1.2] + [0.8] * n,
+        hspace=0.45, wspace=0.25, top=0.95,
+    )
+    fig.suptitle(
+        f"Loudness Comparison ({n} tracks, first {doc['compare']['truncate_sec'] / 60:.1f} min)"
+        "\nBS.1770 / EBU R128",
+        fontsize=15, fontweight="bold", y=0.99,
+    )
+
+    def _fmt(x, sign=""):
+        return "N/A" if x is None else f"{x:{sign}.1f}"
+
+    ax_tbl = fig.add_subplot(gs[0, :])
+    ax_tbl.axis("off")
+    col_labels = ["#", "Track", "Integrated", "Integrated (full)", "True Peak (full)",
+                  "LRA (full)", "S-term Median", "Mom. Median", "Silence"]
+    cells = []
+    for i, (tr, st) in enumerate(zip(tracks, stats)):
+        title = tr.get("title") or "untitled"
+        cells.append([
+            str(i + 1), title if len(title) <= 32 else title[:31] + "\u2026",
+            _fmt(st["integrated"]), _fmt(tr["summary"].get("integrated")),
+            _fmt(tr["summary"].get("true_peak"), "+"), _fmt(tr["summary"].get("lra")),
+            _fmt(st["short_term"]["median"]), _fmt(st["momentary"]["median"]),
+            f"{_fmt(st['silence_pct'])}%",
+        ])
+    tbl = ax_tbl.table(cellText=cells, colLabels=col_labels, loc="center",
+                       cellLoc="center", bbox=[0.0, 0.0, 1.0, 1.0],
+                       colWidths=[0.03, 0.27] + [0.7 / 7] * 7)
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(9)
+    for (row, col), cell in tbl.get_celld().items():
+        cell.set_edgecolor("#CCCCCC")
+        if row == 0:
+            cell.set_facecolor("#E1BEE7")
+            cell.set_text_props(fontweight="bold")
+        elif col == 0:
+            cell.set_text_props(color=TRACK_COLORS[row - 1], fontweight="bold")
+        elif col == 1:
+            cell.set_text_props(ha="left")
+            cell.PAD = 0.02
+
+    ax0 = fig.add_subplot(gs[1, :])
+    for i, (t, S, _M) in enumerate(arrays):
+        step = max(1, len(t) // 3000)
+        td = t[::step] / 60
+        sm = _moving_avg(S[::step])
+        col = TRACK_COLORS[i]
+        ax0.plot(td, sm, color=col, linewidth=1.8, label=f"{i + 1}")
+        ax0.annotate(str(i + 1), (td[-1], sm[-1]), xytext=(4, 0), textcoords="offset points",
+                     color=col, fontsize=10, fontweight="bold", va="center")
+    ax0.axhline(-23, color="#4CAF50", linestyle="--", alpha=0.6, linewidth=1.2,
+                label="Target \u221223 LUFS")
+    ax0.set_ylabel("Short-term LUFS (60s moving avg)")
+    ax0.set_xlabel("Time (min)")
+    ax0.set_title("Short-term Loudness")
+    ax0.set_ylim(-55, -5)
+    ax0.legend(loc="upper right", fontsize=9, ncol=n + 1)
+    ax0.grid(True, alpha=0.3)
+
+    bins = np.arange(-55, -5, 0.5)
+    for col_idx, (key, name) in enumerate(((1, "Short-term"), (2, "Momentary"))):
+        ax = fig.add_subplot(gs[2, col_idx])
+        for i, arr in enumerate(arrays):
+            v = arr[key]
+            v = v[np.isfinite(v) & (v > SILENCE_THRESHOLD)]
+            if len(v) == 0:
+                continue
+            ax.hist(v, bins=bins, density=True, histtype="step", linewidth=1.6,
+                    color=TRACK_COLORS[i], label=str(i + 1))
+        ax.set_xlabel(f"{name} Loudness (LUFS)")
+        ax.set_ylabel("Density")
+        ax.set_title(f"{name} Distribution")
+        ax.legend(fontsize=9, ncol=n)
+        ax.grid(True, alpha=0.3)
+
+    for i, (t, S, _M) in enumerate(arrays):
+        ax = fig.add_subplot(gs[3 + i, :])
+        starts, means, p10s, p90s = _segment_stats(t, S)
+        x = np.arange(len(starts))
+        col = TRACK_COLORS[i]
+        ax.bar(x, means, color=col, alpha=0.75)
+        ax.errorbar(x, means, yerr=[means - p10s, p90s - means],
+                    fmt="none", ecolor="gray", alpha=0.6, capsize=3)
+        ax.set_xticks(x)
+        ax.set_xticklabels([f"{int(s / 60)}\u2013{int((s + 300) / 60)}" for s in starts], fontsize=8)
+        title = tracks[i].get("title") or "untitled"
+        ax.set_title(f"{i + 1}: {title}  (5-minute segments, error bars P10\u2013P90)",
+                     fontsize=10, color=col, loc="left")
+        ax.set_ylabel("Mean S LUFS")
+        ax.grid(True, alpha=0.3, axis="y")
 
     plt.savefig(out_path, dpi=150, bbox_inches="tight", facecolor="white", edgecolor="none")
     plt.close(fig)
