@@ -666,6 +666,13 @@ def _set_application_user_model_id():
         )
 
 
+class _HTTPServer(ThreadingHTTPServer):
+    """Loopback server whose listen backlog holds the burst of connections a
+    webview opens while loading the page and its scripts in parallel."""
+
+    request_queue_size = 64
+
+
 def main():
     _set_application_user_model_id()
     # When frozen, add bundled binaries (ffmpeg, ffprobe, deno) to PATH
@@ -673,7 +680,7 @@ def main():
         bin_dir = str(Path(sys._MEIPASS) / "bin")
         os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), AnalyzeHandler)
+    server = _HTTPServer(("127.0.0.1", 0), AnalyzeHandler)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
