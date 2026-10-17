@@ -75,3 +75,31 @@ class TestDownloadAudio:
         opts = mock_ydl_cls.call_args[0][0]
         assert opts["postprocessors"][0]["preferredcodec"] == "opus"
         assert str(tmp_path) in opts["outtmpl"]
+
+
+class TestResolveSource:
+    @patch("analyze_loudness.download.download_audio", return_value=("/tmp/x.opus", "Title"))
+    def test_url_is_downloaded(self, mock_dl, tmp_path):
+        from analyze_loudness.download import resolve_source
+        assert resolve_source("https://example.com/v", str(tmp_path)) == ("/tmp/x.opus", "Title")
+        mock_dl.assert_called_once()
+
+    @patch("analyze_loudness.download.download_audio")
+    def test_local_file_used_in_place(self, mock_dl, tmp_path):
+        from analyze_loudness.download import resolve_source
+        f = tmp_path / "My Song.wav"
+        f.write_bytes(b"RIFF")
+        path, title = resolve_source(str(f), str(tmp_path / "work"))
+        assert path == str(f.resolve())
+        assert title == "My Song"
+        mock_dl.assert_not_called()
+
+    def test_missing_file_raises(self, tmp_path):
+        from analyze_loudness.download import resolve_source
+        with pytest.raises(FileNotFoundError):
+            resolve_source(str(tmp_path / "nope.wav"), str(tmp_path))
+
+    def test_local_path_expands_home(self):
+        import os
+        from analyze_loudness.download import local_path
+        assert local_path("~/x.wav") == os.path.realpath(os.path.expanduser("~/x.wav"))

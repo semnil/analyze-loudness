@@ -9,7 +9,9 @@ from pathlib import Path
 
 
 from analyze_loudness import _json_safe
-from analyze_loudness.download import download_audio, probe_duration, compute_middle, sanitize_filename
+from analyze_loudness.download import (
+    compute_middle, is_url, probe_duration, resolve_source, sanitize_filename,
+)
 from analyze_loudness.analysis import run_ebur128, compute_stats, compute_silence_pct
 from analyze_loudness.compare import (
     MAX_TRACKS, build_compare, build_result, is_compare, truncated_stats, validate_single,
@@ -33,8 +35,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "sources", nargs="+",
-        help=f"YouTube video URL.  2-{MAX_TRACKS} sources compare them; a comparison "
-             "also accepts single results saved as .json",
+        help=f"YouTube video URL or local audio file.  2-{MAX_TRACKS} sources compare "
+             "them; a comparison also accepts single results saved as .json",
     )
     parser.add_argument(
         "--duration", type=_positive_float, default=None,
@@ -72,9 +74,9 @@ def main(argv: list[str] | None = None) -> None:
     url = args.sources[0]
 
     with tempfile.TemporaryDirectory(prefix="loudness_") as workdir:
-        # Step 1: Download audio
-        print(f"[1/3] Downloading audio: {url}")
-        src, title = download_audio(url, workdir)
+        # Step 1: Download audio (or use the local file)
+        print(f"[1/3] {'Downloading audio' if is_url(url) else 'Reading file'}: {url}")
+        src, title = _resolve(url, workdir)
         print(f"       -> {title}")
 
         # Step 2: EBU R128 analysis
@@ -132,14 +134,21 @@ def _load_track(source: str) -> dict:
     return data
 
 
+def _resolve(source: str, workdir: str) -> tuple[str, str]:
+    try:
+        return resolve_source(source, workdir)
+    except FileNotFoundError as e:
+        raise SystemExit(f"error: {e}")
+
+
 def _analyze_track(url: str) -> dict:
     with tempfile.TemporaryDirectory(prefix="loudness_") as workdir:
-        src, title = download_audio(url, workdir)
+        src, title = _resolve(url, workdir)
         print(f"       -> {title}")
         t, M, S, summary = run_ebur128(src)
     for w in summary.pop("warnings", []):
         print(f"       [warn] {w}")
-    return build_result(t, M, S, summary, title, url)
+    return build_result(t, M, S, summary, title, url if is_url(url) else src)
 
 
 def _unique_stem(outdir: Path, stem: str) -> str:

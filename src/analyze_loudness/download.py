@@ -1,11 +1,39 @@
 """Download audio via yt-dlp Python API and probe media info via ffprobe."""
 
+from pathlib import Path
+
 from analyze_common.download import (  # noqa: F401
     compute_middle,
     download_audio,
+    is_url,
     sanitize_filename,
 )
 from analyze_common.ffmpeg import probe_info
+
+# Local audio / video files the GUI offers in its file dialog and accepts by
+# drag and drop.  ffmpeg decides what it can actually read.
+AUDIO_EXTENSIONS = (
+    ".wav", ".mp3", ".m4a", ".flac", ".ogg", ".opus",
+    ".wma", ".aac", ".aiff", ".aif", ".webm", ".mkv", ".mp4",
+)
+
+
+def local_path(source: str) -> str:
+    """Absolute path of a local source (``~`` expanded)."""
+    return str(Path(source).expanduser().resolve())
+
+
+def resolve_source(source: str, workdir: str) -> tuple[str, str]:
+    """(audio path, title): downloads a URL, or uses a local file as-is.
+
+    A local file's title is its name without the extension.
+    """
+    if is_url(source):
+        return download_audio(source, workdir)
+    path = Path(local_path(source))
+    if not path.is_file():
+        raise FileNotFoundError(f"File not found: {source}")
+    return str(path), path.stem
 
 
 def probe_duration(path: str) -> float:

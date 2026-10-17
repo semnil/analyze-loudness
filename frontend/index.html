@@ -27,9 +27,10 @@
 
   <main>
     <form id="analyze-form" class="input-bar" data-i18n-aria-label="form.aria" aria-label="Analyze audio source">
-      <label for="url-input" class="visually-hidden" data-i18n="url.label">YouTube URL</label>
-      <input id="url-input" type="url" inputmode="url" placeholder="YouTube URL" data-i18n-placeholder="url.placeholder"
+      <label for="url-input" class="visually-hidden" data-i18n="url.label">YouTube URL or local file path</label>
+      <input id="url-input" type="text" inputmode="url" placeholder="YouTube URL or local file path" data-i18n-placeholder="url.placeholder"
              autocomplete="off" autocapitalize="off" spellcheck="false" required>
+      <button id="browse-btn" type="button" data-i18n="btn.browse" data-i18n-aria-label="btn.browse.aria" aria-label="Choose a local audio file">Browse</button>
       <button id="submit-btn" type="submit" data-i18n="btn.analyze">Analyze</button>
       <button id="add-btn" type="button" data-i18n="btn.add" data-i18n-aria-label="btn.add.aria" aria-label="Add the URL as a track for comparison">+ Add Track</button>
       <button id="load-btn" type="button" data-i18n="btn.load_json" data-i18n-aria-label="btn.load_json.aria" aria-label="Load saved JSON result">&#x1F4C4; Load JSON</button>

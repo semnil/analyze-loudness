@@ -47,6 +47,7 @@
   --track-tag-bg: #E1BEE7;
   --track-tag-fg: #4A148C;
   --track-remove: #C62828;
+  --drop-bg: rgba(250, 250, 250, 0.92);
 }
 
 [data-theme="dark"] {
@@ -84,6 +85,7 @@
   --track-tag-bg: #3a2a5e;
   --track-tag-fg: #E1BEE7;
   --track-remove: #FF8A80;
+  --drop-bg: rgba(26, 26, 46, 0.92);
 }
 
 body {
@@ -121,7 +123,7 @@ h1 {
   color: var(--fg);
 }
 
-.input-bar input[type="url"] { flex: 1; }
+.input-bar #url-input { flex: 1; }
 
 .input-bar input:focus { border-color: var(--accent); }
 
@@ -147,6 +149,24 @@ button:focus-visible, input:focus-visible {
 
 #load-btn { background: var(--accent-deeper); color: var(--on-accent); }
 #load-btn:hover { background: var(--accent-deepest); }
+
+/* Drag & drop overlay */
+body.drag-over::after {
+  content: attr(data-drop-text);
+  position: fixed;
+  inset: 0;
+  background: var(--drop-bg);
+  border: 3px dashed var(--accent);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--accent);
+  pointer-events: none;
+  z-index: 1000;
+}
 
 /* Comparison queue */
 #track-list { margin: -16px 0 8px; }
@@ -557,7 +577,7 @@ button:focus-visible, input:focus-visible {
 
 @media (max-width: 640px) {
   .input-bar { flex-wrap: wrap; }
-  .input-bar input[type="url"] { flex: 1 1 100%; }
+  .input-bar #url-input { flex: 1 1 100%; }
   .input-bar button { flex: 1 1 auto; }
 }
 
@@ -569,6 +589,7 @@ button:focus-visible, input:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  body.drag-over::after { border-style: solid; }
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
