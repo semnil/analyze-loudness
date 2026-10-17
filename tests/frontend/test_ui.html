@@ -20,8 +20,13 @@
     <form id="analyze-form" class="input-bar" aria-label="Analyze audio source">
       <input id="url-input" type="url" placeholder="YouTube URL" required>
       <button id="submit-btn" type="submit">Analyze</button>
+      <button id="add-btn" type="button">+ Add Track</button>
       <button id="load-btn" type="button">Load JSON</button>
     </form>
+    <div id="track-list" role="list"></div>
+    <div id="compare-bar" class="compare-bar" hidden>
+      <button id="clear-btn" type="button">Clear All</button>
+    </div>
     <div id="status" role="status" aria-live="polite"></div>
     <div id="results" tabindex="-1"></div>
   </main>
@@ -41,7 +46,9 @@
   <!-- Stub chart renderers — return objects matching real API -->
   <script>
     window.renderTimeline = function(){ return { destroy: function(){}, ctx: null }; };
+    window.renderCompareTimeline = function(){ return { destroy: function(){}, ctx: null }; };
     window.renderHistogram = function(){};
+    window.renderHistogramCompare = function(){};
     window.renderSegments = function(){};
     window.isDark = function(){
       return document.documentElement.getAttribute("data-theme") === "dark";
@@ -51,6 +58,7 @@
         surface: "#fff", fg: "#333", fgMuted: "#666", titleColor: "#0d47a1",
         separator: "#ccc", barFill: "#9c27b0", accent: "#9c27b0",
         border: "#ccc",
+        trackColors: ["#B71C1C", "#1A237E", "#CC79A7", "#7E57C2", "#006064", "#3E2723"],
       };
     };
   </script>

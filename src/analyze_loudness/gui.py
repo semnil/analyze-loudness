@@ -14,14 +14,17 @@ import threading
 import time
 import traceback
 from collections import OrderedDict
-from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import webview
 
-from analyze_loudness import SCHEMA_VERSION, __version__, _json_safe
-from analyze_loudness.analysis import run_ebur128, compute_stats, compute_silence_pct
+from analyze_loudness import _json_safe
+from analyze_loudness.analysis import run_ebur128
+from analyze_loudness.compare import (
+    build_compare, build_result, is_compare, truncated_stats,
+    validate_compare, validate_single, validate_tracks,
+)
 from analyze_loudness.download import (
     download_audio, probe_duration, compute_middle, sanitize_filename,
 )
@@ -154,6 +157,10 @@ def _cache_put(url: str, duration: float | None, result_dict: dict) -> str:
     return path
 
 
+def _compare_stats(doc: dict) -> list[dict]:
+    return _json_safe([truncated_stats(track) for track in doc["compare"]["tracks"]])
+
+
 class _ClientDisconnected(Exception):
     """Raised when the client aborts the NDJSON stream."""
 
@@ -165,7 +172,9 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(FRONTEND_DIR), **kwargs)
 
     _MAX_BODY_BYTES = 64 * 1024 * 1024  # 64 MiB: large enough for full-resolution image payload
-    _MAX_LOAD_BYTES = 50 * 1024 * 1024  # 50 MB cap for /load JSON files
+    # /load cap: room for a saved comparison of MAX_TRACKS tracks at the
+    # longest length a /compare request body can carry.
+    _MAX_LOAD_BYTES = 210 * 1024 * 1024
     _ALLOWED_HOSTS = ("127.0.0.1", "localhost")
 
     def _check_host(self) -> bool:
@@ -211,12 +220,14 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
     def do_POST(self):
         if not self._check_host():
             return
-        if self.path in ("/save", "/save-image", "/load"):
+        if self.path in ("/save", "/save-image", "/load", "/compare"):
             try:
                 if self.path == "/save":
                     self._handle_save()
                 elif self.path == "/save-image":
                     self._handle_save_image()
+                elif self.path == "/compare":
+                    self._handle_compare()
                 else:
                     self._handle_load()
             except Exception:
@@ -356,52 +367,25 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         self._send_event("progress", stage="stats",
                          message="Computing statistics...")
 
-        st = compute_stats(S, "Short-term")
-        mo = compute_stats(M, "Momentary")
-        # Treats NaN/-inf frames as silence and skips ffmpeg's warm-up frames.
-        silence_pct = compute_silence_pct(t, S)
-
-        def _round1(v):
-            return round(v, 1) if v is not None else None
-
-        result = {
-            "meta": {
-                "schema_version": SCHEMA_VERSION,
-                "version": __version__,
-                "analyzed_at": datetime.now(timezone.utc).isoformat(),
-                "source_url": url,
-            },
-            "title": title,
-            "summary": {
-                "duration_sec": round(float(t[-1]), 1),
-                "frames": len(t),
-                "integrated": summary_raw.get("integrated"),
-                "true_peak": summary_raw.get("true_peak"),
-                "lra": summary_raw.get("lra"),
-                "gate_threshold": _round1(summary_raw.get("gate_threshold")),
-                "short_term": {
-                    "median": _round1(st["median"]),
-                    "mean": _round1(st["mean"]),
-                    "p10": _round1(st["p10"]),
-                    "p90": _round1(st["p90"]),
-                },
-                "momentary": {
-                    "median": _round1(mo["median"]),
-                    "mean": _round1(mo["mean"]),
-                    "p10": _round1(mo["p10"]),
-                    "p90": _round1(mo["p90"]),
-                },
-                "silence_pct": round(silence_pct, 1),
-            },
-            "series": {
-                "t": [round(float(v), 2) for v in t],
-                "S": [round(float(v), 1) for v in S],
-                "M": [round(float(v), 1) for v in M],
-            },
-        }
-        result = _json_safe(result)
+        result = build_result(t, M, S, summary_raw, title, url)
         _cache_put(url, duration_min, result)
         self._send_event("result", data=result)
+
+    def _handle_compare(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except (ValueError, TypeError):
+            length = 0
+        if length > self._MAX_BODY_BYTES:
+            self._json_error(413, f"Comparison request exceeds {self._MAX_BODY_BYTES // (1024 * 1024)} MiB")
+            return
+        tracks = self._read_json_body().get("tracks")
+        err = validate_tracks(tracks)
+        if err:
+            self._json_error(400, f"Invalid 'tracks': {err}")
+            return
+        doc = build_compare(tracks)
+        self._json_response(200, {"data": doc, "stats": _compare_stats(doc)})
 
     def _handle_save(self):
         body = self._read_json_body()
@@ -519,33 +503,24 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             self._json_error(400, f"Failed to read file: {e}")
             return
 
-        if not isinstance(data, dict):
-            self._json_error(400, "Invalid loudness JSON: expected an object")
-            return
-        if "summary" not in data or "series" not in data:
-            self._json_error(400, "Invalid loudness JSON: missing summary or series")
-            return
-        series = data["series"]
-        if not isinstance(series, dict) or not all(
-            isinstance(series.get(k), list) for k in ("t", "S", "M")
-        ):
-            self._json_error(400, "Invalid loudness JSON: series must contain t, S, M arrays")
-            return
-        if not (len(series["t"]) == len(series["S"]) == len(series["M"])):
-            self._json_error(400, "Invalid loudness JSON: series t/S/M length mismatch")
+        # A comparison's tracks carry cut series, so they never enter the
+        # single-result cache.
+        if is_compare(data):
+            err = validate_compare(data)
+            if err:
+                self._json_error(400, err)
+                return
+            self._json_response(200, {"loaded": True, "data": data,
+                                      "stats": _compare_stats(data)})
             return
 
-        # Reject meta.schema_version values that are not plain ints (bool is
-        # rejected explicitly because isinstance(True, int) is True).  Absent
-        # field is allowed for pre-schema JSON.
-        meta = data.get("meta")
-        if isinstance(meta, dict) and "schema_version" in meta:
-            sv = meta["schema_version"]
-            if not isinstance(sv, int) or isinstance(sv, bool):
-                self._json_error(400, "Invalid loudness JSON: meta.schema_version must be an integer")
-                return
+        err = validate_single(data)
+        if err:
+            self._json_error(400, err)
+            return
 
         # Cache loaded data for reuse (only when source_url is a usable string key)
+        meta = data.get("meta")
         src = meta.get("source_url") if isinstance(meta, dict) else None
         if isinstance(src, str) and src:
             self._cache_loaded(src, data)

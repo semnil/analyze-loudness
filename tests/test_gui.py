@@ -424,10 +424,11 @@ class TestLoadNanInfFallback:
 class TestLoadFileSizeLimit:
     """V-17 (from pair checklist): /load rejects files exceeding _MAX_LOAD_BYTES."""
 
-    def test_oversized_file_rejected(self, server, mock_window, tmp_path):
-        # Create a file slightly over the 50 MB limit
+    def test_oversized_file_rejected(self, server, handler_class, mock_window, tmp_path, monkeypatch):
+        # A small cap stands in for the real one so the test does not write 210 MB.
+        monkeypatch.setattr(handler_class, "_MAX_LOAD_BYTES", 1024)
         big_file = tmp_path / "huge.json"
-        big_file.write_bytes(b"x" * (50 * 1024 * 1024 + 1))
+        big_file.write_bytes(b"x" * (1024 + 1))
         mock_window.create_file_dialog.return_value = str(big_file)
         status, body = _serve_post(server, "/load", {})
         assert status == 400
@@ -617,3 +618,82 @@ class TestHTTPServerBacklog:
         finally:
             srv.shutdown()
             srv.server_close()
+
+
+def _single(n_frames, title="T"):
+    t = [round(0.1 * (i + 1), 2) for i in range(n_frames)]
+    return {
+        "meta": {"schema_version": 2, "source_url": f"https://example.com/{title}"},
+        "title": title,
+        "summary": {"integrated": -20.0, "true_peak": -1.0, "lra": 5.0, "gate_threshold": -30.0},
+        "series": {"t": t, "S": [-20.0] * n_frames, "M": [-21.0] * n_frames},
+    }
+
+
+class TestCompareEndpoint:
+    def test_builds_cut_comparison_with_stats(self, server):
+        status, body = _serve_post(server, "/compare", {"tracks": [_single(80, "a"), _single(50, "b")]})
+        assert status == 200
+        tracks = body["data"]["compare"]["tracks"]
+        assert [len(tr["series"]["t"]) for tr in tracks] == [50, 50]
+        assert body["data"]["meta"]["schema_version"] == 3
+        assert len(body["stats"]) == 2
+        assert body["stats"][0]["frames"] == 50
+        assert body["stats"][0]["integrated"] == pytest.approx(-21.0)
+
+    @pytest.mark.parametrize("n", [1, 7])
+    def test_track_count_bounds(self, server, n):
+        status, body = _serve_post(server, "/compare", {"tracks": [_single(10) for _ in range(n)]})
+        assert status == 400
+        assert "tracks" in body["error"]
+
+    def test_invalid_track_named(self, server):
+        bad = _single(10)
+        bad["series"]["S"] = bad["series"]["S"][:5]
+        status, body = _serve_post(server, "/compare", {"tracks": [_single(10), bad]})
+        assert status == 400
+        assert "Track 2:" in body["error"]
+
+    def test_comparison_as_track_rejected(self, server):
+        nested = {"compare": {"tracks": [_single(10), _single(10)]}}
+        status, body = _serve_post(server, "/compare", {"tracks": [_single(10), nested]})
+        assert status == 400
+        assert "comparison" in body["error"]
+
+    def test_empty_track_rejected(self, server):
+        status, body = _serve_post(server, "/compare", {"tracks": [_single(10), _single(0)]})
+        assert status == 400
+        assert "no frames" in body["error"]
+
+    def test_oversized_request_rejected(self, server, handler_class, monkeypatch):
+        monkeypatch.setattr(handler_class, "_MAX_BODY_BYTES", 100)
+        status, body = _serve_post(server, "/compare", {"tracks": [_single(10), _single(10)]})
+        assert status == 413
+
+
+class TestLoadComparison:
+    def _write(self, tmp_path, doc):
+        f = tmp_path / "cmp.json"
+        f.write_text(json.dumps(doc))
+        return str(f)
+
+    def test_comparison_loads_with_stats_and_skips_cache(self, server, mock_window, tmp_path):
+        import analyze_loudness.gui as gui_mod
+        from analyze_loudness.compare import build_compare
+        doc = build_compare([_single(30, "a"), _single(20, "b")])
+        doc["meta"]["source_url"] = "https://example.com/cmp"
+        mock_window.create_file_dialog.return_value = self._write(tmp_path, doc)
+        before = dict(gui_mod._loaded_cache_data)
+        status, body = _serve_post(server, "/load", {})
+        assert status == 200
+        assert body["loaded"] is True
+        assert "compare" in body["data"]
+        assert len(body["stats"]) == 2
+        assert dict(gui_mod._loaded_cache_data) == before
+
+    def test_invalid_comparison_rejected(self, server, mock_window, tmp_path):
+        doc = {"compare": {"tracks": [_single(10)]}}
+        mock_window.create_file_dialog.return_value = self._write(tmp_path, doc)
+        status, body = _serve_post(server, "/load", {})
+        assert status == 400
+        assert "tracks" in body["error"]

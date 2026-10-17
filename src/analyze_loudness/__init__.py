@@ -14,4 +14,6 @@ __version__ = "1.4.1"
 
 # 2: summary.gate_threshold (ffmpeg's own gating threshold).  Results without
 # it -- schema 1 files -- stay loadable; the frontend recomputes from series.M.
-SCHEMA_VERSION = 2
+# 3: comparison documents ({"compare": {"tracks": [...]}}).  Single results
+# keep the schema 2 content.
+SCHEMA_VERSION = 3

@@ -43,6 +43,10 @@
   --gate-track: #E9EAEE;
   --gate-out: #B26A00;
   --gate-silent: #33405A;
+  --track-bg: #F3E5F5;
+  --track-tag-bg: #E1BEE7;
+  --track-tag-fg: #4A148C;
+  --track-remove: #C62828;
 }
 
 [data-theme="dark"] {
@@ -76,6 +80,10 @@
   --gate-track: #232C4A;
   --gate-out: #E9A93C;
   --gate-silent: #C8D2E6;
+  --track-bg: #26203f;
+  --track-tag-bg: #3a2a5e;
+  --track-tag-fg: #E1BEE7;
+  --track-remove: #FF8A80;
 }
 
 body {
@@ -139,6 +147,84 @@ button:focus-visible, input:focus-visible {
 
 #load-btn { background: var(--accent-deeper); color: var(--on-accent); }
 #load-btn:hover { background: var(--accent-deepest); }
+
+/* Comparison queue */
+#track-list { margin: -16px 0 8px; }
+#track-list:empty { display: none; }
+
+.track-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 2px 12px;
+  margin-bottom: 4px;
+  background: var(--track-bg);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+/* Outlined so the swatch edge stays visible on the tinted row and table
+   backgrounds whatever the track colour. */
+.track-swatch {
+  display: inline-block;
+  flex: none;
+  width: 20px;
+  height: 10px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--fg-muted);
+}
+
+.track-num { flex: none; font-weight: 700; min-width: 1ch; }
+
+.track-tag {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--track-tag-bg);
+  color: var(--track-tag-fg);
+}
+
+.track-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-btn {
+  flex: none;
+  min-width: 36px;
+  min-height: 36px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--fg);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.track-btn:hover:not(:disabled) { background: var(--copy-bg); }
+.track-btn.remove { color: var(--track-remove); font-size: 18px; }
+.track-btn.placeholder { visibility: hidden; }
+.track-btn:disabled { cursor: not-allowed; opacity: 0.4; }
+
+.compare-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+.compare-bar[hidden] { display: none; }
+.compare-bar button {
+  padding: 8px 20px;
+  min-height: 36px;
+  border: 1px solid var(--copy-border);
+  border-radius: 6px;
+  background: var(--copy-bg);
+  color: var(--fg);
+  font-size: 13px;
+  cursor: pointer;
+}
+.compare-bar button:hover:not(:disabled) { background: var(--copy-bg-hover); }
+.compare-bar button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 /* Toolbar (lang + theme toggles) */
 .toolbar {
@@ -255,6 +341,35 @@ button:focus-visible, input:focus-visible {
   background: var(--surface);
   color: var(--fg);
 }
+
+.compare-table tbody th { text-align: left; width: 16%; white-space: nowrap; }
+.compare-table .track-head {
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compare-table .track-swatch { margin-right: 6px; vertical-align: 1px; }
+
+.compare-scope {
+  text-align: center;
+  font-size: 12px;
+  color: var(--fg-muted);
+  margin-bottom: 12px;
+}
+
+.gate-compare-facts { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+
+.compare-seg-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compare-seg-title .track-swatch { margin-right: 8px; vertical-align: 1px; }
 
 .summary-table .silence-row th,
 .summary-table .silence-row td {

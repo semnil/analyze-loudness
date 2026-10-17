@@ -36,6 +36,7 @@ analyze-loudness/
 │   ├── gui.py                  # pywebview + local HTTP server (GUI)
 │   ├── download.py             # yt_dlp.YoutubeDL API, ffprobe duration
 │   ├── analysis.py             # ebur128 stderr parsing, compute_stats
+│   ├── compare.py              # 単体 / 比較 JSON の組み立てと検証, 切り詰めた範囲の統計
 │   └── plot.py                 # matplotlib figure generation (CLI only)
 ├── frontend/
 │   ├── index.html
@@ -53,6 +54,7 @@ analyze-loudness/
 │   ├── __init__.py
 │   ├── conftest.py
 │   ├── test_analysis.py
+│   ├── test_compare.py
 │   ├── test_cli.py
 │   ├── test_download.py
 │   ├── test_gui.py
@@ -80,6 +82,7 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 analyze-loudness "https://www.youtube.com/watch?v=XXXXX"
 analyze-loudness "https://..." --duration 10 --output-dir ./out
+analyze-loudness "https://..." ./loudness_saved.json   # 比較 (2-6 本、--duration 不可)
 ```
 
 ### CLI dependencies (installed via pip)
@@ -154,7 +157,7 @@ S は 3 秒窓なので先頭 29 フレームは窓が埋まらず無音フロ�
 
 `(総尺 - 抽出分数*60) / 2` を開始点として `ffmpeg -ss`/`-t` で ebur128 分析時に直接切り出し。ソースが指定分数より短い場合は全尺使用。
 
-この機能は CLI の `--duration` オプションのみで公開する。GUI には分数入力 UI を実装しない方針 (URL 入力だけのシンプルなワークフローを維持、常に全尺分析)。GUI バックエンドの `/analyze` エンドポイントは `duration` フィールドを受理する validation を残しているが、フロントエンドからは送出されない。
+この機能は CLI の `--duration` オプション (単体の分析のみ) で公開する。GUI には分数入力 UI を実装しない方針 (URL 入力だけのシンプルなワークフローを維持、常に全尺分析)。GUI バックエンドの `/analyze` エンドポイントは `duration` フィールドを受理する validation を残しているが、フロントエンドからは送出されない。
 
 ### ダウンロード形式
 
@@ -201,7 +204,8 @@ NDJSON ストリーミングでリアルタイム進捗表示。runtime-calibrat
 | `/analyze` | POST | URL から音声をダウンロードし EBU R128 分析。NDJSON ストリーム応答 |
 | `/save` | POST | 分析結果 JSON をネイティブファイルダイアログで保存 |
 | `/save-image` | POST | チャート composite PNG (base64) をネイティブダイアログで保存 |
-| `/load` | POST | ネイティブダイアログで JSON を選択し、結果を再可視化 |
+| `/compare` | POST | 2-6 本の単体結果を一番短いトラックに切り詰めた比較 JSON と、切り詰めた範囲の統計 (`stats`) を返す |
+| `/load` | POST | ネイティブダイアログで JSON を選択し、結果を再可視化。比較 JSON には `stats` を添え、単体結果のキャッシュには入れない |
 
 ### ダークモード
 
@@ -216,7 +220,7 @@ CSS 変数 + `[data-theme="dark"]` でライト/ダーク/auto の 3 ステー�
 
 ### チャートタイトルの単独描画 (analyze-spectrum と統一)
 
-各チャート (timeline / histogram x2 / segments) のタイトルは HTML `<h3 class="chart-title">` のみで描画し、Canvas / uPlot の `ctx.fillText` や `title:` オプションは使わない。canvas 内描画は二重表示と PNG エクスポート時の重複を招くため禁止 (`captureImage()` が `chartTitles` 配列で composite PNG にタイトルを焼き込む)。HTML タイトルは `_addTip()` でツールチップ (`tip.chart_timeline` / `tip.chart_histogram` / `tip.chart_segments`) を持つ。
+各チャート (timeline / histogram x2 / segments) のタイトルは HTML `<h3 class="chart-title">` のみで描画し、Canvas / uPlot の `ctx.fillText` や `title:` オプションは使わない。canvas 内描画は二重表示と PNG エクスポート時の重複を招くため禁止 (`captureImage()` が `chartCanvasRefs` の各要素 `{canvas, label}` の `label` で composite PNG にタイトルを焼き込む)。HTML タイトルは `_addTip()` でツールチップ (`tip.chart_timeline` / `tip.chart_histogram` / `tip.chart_segments`) を持つ。
 
 `role="img"` + `aria-label` は histogram では canvas 自体に、timeline / segments ではコンテナ div に付与する。タイトルは必ずそのノードの外側に置く (ARIA が `role="img"` の子孫を presentational 扱いするため、内側だとタイトルとツールチップ本文が支援技術に渡らない)。
 
@@ -253,9 +257,10 @@ ffmpeg の Integrated をより忠実に再現するのは 13 本中 12 本で 1
 | ver | 追加 |
 |-----|------|
 | 1 | 初版 |
+| 3 | 比較 JSON (`compare.tracks`)。単体結果の中身は schema 2 と同じ |
 | 2 | `summary.gate_threshold` — ffmpeg の相対ゲート。無い場合はフロントエンドが `series.M` から再計算。あわせて `summary.silence_pct` が ebur128 のウォームアップフレームを分母から外すようになった (schema 1 で保存済みの値は旧算出のまま) |
 
-`/load` は `meta.schema_version` が int であることだけを検証し、値では弾かない。
+`/load` は `meta.schema_version` が int であることだけを検証し、値では弾かない。単体か比較かは `compare` の有無で分岐する。
 新フィールドは**バージョン番号ではなく有無で分岐する** — 手編集された JSON で欠落しうるため。
 
 帯の場所は x 軸の `gap` / `size` とチャート高さを同じ 11 px ずつ広げて作る。プロット bbox は帯の
@@ -265,6 +270,16 @@ ffmpeg の Integrated をより忠実に再現するのは 13 本中 12 本で 1
 色は `theme.js` の `gateTrack` / `gateOut` / `gateSilent` と CSS 変数
 `--gate-track` / `--gate-out` / `--gate-silent` の 2 か所に定義がある (canvas 用と凡例 chip 用)。
 片方だけ変えると凡例と帯の色がずれる。
+
+### 比較モード
+
+2-6 本の結果を先頭から重ね、一番短いトラックの長さで全トラックを切り詰める。切り詰めた範囲の統計は
+`compare.truncated_stats()` (Python) だけが計算し、フロントエンドは `/compare` と `/load` が返す `stats` を表示する。
+切り詰めた範囲の Integrated と GATE 帯は相対ゲートを計算し直す (全長の `summary.gate_threshold` を使わない)。
+照合の実測・比較 JSON の形・トラック色の根拠は `docs/architecture.md` の「Comparison mode」節。
+`MIN_TRACKS` / `MAX_TRACKS` は `compare.py` と `frontend/main.js` のミラー、ゲートの定数
+(`GATE_ABSOLUTE` / `GATE_RELATIVE_OFFSET` / `GATE_BLOCK_SEC`) は `compare.py` と `frontend/gate.js` のミラー、
+トラック色 (ライト) は `frontend/theme.js` の `trackColors` と `plot.py` の `TRACK_COLORS` のミラーで、必ず同時に更新する。
 
 ### フロントエンド UI テスト
 
@@ -301,7 +316,7 @@ Result event:
   "type": "result",
   "data": {
     "meta": {
-      "schema_version": 2,
+      "schema_version": 3,
       "version": "1.0.0",
       "analyzed_at": "2026-04-03T12:34:56+00:00",
       "source_url": "https://www.youtube.com/watch?v=..."
@@ -364,5 +379,4 @@ All items implemented and tested.
 ## Known limitations / future work
 
 - yt-dlp の YouTube 仕様変更追従 -> リリースごとに `pyproject.toml` のピンを更新する
-- 比較モード未実装 (2 URL のオーバーレイ比較グラフ)
 - `_speed_factor` はグローバル変数で複数リクエスト間で共有 (GUI は単一ユーザー想定のため実質問題なし)
