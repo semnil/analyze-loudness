@@ -50,7 +50,7 @@ Summary の件数は 2026-10-17 に SEC-17〜SEC-19 を追加した時点のも�
 - **Risk**: LOW -> RESOLVED
 - **Location**: [gui.py:73-75](../src/analyze_loudness/gui.py)
 - **Resolution**: `url` フィールドの存在と `str` 型をチェック。空文字列は 400 エラーで拒否。
-- **Note**: ユーザー自身が URL を入力し、ローカルマシンから YouTube にアクセスする。
+- **Note**: ユーザー自身が URL かローカルファイルのパスを入力し、ローカルマシンから YouTube にアクセスするか、そのファイルを読む (ローカルパスは SEC-18)。
 
 ### SEC-04: duration パラメータのバリデーション -- RESOLVED
 

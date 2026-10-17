@@ -146,7 +146,7 @@ same-origin で frontend を配信する。
 長時間動画は中盤のみを分析する。`ffmpeg -ss <start> -t <duration>` で
 ebur128 分析時に直接切り出し。
 
-CLI のみが `--duration` オプションでこの機能を公開する。GUI にはこれに相当する入力 UI を実装しない (常に全尺を分析)。GUI は URL のみを受け取るシンプルなワークフローを優先し、部分抽出が必要な用途は CLI に委ねる方針。
+CLI のみが `--duration` オプションでこの機能を公開する。GUI にはこれに相当する入力 UI を実装しない (常に全尺を分析)。GUI は URL かローカルファイルのパスだけを受け取るシンプルなワークフローを優先し、部分抽出が必要な用途は CLI に委ねる方針。
 
 ### 6. Conditional static-ffmpeg (CLI only)
 
