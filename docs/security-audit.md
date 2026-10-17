@@ -1,28 +1,29 @@
 # Security Audit Report
 
-**Date**: 2026-04-04 (初版は 2026-04-03、SEC-16 と Summary の件数は 2026-04-04 に追加、CI/CD 節は 2026-09-30 に確認)
+**Date**: 2026-04-04 (初版は 2026-04-03、SEC-16 と Summary の件数は 2026-04-04 に追加、CI/CD 節は 2026-09-30 に確認、SEC-17〜SEC-19 は 2026-10-17 に追加)
 **Scope**:
 - 2026-04-03〜04 の監査: CLI (`src/analyze_loudness/`), GUI (`src/analyze_loudness/gui.py`), Frontend SPA (`frontend/`), Build/Distribution (`build.py`, `analyze-loudness.spec`, `installer.iss`)
 - 2026-09-30 の確認: CI (`.github/workflows/`, `.github/tests/`) の action の固定と検査 (CI/CD 節)
+- 2026-10-17 の確認: ローカルファイル入力 (`/analyze` のローカルパス、`/browse`、`/upload`) と POST の Content-Type (SEC-17〜SEC-19)
 
 ## Summary
 
 | Category | Findings | Open | Resolved | Accepted |
 |----------|----------|------|----------|----------|
-| Local HTTP Server | 2 | 0 | 1 | 1 |
+| Local HTTP Server | 3 | 0 | 2 | 1 |
 | Input Validation | 3 | 0 | 3 | 0 |
 | Command Injection | 1 | 0 | 0 | 1 |
-| File I/O (Save/Load) | 3 | 0 | 0 | 3 |
+| File I/O (Save/Load/Upload) | 5 | 0 | 0 | 5 |
 | Data Exposure | 1 | 0 | 0 | 1 |
 | XSS | 1 | 0 | 0 | 1 |
 | Subprocess Management | 2 | 0 | 1 | 1 |
 | Bundled Binaries | 2 | 0 | 2 | 0 |
 | Resource Management | 1 | 0 | 0 | 1 |
-| **Total** | **16** | **0** | **7** | **9** |
+| **Total** | **19** | **0** | **8** | **11** |
 
-**Open: 0** / Resolved: 7 / Accepted (risk acknowledged): 9
+**Open: 0** / Resolved: 8 / Accepted (risk acknowledged): 11
 
-Summary の件数は 2026-04-04 に SEC-16 を追加した時点のもの (2026-04-03 の初版は SEC-01〜SEC-15 の 15 件、Accepted 8)。個々の指摘の本文は、その後のコード変更に合わせて更新されている (履歴は `git log -- docs/security-audit.md`)。2026-09-30 の CI/CD 節の確認はこの表に含まない。
+Summary の件数は 2026-10-17 に SEC-17〜SEC-19 を追加した時点のもの (2026-04-04 に SEC-16 を追加した時点では 16 件、Resolved 7、Accepted 9) (2026-04-03 の初版は SEC-01〜SEC-15 の 15 件、Accepted 8)。個々の指摘の本文は、その後のコード変更に合わせて更新されている (履歴は `git log -- docs/security-audit.md`)。2026-09-30 の CI/CD 節の確認はこの表に含まない。
 
 ---
 
@@ -49,7 +50,7 @@ Summary の件数は 2026-04-04 に SEC-16 を追加した時点のもの (2026-
 - **Risk**: LOW -> RESOLVED
 - **Location**: [gui.py:73-75](../src/analyze_loudness/gui.py)
 - **Resolution**: `url` フィールドの存在と `str` 型をチェック。空文字列は 400 エラーで拒否。
-- **Note**: ユーザー自身が URL を入力し、ローカルマシンから YouTube にアクセスする。
+- **Note**: ユーザー自身が URL かローカルファイルのパスを入力し、ローカルマシンから YouTube にアクセスするか、そのファイルを読む (ローカルパスは SEC-18)。
 
 ### SEC-04: duration パラメータのバリデーション -- RESOLVED
 
@@ -75,6 +76,14 @@ Summary の件数は 2026-04-04 に SEC-16 を追加した時点のもの (2026-
 - **Location**: [gui.py:44-49](../src/analyze_loudness/gui.py)
 - **Resolution**: `_read_json_body()` で `JSONDecodeError` / `ValueError` を catch し、空 dict を返す。不正なリクエストボディで 500 エラーが発生しない。
 
+### SEC-17: POST の Content-Type を検査していなかった -- RESOLVED
+
+- **Added**: 2026-10-17
+- **Risk**: LOW -> RESOLVED
+- **Location**: [gui.py](../src/analyze_loudness/gui.py) (`_check_content_type`)
+- **Finding**: サーバーは Content-Type を見ずに本文を JSON として処理していた。`text/plain` や `application/x-www-form-urlencoded` は preflight の要らない単純リクエストなので、ポート番号を当てた外部サイトが `/analyze` を実行させられた (2026-10-17 に `text/plain` の POST が処理されることを確認)。
+- **Resolution**: JSON のエンドポイントは `application/json`、`/upload` は `application/octet-stream` 以外を 415 で拒否する。ブラウザはこれらの型の cross-origin POST の前に preflight (OPTIONS) を送り、サーバーは応答しないため、本体の POST は送られない。
+
 ---
 
 ## Accepted Findings (risk acknowledged)
@@ -85,7 +94,7 @@ Summary の件数は 2026-04-04 に SEC-16 を追加した時点のもの (2026-
 - **Location**: [gui.py:293](../src/analyze_loudness/gui.py)
 - **Analysis**: 127.0.0.1 バインドのため、同一マシン上の他プロセスからは `/analyze` エンドポイントにアクセス可能。ただし:
   - ポートはランダム (port 0) のため予測困難
-  - ブラウザの same-origin policy により、外部サイトからの CSRF は Content-Type: application/json の POST が preflight で阻止される
+  - 外部サイトからの CSRF は、サーバーが Content-Type を `application/json` (`/upload` は `application/octet-stream`) に限るため preflight が必須になり、サーバーが preflight に応答しないので阻止される (SEC-17)
   - ローカルアプリの標準的な設計パターン
   - 最悪でも YouTube 音声の分析が実行されるのみ（データ破壊なし）
 
@@ -152,6 +161,30 @@ Summary の件数は 2026-04-04 に SEC-16 を追加した時点のもの (2026-
   - 読み込んだデータはフロントエンドの `render()` に渡されるが、ユーザー由来文字列は `textContent` 経由で安全に表示（SEC-09 参照）
   - 127.0.0.1 + ランダムポートのため外部からの呼び出し不可
 
+### SEC-18: `/analyze` によるローカルファイルの読み取り -- ACCEPTED
+
+- **Added**: 2026-10-17
+- **Risk**: VERY LOW
+- **Location**: [gui.py](../src/analyze_loudness/gui.py) (`/analyze`), [download.py](../src/analyze_loudness/download.py) (`resolve_source`)
+- **Analysis**: `/analyze` は http(s) 以外の入力をローカルパスとして扱い、ffmpeg (list 引数) で読み取る。`://` を含む http(s) 以外のスキームと `javascript:` は 400。
+  - 返すのはラウドネスの系列と統計だけで、ファイルの中身は返さない
+  - 存在しないパスは `File not found` の 400 になるため、同じマシンのプロセスはファイルの有無を知りうる
+  - UNC パス・デバイスパス (先頭が `\\` か `//`) は、パスの解決や `os.path.isfile` の前に 400 で拒否する (`download.is_network_path`)。受け取った保存済み JSON の `meta.source_url` が入力欄へ戻り、そのまま Analyze された場合も、パスの解決や存在確認に進まない (Windows での接続の有無は未計測)
+  - 外部サイトからは SEC-17 により呼べない。呼べるのは 127.0.0.1 のランダムポートに届く同じマシンのプロセスだけ (SEC-07)
+- **Accepted**: 同じマシンのプロセスはユーザー権限でファイルを直接読めるため、新たに得るものは無い
+
+### SEC-19: `/upload` による一時ディレクトリへの書き込み -- ACCEPTED
+
+- **Added**: 2026-10-17
+- **Risk**: LOW
+- **Location**: [gui.py](../src/analyze_loudness/gui.py) (`_handle_upload`)
+- **Analysis**: ドロップされたファイルを `_upload_dir` (`tempfile.mkdtemp`、終了時に削除) に書く。
+  - 1 リクエスト 500 MB まで (`_MAX_UPLOAD`)、拡張子は `AUDIO_EXTENSIONS` のみ
+  - ファイル名は `sanitize_filename` が区切り文字・予約文字・制御文字を `_` に置き換え、`os.path.commonpath` で `_upload_dir` の外を拒否。同名は `_1`, `_2` … を付けて上書きしない
+  - `X-Filename` は独自ヘッダーなので、外部サイトからは preflight が必須 (SEC-17 と合わせて阻止)
+  - 回数の上限は無いため、同じマシンのプロセスは繰り返しの送信で一時ディレクトリを大きくできる
+- **Accepted**: 書き込み先は一時ディレクトリに限られ、終了時に削除される
+
 ### SEC-16: クライアント切断時の subprocess orphaning -- ACCEPTED
 
 - **Added**: 2026-04-04 (2026-04-03 の初版の後に追加。Summary の件数もこの時点で更新)
@@ -192,7 +225,7 @@ Summary の件数は 2026-04-04 に SEC-16 を追加した時点のもの (2026-
 | Entry Point | Protocol | Auth | Validation |
 |------------|----------|------|------------|
 | CLI args | Local | N/A | argparse + `_positive_float` |
-| GUI HTTP | 127.0.0.1 only | N/A (localhost) | URL + duration + JSON body validation |
+| GUI HTTP | 127.0.0.1 only | N/A (localhost) | Content-Type + URL / local path + duration + JSON body validation |
 | Frontend SPA | pywebview (WebView2) | N/A | Static files, no SSR |
 | File dialogs | Native OS | User interaction required | pywebview SAVE_DIALOG / OPEN_DIALOG, `_dialog_lock` non-blocking try-lock (409 on concurrent) |
 
@@ -207,6 +240,9 @@ Summary の件数は 2026-04-04 に SEC-16 を追加した時点のもの (2026-
 | Disk exhaustion (large video) | DoS | `TemporaryDirectory` auto-cleanup | Low risk |
 | Arbitrary file write via /save | Data overwrite | Native dialog + 127.0.0.1 + random port | Very low risk |
 | Arbitrary file read via /load | Info disclosure | Native dialog + 127.0.0.1 + random port | Very low risk |
+| Cross-site simple POST | Unintended analysis | Content-Type gate forces preflight | Resolved (SEC-17) |
+| Local file analysis via /analyze | File existence probe | 127.0.0.1 + random port + SEC-17 | Accepted (SEC-18) |
+| Repeated /upload | Temp disk usage | 500 MB per request, extension allowlist, temp dir removed on exit | Accepted (SEC-19) |
 | XSS via loaded JSON title | Code execution | `textContent` (no HTML parse) | Not vulnerable |
 | Invalid base64 in /save-image | Server crash | `ValueError` caught | Resolved |
 | Cancel during subprocess | Orphaned process (~11s) | `_ClientDisconnected` + `TemporaryDirectory` cleanup | Accepted (low) |

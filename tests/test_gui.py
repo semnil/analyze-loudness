@@ -2,6 +2,7 @@
 
 import base64
 import json
+import os
 import threading
 from http.server import HTTPServer
 from unittest.mock import patch, MagicMock
@@ -697,3 +698,159 @@ class TestLoadComparison:
         status, body = _serve_post(server, "/load", {})
         assert status == 400
         assert "tracks" in body["error"]
+
+
+class TestLocalSourceValidation:
+    def test_missing_local_file_rejected(self, server, tmp_path):
+        status, body = _serve_post(server, "/analyze", {"url": str(tmp_path / "nope.wav")})
+        assert status == 400
+        assert "not found" in body["error"].lower()
+
+    def test_file_scheme_rejected(self, server, tmp_path):
+        status, body = _serve_post(server, "/analyze", {"url": "file://" + str(tmp_path / "a.wav")})
+        assert status == 400
+        assert "http" in body["error"].lower()
+
+    def test_cache_key_follows_local_mtime(self, tmp_path):
+        import os
+        from analyze_loudness.gui import _cache_key
+        f = tmp_path / "a.wav"
+        f.write_bytes(b"x")
+        os.utime(f, (1000, 1000))
+        k1 = _cache_key(str(f), None)
+        os.utime(f, (2000, 2000))
+        assert _cache_key(str(f), None) != k1
+        assert _cache_key("https://example.com/v", None) == ("https://example.com/v", None)
+
+    def test_loaded_local_result_not_cached(self, server, mock_window, tmp_path):
+        import analyze_loudness.gui as gui_mod
+        doc = _single(10)
+        doc["meta"]["source_url"] = str(tmp_path / "a.wav")
+        f = tmp_path / "r.json"
+        f.write_text(json.dumps(doc))
+        mock_window.create_file_dialog.return_value = str(f)
+        before = dict(gui_mod._loaded_cache_data)
+        status, body = _serve_post(server, "/load", {})
+        assert status == 200
+        assert dict(gui_mod._loaded_cache_data) == before
+
+
+class TestBrowse:
+    def test_cancel(self, server, mock_window):
+        mock_window.create_file_dialog.return_value = None
+        status, body = _serve_post(server, "/browse", {})
+        assert status == 200
+        assert body["selected"] is False
+
+    def test_selected_path(self, server, mock_window):
+        mock_window.create_file_dialog.return_value = ["/music/a.flac"]
+        status, body = _serve_post(server, "/browse", {})
+        assert body == {"selected": True, "path": "/music/a.flac"}
+        file_types = mock_window.create_file_dialog.call_args.kwargs["file_types"]
+        assert "*.flac" in file_types[0] and "*.wav" in file_types[0]
+
+
+def _upload(server, data, name, length=None):
+    import http.client
+    from urllib.parse import quote
+    t = threading.Thread(target=server.handle_request)
+    t.start()
+    conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1])
+    conn.request("POST", "/upload", body=data, headers={
+        "Content-Type": "application/octet-stream",
+        "Content-Length": str(len(data) if length is None else length),
+        "X-Filename": quote(name),
+    })
+    resp = conn.getresponse()
+    body = json.loads(resp.read().decode())
+    conn.close()
+    t.join(timeout=5)
+    return resp.status, body
+
+
+class TestUpload:
+    def test_stores_file_in_upload_dir(self, server):
+        import analyze_loudness.gui as gui_mod
+        status, body = _upload(server, b"RIFFdata", "clip.wav")
+        assert status == 200
+        assert os.path.dirname(body["path"]) == gui_mod._upload_dir
+        with open(body["path"], "rb") as f:
+            assert f.read() == b"RIFFdata"
+        status2, body2 = _upload(server, b"other", "clip.wav")
+        assert body2["path"] != body["path"]
+        assert body2["path"].endswith("clip_1.wav")
+
+    def test_traversal_name_stays_in_upload_dir(self, server):
+        import analyze_loudness.gui as gui_mod
+        status, body = _upload(server, b"x", "../../evil.wav")
+        assert status == 200
+        assert os.path.dirname(body["path"]) == gui_mod._upload_dir
+
+    def test_unsupported_extension_rejected(self, server):
+        status, body = _upload(server, b"x", "notes.txt")
+        assert status == 400
+        assert ".txt" in body["error"]
+
+    def test_too_large_rejected(self, server, handler_class, monkeypatch):
+        monkeypatch.setattr(handler_class, "_MAX_UPLOAD", 4)
+        status, body = _upload(server, b"12345", "a.wav")
+        assert status == 413
+
+
+class TestContentTypeGate:
+    """Simple (no-preflight) cross-origin content types are refused."""
+
+    @pytest.mark.parametrize("ctype", ["text/plain", "application/x-www-form-urlencoded", ""])
+    def test_analyze_rejects_simple_types(self, server, tmp_path, ctype):
+        import http.client
+        body = json.dumps({"url": str(tmp_path / "a.wav")}).encode()
+        t = threading.Thread(target=server.handle_request)
+        t.start()
+        conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1])
+        headers = {"Content-Length": str(len(body))}
+        if ctype:
+            headers["Content-Type"] = ctype
+        conn.request("POST", "/analyze", body=body, headers=headers)
+        resp = conn.getresponse()
+        resp.read()
+        conn.close()
+        t.join(timeout=5)
+        assert resp.status == 415
+
+    def test_json_with_charset_accepted(self, server, tmp_path):
+        import http.client
+        body = json.dumps({"url": str(tmp_path / "a.wav")}).encode()
+        t = threading.Thread(target=server.handle_request)
+        t.start()
+        conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1])
+        conn.request("POST", "/analyze", body=body, headers={
+            "Content-Type": "application/json; charset=utf-8", "Content-Length": str(len(body))})
+        resp = conn.getresponse()
+        resp.read()
+        conn.close()
+        t.join(timeout=5)
+        assert resp.status == 400  # reached validation: the file does not exist
+
+    def test_upload_needs_octet_stream(self, server):
+        import http.client
+        from urllib.parse import quote
+        t = threading.Thread(target=server.handle_request)
+        t.start()
+        conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1])
+        conn.request("POST", "/upload", body=b"x", headers={
+            "Content-Type": "text/plain", "Content-Length": "1", "X-Filename": quote("a.wav")})
+        resp = conn.getresponse()
+        resp.read()
+        conn.close()
+        t.join(timeout=5)
+        assert resp.status == 415
+
+
+class TestNetworkPathRejected:
+    @pytest.mark.parametrize("path", [r"\\host\share\a.wav", "//host/share/a.wav", r"\\?\C:\a.wav"])
+    def test_rejected_before_any_file_access(self, server, path):
+        with patch("analyze_loudness.gui.os.path.isfile", side_effect=AssertionError("touched the path")), \
+             patch("analyze_loudness.gui.local_path", side_effect=AssertionError("resolved the path")):
+            status, body = _serve_post(server, "/analyze", {"url": path})
+        assert status == 400
+        assert "network" in body["error"].lower()

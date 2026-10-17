@@ -424,7 +424,8 @@ function fakeStats() {
     "err.max_tracks", "err.compare_min", "err.compare_queue_busy", "err.url_scheme",
     "compare.title", "compare.scope", "table.integrated_full", "table.true_peak_full",
     "table.lra_full", "tip.integrated_full", "tip.true_peak_full", "tip.lra_full",
-    "gate.lane_label_n", "gate.compare_counted", "chart.compare_track", "chart.compare_seg_title",
+    "gate.lane_label_n", "gate.compare_counted", "btn.browse", "drop.overlay", "track.tag_file",
+    "status.uploading", "status.file_loaded", "chart.compare_track", "chart.compare_seg_title",
   ];
   window.i18n.setLang("en");
   for (var i = 0; i < requiredKeys.length; i++) {
@@ -675,6 +676,83 @@ function fakeStats() {
   urlInput.value = "https://www.youtube.com/watch?v=other";
   addBtn.click();
   assertEqual(compareQueue[0].data, undefined, "A URL other than the displayed result is queued without data");
+
+  // ================================================
+  suite("Local files: source kinds and the queue");
+  // ================================================
+
+  assertEqual(_sourceKind("https://www.youtube.com/watch?v=a"), "url", "http(s) is a URL");
+  assertEqual(_sourceKind("/Users/me/a.wav"), "file", "Absolute path is a file");
+  assertEqual(_sourceKind("C:\\music\\a.wav"), "file", "Windows path is a file");
+  assertEqual(_sourceKind("file:///tmp/a.wav"), null, "file:// is refused");
+  assertEqual(_sourceKind("javascript:alert(1)"), null, "javascript: is refused");
+  assertEqual(_sourceKind("\\\\host\\share\\a.wav"), "network", "UNC path is a network path");
+  assertEqual(_sourceKind("//host/share/a.wav"), "network", "//host path is a network path");
+
+  resetState();
+  urlInput.value = "/Users/me/a.wav";
+  addBtn.click();
+  assertEqual(compareQueue.length, 1, "Local path is queued");
+  assertEqual(compareQueue[0].kind, "file", "Local path is queued as a file");
+  assertEqual(trackListEl.querySelector(".track-tag").textContent, "FILE", "File rows carry the FILE tag");
+  urlInput.value = "file:///tmp/a.wav";
+  addBtn.click();
+  assertEqual(compareQueue.length, 1, "file:// is not queued");
+  urlInput.value = "\\\\host\\share\\a.wav";
+  addBtn.click();
+  assertEqual(compareQueue.length, 1, "A typed UNC path is not queued");
+  assert(statusEl.textContent.indexOf("UNC") !== -1, "The network path error names UNC paths");
+
+  // ================================================
+  suite("Browse fills the field");
+  // ================================================
+
+  resetState();
+  mockFetch(function(url) {
+    assert(url.indexOf("/browse") !== -1, "Browse posts to /browse");
+    return makeJsonResponse({ selected: true, path: "/music/b.flac" });
+  });
+  document.getElementById("browse-btn").click();
+  await new Promise(function(r) { setTimeout(r, 50); });
+  assertEqual(urlInput.value, "/music/b.flac", "Chosen path lands in the field");
+
+  // ================================================
+  suite("Drop: one file fills the field, a queue takes every file");
+  // ================================================
+
+  function dropFiles(names) {
+    var dt = new DataTransfer();
+    names.forEach(function(n) { dt.items.add(new File(["x"], n)); });
+    window.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
+  }
+
+  resetState();
+  var uploadNames = [];
+  mockFetch(function(url, opts) {
+    uploadNames.push(decodeURIComponent(opts.headers["X-Filename"]));
+    return makeJsonResponse({ uploaded: true, path: "/tmp/up/c.wav" });
+  });
+  dropFiles(["c.wav"]);
+  await new Promise(function(r) { setTimeout(r, 100); });
+  assertEqual(uploadNames[0], "c.wav", "Dropped file is uploaded with its name");
+  assertEqual(urlInput.value, "/tmp/up/c.wav", "Single drop with an empty queue fills the field");
+  assertEqual(compareQueue.length, 0, "Single drop does not queue");
+
+  resetState();
+  mockFetch(function() { return makeJsonResponse({ uploaded: true, path: "/tmp/up/d.wav" }); });
+  mockFetch(function() { return makeJsonResponse({ uploaded: true, path: "/tmp/up/e.wav" }); });
+  dropFiles(["d.wav", "e.wav"]);
+  await new Promise(function(r) { setTimeout(r, 150); });
+  assertEqual(compareQueue.length, 2, "Several dropped files join the queue");
+  assertEqual(compareQueue[1].label, "/tmp/up/e.wav", "Queued in drop order");
+  assertEqual(compareQueue[0].kind, "file", "Dropped files are file tracks");
+
+  resetState();
+  mockFetch(function() { return makeJsonResponse({ error: "Unsupported file type: .txt" }, 400); });
+  dropFiles(["notes.txt"]);
+  await new Promise(function(r) { setTimeout(r, 100); });
+  assert(statusEl.textContent.indexOf(".txt") !== -1, "Upload error is shown");
+  assertEqual(urlInput.value, "", "Rejected drop leaves the field empty");
 
   // ================================================
   // Summary

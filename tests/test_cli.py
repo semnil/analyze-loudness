@@ -144,3 +144,33 @@ class TestCompareRun:
         bad = self._write(tmp_path, "bad.json", {"title": "x"})
         with pytest.raises(SystemExit, match="summary or series"):
             main([a, bad, "--output-dir", str(tmp_path / "out")])
+
+
+class TestLocalSources:
+    def test_single_local_path_parses(self):
+        assert parse_args(["./clip.wav"]).sources == ["./clip.wav"]
+
+    def test_missing_local_file_exits(self, tmp_path):
+        from analyze_loudness.cli import main
+        with pytest.raises(SystemExit, match="File not found"):
+            main([str(tmp_path / "nope.wav"), "--output-dir", str(tmp_path)])
+
+    def test_local_audio_in_comparison(self, tmp_path):
+        import json
+        import shutil
+        import subprocess
+        from analyze_loudness.cli import main
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            pytest.skip("ffmpeg not on PATH")
+        wav = tmp_path / "tone.wav"
+        subprocess.run([ffmpeg, "-v", "error", "-f", "lavfi", "-i", "sine=frequency=1000:duration=8",
+                        "-ar", "48000", str(wav)], check=True)
+        saved = tmp_path / "saved.json"
+        saved.write_text(json.dumps(_single(600, "saved")), encoding="utf-8")
+        out = tmp_path / "out"
+        main([str(wav), str(saved), "--output-dir", str(out)])
+        doc = json.loads((out / "loudness_compare.json").read_text(encoding="utf-8"))
+        first = doc["compare"]["tracks"][0]
+        assert first["title"] == "tone"
+        assert first["meta"]["source_url"] == str(wav.resolve())

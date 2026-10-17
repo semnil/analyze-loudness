@@ -26,7 +26,8 @@ from analyze_loudness.compare import (
     validate_compare, validate_single, validate_tracks,
 )
 from analyze_loudness.download import (
-    download_audio, probe_duration, compute_middle, sanitize_filename,
+    AUDIO_EXTENSIONS, compute_middle, is_network_path, is_url, local_path, probe_duration,
+    resolve_source, sanitize_filename,
 )
 
 
@@ -55,6 +56,10 @@ _window = None
 _cache_dir = tempfile.mkdtemp(prefix="loudness_cache_")
 atexit.register(shutil.rmtree, _cache_dir, True)
 
+# Files dropped on the window (/upload) live here for the session.
+_upload_dir = tempfile.mkdtemp(prefix="loudness_upload_")
+atexit.register(shutil.rmtree, _upload_dir, True)
+
 
 _ORPHAN_TEMPDIR_MIN_AGE_SEC = 3600  # 1 hour
 
@@ -73,7 +78,7 @@ def _cleanup_orphan_tempdirs() -> None:
     pattern = os.path.join(tempfile.gettempdir(), "loudness_*")
     now = time.time()
     for path in glob.glob(pattern):
-        if path == _cache_dir:
+        if path in (_cache_dir, _upload_dir):
             continue
         try:
             if os.path.islink(path) or not os.path.isdir(path):
@@ -95,16 +100,28 @@ _cache_lock = threading.Lock()
 _dialog_lock = threading.Lock()
 
 
+def _cache_key(source: str, duration: float | None) -> tuple:
+    """URL + duration; a local file adds its modification time, so an edited
+    file is analysed again."""
+    if is_url(source):
+        return (source, duration)
+    try:
+        return (source, duration, os.path.getmtime(source))
+    except OSError:
+        return (source, duration, None)
+
+
 def _cache_file(url: str, duration: float | None) -> str | None:
+    key = _cache_key(url, duration)
     with _cache_lock:
-        path = _result_cache.get((url, duration))
+        path = _result_cache.get(key)
         if path:
-            _result_cache.move_to_end((url, duration))
+            _result_cache.move_to_end(key)
     return path if path and os.path.exists(path) else None
 
 
 def _cache_get(url: str, duration: float | None) -> dict | None:
-    key = (url, duration)
+    key = _cache_key(url, duration)
     with _cache_lock:
         data = _loaded_cache_data.get(key)
         if data is not None:
@@ -128,7 +145,7 @@ _cache_seq = 0
 
 def _cache_put(url: str, duration: float | None, result_dict: dict) -> str:
     global _cache_seq
-    key = (url, duration)
+    key = _cache_key(url, duration)
     evicted: list[str] = []
     with _cache_lock:
         # Drop any previously /load-populated entry for this key so the
@@ -217,19 +234,33 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             return
         super().do_GET()
 
+    def _check_content_type(self) -> bool:
+        """Accept only the Content-Type the frontend sends.  Browsers send
+        cross-origin requests with these types only after a CORS preflight,
+        which this server never answers."""
+        expected = "application/octet-stream" if self.path == "/upload" else "application/json"
+        content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        if content_type != expected:
+            self._json_error(415, f"Content-Type must be {expected}")
+            return False
+        return True
+
     def do_POST(self):
         if not self._check_host():
             return
-        if self.path in ("/save", "/save-image", "/load", "/compare"):
+        if not self._check_content_type():
+            return
+        handlers = {
+            "/save": self._handle_save,
+            "/save-image": self._handle_save_image,
+            "/load": self._handle_load,
+            "/compare": self._handle_compare,
+            "/browse": self._handle_browse,
+            "/upload": self._handle_upload,
+        }
+        if self.path in handlers:
             try:
-                if self.path == "/save":
-                    self._handle_save()
-                elif self.path == "/save-image":
-                    self._handle_save_image()
-                elif self.path == "/compare":
-                    self._handle_compare()
-                else:
-                    self._handle_load()
+                handlers[self.path]()
             except Exception:
                 traceback.print_exc()
                 try:
@@ -249,9 +280,19 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             self._json_error(400, "Missing or invalid 'url' field")
             return
         url = url.strip()
-        if not (url.startswith("http://") or url.startswith("https://")):
-            self._json_error(400, "'url' must use http or https scheme")
+        # Anything scheme-like must be http(s); everything else is a local path.
+        if "://" in url or url.lower().startswith("javascript:"):
+            if not is_url(url):
+                self._json_error(400, "'url' must use http or https scheme, or be a local file path")
+                return
+        elif is_network_path(url):
+            self._json_error(400, "Network (UNC) paths are not accepted; copy the file to this computer")
             return
+        else:
+            url = local_path(url)
+            if not os.path.isfile(url):
+                self._json_error(400, f"File not found: {url}")
+                return
 
         if duration is not None:
             if isinstance(duration, bool):
@@ -325,7 +366,7 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             # Stage 1: Download
             self._send_event("progress", stage="download",
                              message="Downloading audio...")
-            src, title = download_audio(url, workdir)
+            src, title = resolve_source(url, workdir)
             self._send_event("progress", stage="download",
                              message=f"Downloaded: {title}")
 
@@ -386,6 +427,91 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             return
         doc = build_compare(tracks)
         self._json_response(200, {"data": doc, "stats": _compare_stats(doc)})
+
+    _AUDIO_TYPES = (
+        "Audio Video Files (" + ";".join("*" + extension for extension in AUDIO_EXTENSIONS) + ")",
+    )
+
+    def _handle_browse(self):
+        if not _dialog_lock.acquire(blocking=False):
+            self._json_error(409, "A dialog is already open")
+            return
+        try:
+            result = _window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                file_types=self._AUDIO_TYPES,
+            )
+        except Exception as e:
+            traceback.print_exc()
+            self._json_error(500, f"File dialog error: {e}")
+            return
+        finally:
+            _dialog_lock.release()
+
+        file_path = self._dialog_path(result)
+        if not file_path:
+            self._json_response(200, {"selected": False})
+            return
+        self._json_response(200, {"selected": True, "path": file_path})
+
+    _MAX_UPLOAD = 500 * 1024 * 1024  # 500 MB
+
+    def _handle_upload(self):
+        """Store a dropped file (raw body, name in X-Filename) in _upload_dir."""
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except (ValueError, TypeError):
+            self._json_error(400, "Invalid Content-Length")
+            return
+        if length <= 0:
+            self._json_error(400, "Empty file")
+            return
+        if length > self._MAX_UPLOAD:
+            self._json_error(413, "File too large (max 500 MB)")
+            return
+
+        from urllib.parse import unquote
+        name = sanitize_filename(unquote(self.headers.get("X-Filename", "dropped_file")))
+        extension = os.path.splitext(name)[1].lower()
+        if extension not in AUDIO_EXTENSIONS:
+            self._json_error(400, f"Unsupported file type: {extension or '(none)'}")
+            return
+
+        dest = os.path.join(_upload_dir, name)
+        if os.path.commonpath([_upload_dir, os.path.abspath(dest)]) != _upload_dir:
+            self._json_error(400, "Invalid filename")
+            return
+        stem, suffix = os.path.splitext(name)
+        index = 1
+        while os.path.exists(dest):
+            dest = os.path.join(_upload_dir, f"{stem}_{index}{suffix}")
+            index += 1
+
+        remaining = length
+        try:
+            with open(dest, "wb") as f:
+                while remaining > 0:
+                    chunk = self.rfile.read(min(remaining, 65536))
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    remaining -= len(chunk)
+        except (OSError, ValueError):
+            self._discard(dest)
+            self._json_error(400, "Invalid filename")
+            return
+        if remaining > 0:
+            self._discard(dest)
+            self._json_error(400, "Incomplete upload")
+            return
+        self._json_response(200, {"uploaded": True, "path": dest})
+
+    @staticmethod
+    def _discard(path: str) -> None:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
     def _handle_save(self):
         body = self._read_json_body()
@@ -519,10 +645,11 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             self._json_error(400, err)
             return
 
-        # Cache loaded data for reuse (only when source_url is a usable string key)
+        # Cache loaded data for reuse.  Only URL sources: a local file's cache
+        # key carries its modification time, which a saved result does not.
         meta = data.get("meta")
         src = meta.get("source_url") if isinstance(meta, dict) else None
-        if isinstance(src, str) and src:
+        if isinstance(src, str) and is_url(src):
             self._cache_loaded(src, data)
 
         self._json_response(200, {"loaded": True, "data": data})

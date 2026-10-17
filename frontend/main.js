@@ -9,13 +9,16 @@ let activeAbort = null;
 // Mirror of MIN_TRACKS / MAX_TRACKS in src/analyze_loudness/compare.py.
 const MIN_TRACKS = 2;
 const MAX_TRACKS = 6;
-// Queued comparison tracks: {kind: "url", label, data?} or {kind: "json", label, data}.
-// A track with data is compared as-is; a URL track without data is analysed.
+// Mirror of _MAX_UPLOAD in src/analyze_loudness/gui.py.
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+// Queued comparison tracks: {kind: "url" | "file", label, data?} or {kind: "json", label, data}.
+// A track with data is compared as-is; a URL or file track without data is analysed.
 let compareQueue = [];
 
 const form = document.getElementById("analyze-form");
 const urlInput = document.getElementById("url-input");
 const submitBtn = document.getElementById("submit-btn");
+const browseBtn = document.getElementById("browse-btn");
 const addBtn = document.getElementById("add-btn");
 const loadBtn = document.getElementById("load-btn");
 const clearBtn = document.getElementById("clear-btn");
@@ -112,8 +115,14 @@ document.getElementById("lang-toggle").addEventListener("click", function () {
   const next = window.i18n.lang() === "ja" ? "en" : "ja";
   window.i18n.setLang(next);
 });
+function _applyDropText() {
+  document.body.setAttribute("data-drop-text", window.i18n.t("drop.overlay"));
+}
+_applyDropText();
+
 window.i18n.onChange(function () {
   _applyLangButton();
+  _applyDropText();
   _applyTheme();
   _renderQueue();
   if (lastRenderedData) rerender();
@@ -159,6 +168,7 @@ function _submitLabel() {
 function _setBusy(busy, cancelable = true) {
   _isBusy = busy;
   loadBtn.disabled = busy;
+  browseBtn.disabled = busy;
   addBtn.disabled = busy;
   clearBtn.disabled = busy;
   if (busy) {
@@ -461,20 +471,32 @@ function _queueTrack(item) {
   return true;
 }
 
+// Mirror of the /analyze check in src/analyze_loudness/gui.py: anything
+// scheme-like must be http(s); everything else is a local path.
+// UNC and device paths (two leading slashes or backslashes) are "network"
+// and refused, as is_network_path in src/analyze_loudness/download.py.
+function _sourceKind(source) {
+  if (/^https?:\/\//i.test(source)) return "url";
+  if (source.indexOf("://") !== -1 || /^javascript:/i.test(source)) return null;
+  if (/^[\\/]{2}/.test(source)) return "network";
+  return "file";
+}
+
 // Moves a non-empty URL field into the queue.  Returns false (with the error
-// shown) on a non-http(s) URL or a full queue; an empty field is a no-op.
+// shown) on a non-http(s) scheme or a full queue; an empty field is a no-op.
 function _queueUrlInput() {
-  const url = urlInput.value.trim();
-  if (!url) return true;
-  if (!/^https?:\/\//i.test(url)) {
-    showError(window.i18n.t("err.url_scheme"));
+  const source = urlInput.value.trim();
+  if (!source) return true;
+  const kind = _sourceKind(source);
+  if (!kind || kind === "network") {
+    showError(window.i18n.t(kind ? "err.network_path" : "err.url_scheme"));
     return false;
   }
-  // The URL of the single result on screen queues that result itself: the
-  // server's URL cache keeps only the latest result loaded for a URL.
+  // The source of the single result on screen queues that result itself:
+  // the server's URL cache keeps only the latest result loaded for a URL.
   const shown = lastRenderedData && !lastRenderedData.compare && lastRenderedData.meta &&
-    lastRenderedData.meta.source_url === url ? lastRenderedData : undefined;
-  if (!_queueTrack({ kind: "url", label: url, data: shown })) return false;
+    lastRenderedData.meta.source_url === source ? lastRenderedData : undefined;
+  if (!_queueTrack({ kind, label: source, data: shown })) return false;
   urlInput.value = "";
   return true;
 }
@@ -493,6 +515,90 @@ clearBtn.addEventListener("click", () => {
   _renderQueue();
   urlInput.focus();
 });
+
+browseBtn.addEventListener("click", async () => {
+  if (_isBusy) return;
+  try {
+    const resp = await fetch(window.location.origin + "/browse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    const result = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      showError(result.error || `HTTP ${resp.status}`);
+      return;
+    }
+    if (result.selected) {
+      urlInput.value = result.path;
+      urlInput.focus();
+    }
+  } catch (err) {
+    showError(err.message);
+  }
+});
+
+// Drag & drop: capture phase on window, so the WebView never navigates to
+// the dropped file.  One file with an empty queue goes into the field;
+// otherwise every dropped file joins the queue.
+window.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  e.dataTransfer.dropEffect = "copy";
+  document.body.classList.add("drag-over");
+}, true);
+
+window.addEventListener("dragenter", (e) => {
+  e.preventDefault();
+  e.stopImmediatePropagation();
+}, true);
+
+window.addEventListener("dragleave", (e) => {
+  if (!e.relatedTarget) document.body.classList.remove("drag-over");
+}, true);
+
+window.addEventListener("drop", async (e) => {
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  document.body.classList.remove("drag-over");
+  if (_isBusy) return;
+  const files = Array.from(e.dataTransfer.files);
+  if (!files.length) return;
+  const toField = files.length === 1 && compareQueue.length === 0;
+
+  for (const file of files) {
+    if (file.size > MAX_UPLOAD_BYTES) {
+      showError(window.i18n.t("err.file_too_large"));
+      continue;
+    }
+    _setStatusNormal();
+    statusEl.textContent = window.i18n.t("status.uploading") + file.name;
+    try {
+      const resp = await fetch(window.location.origin + "/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-Filename": encodeURIComponent(file.name),
+        },
+        body: file,
+      });
+      const result = await resp.json().catch(() => ({}));
+      if (!resp.ok || !result.uploaded) {
+        showError(result.error || `HTTP ${resp.status}`);
+        continue;
+      }
+      if (toField) {
+        urlInput.value = result.path;
+        urlInput.focus();
+      } else if (!_queueTrack({ kind: "file", label: result.path })) {
+        break;
+      }
+      statusEl.textContent = window.i18n.t("status.file_loaded") + file.name;
+    } catch (err) {
+      showError(err.message);
+    }
+  }
+}, true);
 
 function _moveTrack(from, to) {
   const item = compareQueue[from];
@@ -543,7 +649,7 @@ function _renderQueue() {
 
     const tag = document.createElement("span");
     tag.className = "track-tag";
-    tag.textContent = window.i18n.t(item.kind === "url" ? "track.tag_url" : "track.tag_json");
+    tag.textContent = window.i18n.t("track.tag_" + item.kind);
     row.appendChild(tag);
 
     const label = document.createElement("span");
