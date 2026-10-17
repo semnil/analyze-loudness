@@ -9,7 +9,8 @@ let activeAbort = null;
 // Mirror of MIN_TRACKS / MAX_TRACKS in src/analyze_loudness/compare.py.
 const MIN_TRACKS = 2;
 const MAX_TRACKS = 6;
-// Queued comparison tracks: {kind: "url", label} or {kind: "json", label, data}.
+// Queued comparison tracks: {kind: "url", label, data?} or {kind: "json", label, data}.
+// A track with data is compared as-is; a URL track without data is analysed.
 let compareQueue = [];
 
 const form = document.getElementById("analyze-form");
@@ -469,7 +470,11 @@ function _queueUrlInput() {
     showError(window.i18n.t("err.url_scheme"));
     return false;
   }
-  if (!_queueTrack({ kind: "url", label: url })) return false;
+  // The URL of the single result on screen queues that result itself: the
+  // server's URL cache keeps only the latest result loaded for a URL.
+  const shown = lastRenderedData && !lastRenderedData.compare && lastRenderedData.meta &&
+    lastRenderedData.meta.source_url === url ? lastRenderedData : undefined;
+  if (!_queueTrack({ kind: "url", label: url, data: shown })) return false;
   urlInput.value = "";
   return true;
 }
@@ -583,7 +588,7 @@ async function _runCompare() {
     const tracks = [];
     for (let k = 0; k < items.length; k++) {
       const item = items[k];
-      if (item.kind === "json") { tracks.push(item.data); continue; }
+      if (item.data) { tracks.push(item.data); continue; }
       const prefix = window.i18n.t("status.track_prefix", { i: k + 1, n: items.length });
       statusEl.textContent = prefix + window.i18n.t("status.starting");
       try {

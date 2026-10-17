@@ -637,6 +637,45 @@ function fakeStats() {
   assertEqual(compareQueue.length, 2, "Queue is kept after a comparison");
   assertEqual(_isBusy, false, "Not busy after the comparison");
 
+
+  // ================================================
+  suite("+ Add Track keeps the displayed result, not just its URL");
+  // ================================================
+
+  // Two saved results with the same source_url: the URL cache only holds
+  // the last one loaded, so the first must travel as data.
+  resetState();
+  var savedA = fakeResult("https://www.youtube.com/watch?v=same");
+  savedA.title = "Saved A";
+  var savedB = fakeResult("https://www.youtube.com/watch?v=same");
+  savedB.title = "Saved B";
+  mockFetch(function() { return makeJsonResponse({ loaded: true, data: savedA }); });
+  loadBtn.click();
+  await new Promise(function(r) { setTimeout(r, 100); });
+  assertEqual(urlInput.value, "https://www.youtube.com/watch?v=same", "Loaded result restores its URL");
+  addBtn.click();
+  assert(compareQueue[0] && compareQueue[0].data && compareQueue[0].data.title === "Saved A",
+         "Queued track carries the displayed result");
+  mockFetch(function() { return makeJsonResponse({ loaded: true, data: savedB }); });
+  loadBtn.click();
+  await new Promise(function(r) { setTimeout(r, 100); });
+  var sentTitles = null;
+  mockFetch(function(url, opts) {
+    sentTitles = JSON.parse(opts.body).tracks.map(function(tr) { return tr.title; });
+    return makeJsonResponse({ data: fakeCompare(), stats: fakeStats() });
+  });
+  document.getElementById("analyze-form").dispatchEvent(new Event("submit"));
+  await new Promise(function(r) { setTimeout(r, 200); });
+  assertEqual(JSON.stringify(sentTitles), JSON.stringify(["Saved A", "Saved B"]),
+              "/compare receives A then B, without re-analysing the URL");
+
+  // A different URL in the field is queued as a URL to analyse.
+  resetState();
+  render(savedA);
+  urlInput.value = "https://www.youtube.com/watch?v=other";
+  addBtn.click();
+  assertEqual(compareQueue[0].data, undefined, "A URL other than the displayed result is queued without data");
+
   // ================================================
   // Summary
   // ================================================
