@@ -220,7 +220,7 @@ CSS 変数 + `[data-theme="dark"]` でライト/ダーク/auto の 3 ステー�
 
 ### チャートタイトルの単独描画 (analyze-spectrum と統一)
 
-各チャート (timeline / histogram x2 / segments) のタイトルは HTML `<h3 class="chart-title">` のみで描画し、Canvas / uPlot の `ctx.fillText` や `title:` オプションは使わない。canvas 内描画は二重表示と PNG エクスポート時の重複を招くため禁止 (`captureImage()` が `chartTitles` 配列で composite PNG にタイトルを焼き込む)。HTML タイトルは `_addTip()` でツールチップ (`tip.chart_timeline` / `tip.chart_histogram` / `tip.chart_segments`) を持つ。
+各チャート (timeline / histogram x2 / segments) のタイトルは HTML `<h3 class="chart-title">` のみで描画し、Canvas / uPlot の `ctx.fillText` や `title:` オプションは使わない。canvas 内描画は二重表示と PNG エクスポート時の重複を招くため禁止 (`captureImage()` が `chartCanvasRefs` の各要素 `{canvas, label}` の `label` で composite PNG にタイトルを焼き込む)。HTML タイトルは `_addTip()` でツールチップ (`tip.chart_timeline` / `tip.chart_histogram` / `tip.chart_segments`) を持つ。
 
 `role="img"` + `aria-label` は histogram では canvas 自体に、timeline / segments ではコンテナ div に付与する。タイトルは必ずそのノードの外側に置く (ARIA が `role="img"` の子孫を presentational 扱いするため、内側だとタイトルとツールチップ本文が支援技術に渡らない)。
 
@@ -277,8 +277,9 @@ ffmpeg の Integrated をより忠実に再現するのは 13 本中 12 本で 1
 `compare.truncated_stats()` (Python) だけが計算し、フロントエンドは `/compare` と `/load` が返す `stats` を表示する。
 切り詰めた範囲の Integrated と GATE 帯は相対ゲートを計算し直す (全長の `summary.gate_threshold` を使わない)。
 照合の実測・比較 JSON の形・トラック色の根拠は `docs/architecture.md` の「Comparison mode」節。
-`MIN_TRACKS` / `MAX_TRACKS` は `compare.py` と `frontend/main.js` のミラー、トラック色 (ライト) は
-`frontend/theme.js` の `trackColors` と `plot.py` の `TRACK_COLORS` のミラーで、必ず同時に更新する。
+`MIN_TRACKS` / `MAX_TRACKS` は `compare.py` と `frontend/main.js` のミラー、ゲートの定数
+(`GATE_ABSOLUTE` / `GATE_RELATIVE_OFFSET` / `GATE_BLOCK_SEC`) は `compare.py` と `frontend/gate.js` のミラー、
+トラック色 (ライト) は `frontend/theme.js` の `trackColors` と `plot.py` の `TRACK_COLORS` のミラーで、必ず同時に更新する。
 
 ### フロントエンド UI テスト
 
