@@ -352,12 +352,19 @@ function fakeResult(sourceUrl) {
   resetState();
   _setThemeMode("light");
   assertEqual(document.documentElement.getAttribute("data-theme"), "light", "Theme starts light");
-  document.getElementById("theme-toggle").click();
+  var themeBtn = document.getElementById("theme-toggle");
+  assert(themeBtn.querySelector("svg") !== null, "Light icon is an SVG");
+  assertEqual(themeBtn.textContent, "", "Light icon has no text glyph");
+  themeBtn.click();
   assertEqual(document.documentElement.getAttribute("data-theme"), "dark", "Toggle goes to dark");
-  document.getElementById("theme-toggle").click();
+  assert(themeBtn.querySelector("svg") !== null, "Dark icon is an SVG");
+  assertEqual(themeBtn.textContent, "", "Dark icon has no text glyph");
+  themeBtn.click();
   // Auto resolves to light or dark depending on host environment
   var autoTheme = document.documentElement.getAttribute("data-theme");
   assert(autoTheme === "light" || autoTheme === "dark", "Auto resolves to light or dark");
+  assert(themeBtn.querySelector("svg") !== null, "Auto icon is an SVG");
+  assertEqual(themeBtn.textContent, "", "Auto icon has no text glyph");
   _setThemeMode("light");
 
   // ================================================
