@@ -3,22 +3,13 @@
 YouTube 動画の音声ラウドネスを BS.1770 / EBU R128 準拠で分析するツール。
 CLI 版と GUI アプリケーション版 (Windows / macOS) の 2 形態を持つ。
 
-## Architecture overview
+## アーキテクチャ概要
 
-```mermaid
-graph LR
-    A["pywebview<br/>(WebView2)"] -->|"HTTP<br/>127.0.0.1:random"| B["Local HTTP Server<br/>(gui.py)"]
-    B -->|"NDJSON stream"| C["Analysis Pipeline"]
-    C --> D["yt_dlp.YoutubeDL API<br/>(audio DL)"]
-    D --> E["ffmpeg -af ebur128=peak=true<br/>(loudness measurement)"]
-    E --> F["regex parse stderr"]
-    F --> G["JSON response<br/>{summary, series}"]
-    G --> A
-```
+処理の流れの図は `docs/architecture.md` の「System Architecture」節にある。
 
-GUI は pywebview (WebView2) + ローカル HTTP サーバーで構成。
+GUI は pywebview (Windows: WebView2 / macOS: WebKit) + ローカル HTTP サーバーで構成。
 
-## Project structure
+## ディレクトリ構成
 
 ```
 analyze-loudness/
@@ -58,6 +49,7 @@ analyze-loudness/
 │   ├── test_cli.py
 │   ├── test_download.py
 │   ├── test_gui.py
+│   ├── test_plot.py
 │   ├── test_frontend.py        # Playwright headless Chromium runner
 │   └── frontend/
 │       ├── test_ui.html        # test harness page (DOM + stubs)
@@ -74,10 +66,10 @@ analyze-loudness/
 └── build_assets/bin/           # ffmpeg, ffprobe, deno (git 管理外)
 ```
 
-## CLI usage
+## CLI の使い方
 
 ```
-python -m venv .venv
+python3 -m venv .venv            # Windows: python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 analyze-loudness "https://www.youtube.com/watch?v=XXXXX"
@@ -86,23 +78,23 @@ analyze-loudness ./recording.wav                       # ローカルの音声�
 analyze-loudness "https://..." ./loudness_saved.json   # 比較 (2-6 本、--duration 不可)
 ```
 
-### CLI dependencies (installed via pip)
+### CLI の依存 (pip で導入)
 
-- `yt-dlp` -- pyproject.toml dependency (Python API 経由で利用)
-- `ffmpeg` / `ffprobe` -- `static-ffmpeg` package; `shutil.which` check before import
-- `numpy`, `matplotlib` -- CLI only
-- `pytest` -- dev dependency (`pip install -e ".[dev]"`)
+- `yt-dlp` -- pyproject.toml の依存 (Python API 経由で利用)
+- `ffmpeg` / `ffprobe` -- `static-ffmpeg` パッケージ。PATH に ffmpeg が無いときだけ import する (`shutil.which` で判定)
+- `numpy`, `matplotlib` -- CLI のみ
+- `pytest` -- 開発用の依存 (`pip install -e ".[dev]"`)
 
-## GUI usage
+## GUI の使い方
 
-### Development
+### 開発
 
 ```
 pip install -e ".[gui]"
 analyze-loudness-gui
 ```
 
-### Build & Distribution
+### ビルドと配布
 
 ```bash
 # Windows
@@ -116,26 +108,26 @@ analyze-loudness-gui
 
 フラグ: `--skip-download` (外部アセット取得をスキップ) / `--skip-build` (PyInstaller をスキップ、`dist/` がある前提) / `--update-checksums` (アセットを取得して `checksums.json` を更新)。
 
-> **注意**: 必ずプロジェクト固有の venv の python (`.venv/bin/python` / `.venv/Scripts/python`) で実行すること。親ディレクトリの `python` や他プロジェクトの venv を使うと PyInstaller が依存を解決できない。
+> **注意**: このプロジェクトの venv の python は `.venv/bin/python` (macOS) / `.venv/Scripts/python` (Windows)。
 
-### GUI dependencies
+### GUI の依存
 
-- `pywebview` -- optional dependency (`pip install -e ".[gui]"`)
-- `numpy` -- statistics computation
+- `pywebview` -- オプションの依存 (`pip install -e ".[gui]"`)
+- `numpy` -- 統計計算
 - `yt-dlp` -- Python ライブラリとしてバンドル (PyInstaller が自動的に含める)
-- ffmpeg, ffprobe, deno -- bundled in build_assets/bin/ (PyInstaller frozen mode)
+- ffmpeg, ffprobe, deno -- `build_assets/bin/` に置いてバンドル (PyInstaller frozen mode)
 - `py-analyze-common` -- git submodule (`vendor/py-analyze-common`)。OS 判定・subprocess kwargs・ダークモード検出・ffmpeg/ffprobe ラッパー・yt-dlp ダウンロード・JSON 安全化を提供。pyproject.toml には記載せず `sys.path` 注入で利用
 
 ## テスト
 
 ```bash
 pytest -q                                          # 全テスト
-python -m playwright install --with-deps chromium  # 初回のみ (test_frontend.py が使う)
+python -m playwright install --with-deps chromium  # 初回のみ (tests/test_frontend.py が使う)
 ```
 
 ブラウザバイナリの扱いは [フロントエンド UI テスト](#フロントエンド-ui-テスト) を参照。
 
-## Design decisions
+## 設計判断
 
 ### ebur128 パース方式
 
@@ -151,7 +143,7 @@ python -m playwright install --with-deps chromium  # 初回のみ (test_frontend
 統計計算時は Short-term > -60 LUFS のフレームのみ使用 (`SILENCE_THRESHOLD`)。無音率は S < -40 LUFS
 (`SILENCE_PCT_THRESHOLD`) で算出する。ただし **ebur128 のウォームアップフレームは分母から外す** —
 S は 3 秒窓なので先頭 29 フレームは窓が埋まらず無音フロア -120.7 が出る。除外しないと 36 秒クリップの
-無音が 8.1% と出る (実測、実体は 0.0%)。判定は `analysis.py` の `first_full_window()` / `compute_silence_pct()`
+無音が 8.1% と出る (実測、実体は 0.0%)。判定は `src/analyze_loudness/analysis.py` の `first_full_window()` / `compute_silence_pct()`
 に集約し、CLI・GUI・matplotlib プロットの 3 箇所から共用する。
 
 ### 中盤抽出
@@ -163,9 +155,9 @@ S は 3 秒窓なので先頭 29 フレームは窓が埋まらず無音フロ�
 ### ローカルファイル
 
 入力欄は URL とローカルのパスを受け付ける。`://` を含むか `javascript:` で始まる入力は http(s) のときだけ URL、
-それ以外はローカルのパスとして扱う (サーバーは `gui.py` の `/analyze`、フロントエンドは `main.js` の `_sourceKind` が
+それ以外はローカルのパスとして扱う (サーバーは `src/analyze_loudness/gui.py` の `/analyze`、フロントエンドは `frontend/main.js` の `_sourceKind` が
 同じ規則のミラー)。先頭が `\\` か `//` の UNC パス・デバイスパスは、解決や存在確認の前に拒否する
-(`download.is_network_path`、フロントエンドは `_sourceKind` の `"network"`)。ローカルファイルは絶対パスにして `meta.source_url` にそのまま残し、タイトルは拡張子を除いた
+(`src/analyze_loudness/download.py` の `is_network_path`、フロントエンドは `_sourceKind` の `"network"`)。ローカルファイルは絶対パスにして `meta.source_url` にそのまま残し、タイトルは拡張子を除いた
 ファイル名。キャッシュのキーにはファイルの更新時刻を加え、`/load` で読んだ結果のうちローカルの source は
 キャッシュに入れない。ドロップしたファイルは `/upload` が一時ディレクトリ (終了時に削除) に置くので、
 その結果の `meta.source_url` は一時ディレクトリのパスになる。
@@ -205,12 +197,12 @@ yt-dlp が YouTube の JavaScript 抽出に deno ランタイムを必要とす�
 
 ### ローカル HTTP サーバー + pywebview
 
-127.0.0.1 のランダムポート (port 0) で HTTPServer を起動。pywebview (WebView2) でウインドウを表示。
-NDJSON ストリーミングでリアルタイム進捗表示。runtime-calibrated `_speed_factor` で残り時間を推定。
+127.0.0.1 のランダムポート (port 0) で HTTPServer を起動。pywebview (Windows: WebView2 / macOS: WebKit) でウインドウを表示。
+NDJSON ストリーミングでリアルタイム進捗表示。実行時に較正する `_speed_factor` で残り時間を推定。
 
 ### GUI エンドポイント
 
-| Endpoint | Method | Description |
+| エンドポイント | メソッド | 説明 |
 |----------|--------|-------------|
 | `/analyze` | POST | URL から音声をダウンロード、またはローカルファイルをそのまま使って EBU R128 分析。NDJSON ストリーム応答 |
 | `/save` | POST | 分析結果 JSON をネイティブファイルダイアログで保存 |
@@ -218,17 +210,17 @@ NDJSON ストリーミングでリアルタイム進捗表示。runtime-calibrat
 | `/compare` | POST | 2-6 本の単体結果を一番短いトラックに切り詰めた比較 JSON と、切り詰めた範囲の統計 (`stats`) を返す |
 | `/load` | POST | ネイティブダイアログで JSON を選択し、結果を再可視化。比較 JSON には `stats` を添え、単体結果のキャッシュには入れない |
 | `/browse` | POST | ネイティブダイアログでローカルの音声ファイルを選び、パスを返す |
-| `/upload` | POST | ドロップされたファイル (本文そのまま、名前は `X-Filename`) を一時ディレクトリに置き、パスを返す。上限 500 MB、拡張子は `download.AUDIO_EXTENSIONS` |
+| `/upload` | POST | ドロップされたファイル (本文そのまま、名前は `X-Filename`) を一時ディレクトリに置き、パスを返す。上限 500 MB、拡張子は `src/analyze_loudness/download.py` の `AUDIO_EXTENSIONS` |
 
 POST は Content-Type が `application/json` (`/upload` は `application/octet-stream`) のときだけ受け付け、それ以外は 415。
 
 ### ダークモード
 
 CSS 変数 + `[data-theme="dark"]` でライト/ダーク/auto の 3 ステートテーマ切替。
-CSS 変数名は analyze-spectrum と共通 (`--text` / `--bg-card` / `--text-secondary` / `--text-muted` 等)。両アプリで同じ CSS 変数と規則は py-analyze-common の `analyze_common/web/common.css` に置き、`gui.py` が `/common/common.css` として配信する (PyInstaller の spec が `analyze_common/web` に同梱)。`index.html` はこれを `style.css` より先に読み込み、`style.css` は残りの変数 (アクセントカラー等) と固有の規則を持つ。狭い画面向けの `@media (max-width: 480px)` の `h1` は各 `style.css` の `h1` より後に置く必要があるため、`style.css` に残す。
+CSS 変数名は analyze-spectrum と共通 (`--text` / `--bg-card` / `--text-secondary` / `--text-muted` 等)。両アプリで同じ CSS 変数と規則は py-analyze-common の `analyze_common/web/common.css` に置き、`src/analyze_loudness/gui.py` が `/common/common.css` として配信する (PyInstaller の spec が `analyze_common/web` に同梱)。`frontend/index.html` はこれを `frontend/style.css` より先に読み込み、`frontend/style.css` は残りの変数 (アクセントカラー等) と固有の規則を持つ。狭い画面向けの `@media (max-width: 480px)` の `h1` は各 `style.css` の `h1` より後に置く必要があるため、`style.css` に残す。
 デフォルトは `auto` (OS の `prefers-color-scheme` に追従)。選択は `localStorage("loudness-theme")` に保存。
-テーマ切替 UI は fixed top-right pill ボタン (太陽 / 三日月 / 半分を塗った円の SVG。`_createThemeIcon()` が生成)。analyze-spectrum と統一。
-チャート色は `theme.js` の `getTheme()` で一元管理し、テーマ切替時にチャートを再描画。
+テーマ切替 UI は右上に固定した pill ボタン (太陽 / 三日月 / 半分を塗った円の SVG。`_createThemeIcon()` が生成)。analyze-spectrum と統一。
+チャート色は `frontend/theme.js` の `getTheme()` で一元管理し、テーマ切替時にチャートを再描画。
 
 ### i18n (多言語)
 
@@ -249,64 +241,64 @@ Integrated は BS.1770 の絶対ゲート (-70 LUFS) と相対ゲート (絶対�
 ffmpeg は 100 ms ごとにフレームを出すが Momentary 窓は 400 ms のため、**先頭 3 フレーム
 (t = 0.1 / 0.2 / 0.3) は窓が埋まっておらず、無音フロア -120.7 が出る**。これらはゲート対象ブロックでは
 ないので `computeGate` は `series.t` から先頭を判定して除外する (`_firstGatedIndex`)。除外しないと
-無音率と分母の両方が膨らみ、実測では 36 秒クリップの無音 0.91% がすべてこのウォームアップだった。
+無音率と分母の両方が膨らむ (実測は `docs/architecture.md` の「GATE lane」節)。
 判定は `t[0]` 相対で行うため `-ss` で切り出した場合も効く。S (3 秒窓) のウォームアップは 29 フレームで、
 こちらは summary の無音率が同じ規則で除外する ([無音閾値](#無音閾値))。
 
 相対ゲートの値は `summary.gate_threshold` (schema 2) を使い、無い場合のみ `frontend/gate.js` の
 `computeGate()` が `series.M` から再計算する。schema 1 で保存した JSON はこのフォールバック経路に乗る。
-再計算した Integrated は保存済み JSON 13 本すべてで保存値と 0.05 LU 以内に一致するため、
+再計算した Integrated と保存値の一致幅は `docs/architecture.md` の「GATE lane」節に実測がある。
 どちらの経路でも帯は出る。`series.M` の長さが `series.t` と一致しない JSON では帯を出さない
 (時間軸との対応が保証できないため)。
 
 ffmpeg の Summary には `Threshold:` が **2 行**ある (Integrated 側と LRA 側)。
-`analysis.py` の正規表現は `I:` の行に錨を打って前者を取る。後者は別物。
+`src/analyze_loudness/analysis.py` の正規表現は `I:` の行に錨を打って前者を取る。後者は別物。
 
 ffmpeg が出す値は小数 1 桁に丸められているため、2 経路の結果は完全一致しない。丸めで判定が変わるのは
-しきい値ちょうどに乗ったブロックだけで、実測では最大 303 / 95,957 ブロック (算入率で 0.3 ポイント)。
-ffmpeg の Integrated をより忠実に再現するのは 13 本中 12 本で 1 桁側だった。
+しきい値ちょうどに乗ったブロックだけ (件数の実測は `docs/architecture.md` の「GATE lane」節)。
+ffmpeg の Integrated をより忠実に再現するのは、保存済み JSON 13 本中 12 本で 1 桁側だった。
 
-### JSON schema version
+### JSON スキーマのバージョン
 
 `SCHEMA_VERSION` は `src/analyze_loudness/__init__.py`。`__version__` (アプリ版数) とは独立に上げる。
 
 | ver | 追加 |
 |-----|------|
 | 1 | 初版 |
-| 3 | 比較 JSON (`compare.tracks`)。単体結果の中身は schema 2 と同じ |
 | 2 | `summary.gate_threshold` — ffmpeg の相対ゲート。無い場合はフロントエンドが `series.M` から再計算。あわせて `summary.silence_pct` が ebur128 のウォームアップフレームを分母から外すようになった (schema 1 で保存済みの値は旧算出のまま) |
+| 3 | 比較 JSON (`compare.tracks`)。単体結果の中身は schema 2 と同じ |
 
 `/load` は `meta.schema_version` が int であることだけを検証し、値では弾かない。単体か比較かは `compare` の有無で分岐する。
 新フィールドは**バージョン番号ではなく有無で分岐する** — 手編集された JSON で欠落しうるため。
 
 帯の場所は x 軸の `gap` / `size` とチャート高さを同じ 11 px ずつ広げて作る。プロット bbox は帯の
-有無で変わらない (2160x540 device px, 実測)。1 画素列に算入・除外が混在する場合は除外として描くため、
+有無で変わらない (実測は `docs/architecture.md` の「GATE lane」節)。1 画素列に算入・除外が混在する場合は除外として描くため、
 長尺では帯の塗り面積が実際の除外率を上回る。ドラッグズームすると実際の除外区間に収束する。
 
-色は `theme.js` の `gateTrack` / `gateOut` / `gateSilent` と CSS 変数
+色は `frontend/theme.js` の `gateTrack` / `gateOut` / `gateSilent` と CSS 変数
 `--gate-track` / `--gate-out` / `--gate-silent` の 2 か所に定義がある (canvas 用と凡例 chip 用)。
 片方だけ変えると凡例と帯の色がずれる。
 
 ### 比較モード
 
 2-6 本の結果を先頭から重ね、一番短いトラックの長さで全トラックを切り詰める。切り詰めた範囲の統計は
-`compare.truncated_stats()` (Python) だけが計算し、フロントエンドは `/compare` と `/load` が返す `stats` を表示する。
+`src/analyze_loudness/compare.py` の `truncated_stats()` だけが計算し、フロントエンドは `/compare` と `/load` が返す `stats` を表示する。
 切り詰めた範囲の Integrated と GATE 帯は相対ゲートを計算し直す (全長の `summary.gate_threshold` を使わない)。
 照合の実測・比較 JSON の形・トラック色の根拠は `docs/architecture.md` の「Comparison mode」節。
-`MIN_TRACKS` / `MAX_TRACKS` は `compare.py` と `frontend/main.js` のミラー、ゲートの定数
-(`GATE_ABSOLUTE` / `GATE_RELATIVE_OFFSET` / `GATE_BLOCK_SEC`) は `compare.py` と `frontend/gate.js` のミラー、
-トラック色 (ライト) は `frontend/theme.js` の `trackColors` と `plot.py` の `TRACK_COLORS` のミラーで、必ず同時に更新する。
+`MIN_TRACKS` / `MAX_TRACKS` は `src/analyze_loudness/compare.py` と `frontend/main.js` のミラー、ゲートの定数
+(`GATE_ABSOLUTE` / `GATE_RELATIVE_OFFSET` / `GATE_BLOCK_SEC`) は `src/analyze_loudness/compare.py` と `frontend/gate.js` のミラー、
+トラック色 (ライト) は `frontend/theme.js` の `trackColors` と `src/analyze_loudness/plot.py` の `TRACK_COLORS` のミラーで、必ず同時に更新する。
 
 ### フロントエンド UI テスト
 
-`tests/frontend/test_ui.html` + `test_ui.js` を `tests/test_frontend.py` (Playwright + headless Chromium) で実行。`fmt`, `_setBusy`, `_addTip`, theme/lang トグル, /analyze + /load の fetch モック経路, 辞書キー網羅性などを検証。`test_ui.html` は `<script>localStorage.setItem("loudness-lang","en")</script>` を `i18n.js` 読み込み前に置いて言語決定性を確保する (項目 103, 104)。
+`tests/frontend/test_ui.html` + `tests/frontend/test_ui.js` を `tests/test_frontend.py` (Playwright + headless Chromium) で実行。`fmt`, `_setBusy`, `_addTip`, theme/lang トグル, /analyze + /load の fetch モック経路, 辞書キー網羅性などを検証。`tests/frontend/test_ui.html` は `<script>localStorage.setItem("loudness-lang","en")</script>` を `frontend/i18n.js` 読み込み前に置いて言語決定性を確保する。
 
 CI (GitHub Actions) では `pip install -e ".[dev]"` で Playwright Python パッケージは入るが、ブラウザバイナリは別途 `python -m playwright install --with-deps chromium` ステップが必要。`tests/test_frontend.py` は `_HAS_PLAYWRIGHT` (パッケージ import 可否) のみで `skipif` するため、バイナリ未インストールだと `BrowserType.launch` が実行時にエラーになる。analyze-spectrum 側と同形式の専用ステップを `.github/workflows/ci.yaml` に置く。
 
 ### 分析キャンセル
 
 Analyze ボタンが分析中に Cancel ボタンに変化。`AbortController` で fetch + NDJSON ストリーム読み取りを中断。
-`_isBusy` フラグで Load ボタンを無効化し、二重実行を防止。
+`_isBusy` フラグで Load JSON ボタンを無効化し、二重実行を防止。
 
 ### ウィンドウアイコン
 
@@ -318,15 +310,20 @@ Windows のタスクバーは AppUserModelID でプロセスをグループ化�
 
 PyInstaller frozen mode では `STARTF_USESHOWWINDOW` で ffmpeg / ffprobe のコンソールウインドウを非表示。yt-dlp は Python API として動作するため subprocess 起動しない。
 
-## Response format (GUI NDJSON)
+## 応答形式 (GUI NDJSON)
 
-Progress events:
+進捗イベント:
 ```json
 {"type":"progress","stage":"download","message":"Downloading audio..."}
 {"type":"progress","stage":"analyze","message":"Running EBU R128 analysis...","estimate_sec":12,"duration_sec":600}
 ```
 
-Result event:
+警告イベント (ffmpeg が非 0 で終了したときに送る。ステータス欄に表示し、stderr のパース結果で処理を続ける):
+```json
+{"type":"warning","message":"ffmpeg exited with code 1"}
+```
+
+結果イベント:
 ```json
 {
   "type": "result",
@@ -351,31 +348,20 @@ Result event:
 }
 ```
 
-## Time budget (10 min analysis)
+## 所要時間の目安 (10 分の音声)
 
-| Stage              | Time    |
-|--------------------|---------|
-| yt_dlp API audio DL| 3-8 s   |
-| ffmpeg ebur128     | ~11 s   |
-| stderr parse + JSON| <1 s    |
-| **Total**          | **~20 s** |
-
-## Implementation status
-
-All items implemented and tested.
-
-1. `src/analyze_loudness/` -- CLI + GUI 共通パッケージ
-2. `src/analyze_loudness/gui.py` -- pywebview GUI (NDJSON progress, runtime time estimation, save/load/image)
-3. `frontend/` -- SPA (uPlot + 自前チャート, NDJSON progress, JSON/Image save, JSON load + 再可視化)
-4. `build.py` + `analyze-loudness.spec` + `installer.iss` -- ビルド + インストーラー (SHA256 検証)
-5. `tests/` -- pytest (analysis, cli, download, gui, frontend)
-6. `docs/` -- 設計ドキュメント + セキュリティ監査レポート (`docs/security-audit.md`)
+| 段階                 | 所要時間 |
+|----------------------|---------|
+| yt_dlp API で音声 DL | 3-8 s   |
+| ffmpeg ebur128       | ~11 s   |
+| stderr パース + JSON | <1 s    |
+| **合計**             | **~20 s** |
 
 ## リリース手順
 
 1. `src/analyze_loudness/__init__.py` の `__version__` を上げる PR を出す (版上げは他の変更を含めない)
-2. マージ後、master への push で走った CI が成功すると、`tag-release.yml` が `__version__` の変化を検出してマージコミットに `vX.Y.Z` タグを打ち、そのタグ上で `release.yaml` を `workflow_dispatch` で起動する
-3. `release.yaml` が Windows インストーラー (`LoudnessAnalyzer-X.Y.Z-setup.exe`) と macOS DMG (`Loudness-Analyzer.dmg`) をビルドし、Release を作成する (`draft: true`)
+2. マージ後、master への push で走った CI が成功すると、`.github/workflows/tag-release.yml` が `__version__` の変化を検出してマージコミットに `vX.Y.Z` タグを打ち、そのタグ上で `.github/workflows/release.yaml` を `workflow_dispatch` で起動する
+3. `.github/workflows/release.yaml` が Windows インストーラー (`LoudnessAnalyzer-X.Y.Z-setup.exe`) と macOS DMG (`Loudness-Analyzer.dmg`) をビルドし、Release を作成する (`draft: true`)
 4. Release の publish は人が行う
 
 版上げ PR のマージがリリースの起点。`tag-release.yml` は `__version__` が変わらない push では何もせず、同名のタグが別のコミットに既にあるときはタグを動かさない。`release.yaml` はタグの push と、タグ上の `workflow_dispatch` でもビルドとリリースを行う (ブランチ上の `workflow_dispatch` はビルドのみ)。
@@ -390,9 +376,4 @@ All items implemented and tested.
 | `analyze-loudness.spec` | `_read_version()` で regex 読み取り |
 | `installer.iss` | `build.py` の `_build_inno()` が `/DMyAppVersion=` で注入 |
 
-バージョンバンプ時は `__init__.py` の `__version__` のみ変更する。
-
-## Known limitations / future work
-
-- yt-dlp の YouTube 仕様変更追従 -> リリースごとに `pyproject.toml` のピンを更新する
-- `_speed_factor` はグローバル変数で複数リクエスト間で共有 (GUI は単一ユーザー想定のため実質問題なし)
+バージョンバンプ時は `src/analyze_loudness/__init__.py` の `__version__` のみ変更する。
