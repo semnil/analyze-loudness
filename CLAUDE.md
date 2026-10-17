@@ -22,7 +22,7 @@ GUI は pywebview (WebView2) + ローカル HTTP サーバーで構成。
 
 ```
 analyze-loudness/
-├── .github/workflows/          # ci.yaml (PR/push), release.yaml (v* タグ), workflow-checks.yml (全 PR で uses: の SHA 固定と同一リポジトリ参照の規則を検査), workflow-checks-test.yml (検査のフィクスチャテストを実行)
+├── .github/workflows/          # ci.yaml (PR/push), release.yaml (v* タグ / タグ上の workflow_dispatch), tag-release.yml (master の CI 成功後、版上げならタグを打ち release.yaml を起動), workflow-checks.yml (全 PR で uses: の SHA 固定と同一リポジトリ参照の規則を検査), workflow-checks-test.yml (検査のフィクスチャテストを実行)
 ├── .github/tests/              # workflow-checks-test.sh (workflow-checks.yml を偽の gh とフィクスチャの git tree で実行するテスト)
 ├── .gitignore
 ├── .venv/                      # Python venv (git 管理外)
@@ -207,7 +207,7 @@ NDJSON ストリーミングでリアルタイム進捗表示。runtime-calibrat
 
 CSS 変数 + `[data-theme="dark"]` でライト/ダーク/auto の 3 ステートテーマ切替。
 デフォルトは `auto` (OS の `prefers-color-scheme` に追従)。選択は `localStorage("loudness-theme")` に保存。
-テーマ切替 UI は fixed top-right pill ボタン (☾/☀/◐)。analyze-spectrum と統一。
+テーマ切替 UI は fixed top-right pill ボタン (太陽 / 三日月 / 半分を塗った円の SVG。`_createThemeIcon()` が生成)。analyze-spectrum と統一。
 チャート色は `theme.js` の `getTheme()` で一元管理し、テーマ切替時にチャートを再描画。
 
 ### i18n (多言語)
@@ -343,11 +343,11 @@ All items implemented and tested.
 ## リリース手順
 
 1. `src/analyze_loudness/__init__.py` の `__version__` を上げる PR を出す (版上げは他の変更を含めない)
-2. マージ後、master の HEAD に `vX.Y.Z` タグを打って push する
+2. マージ後、master への push で走った CI が成功すると、`tag-release.yml` が `__version__` の変化を検出してマージコミットに `vX.Y.Z` タグを打ち、そのタグ上で `release.yaml` を `workflow_dispatch` で起動する
 3. `release.yaml` が Windows インストーラー (`LoudnessAnalyzer-X.Y.Z-setup.exe`) と macOS DMG (`Loudness-Analyzer.dmg`) をビルドし、Release を作成する (`draft: true`)
 4. Release の publish は人が行う
 
-タグ push が唯一のリリーストリガー (他に `workflow_dispatch`)。マージだけではリリースされない。
+版上げ PR のマージがリリースの起点。`tag-release.yml` は `__version__` が変わらない push では何もせず、同名のタグが別のコミットに既にあるときはタグを動かさない。`release.yaml` はタグの push と、タグ上の `workflow_dispatch` でもビルドとリリースを行う (ブランチ上の `workflow_dispatch` はビルドのみ)。
 
 ## バージョン管理
 

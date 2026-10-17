@@ -12,7 +12,41 @@ const statusEl = document.getElementById("status");
 const resultsEl = document.getElementById("results");
 
 // Theme: "light" | "dark" | "auto" (follows system)
-const _THEME_ICONS = { light: "\u2600", dark: "\u263E", auto: "\u25D0" };
+// 24x24 outline icons drawn with currentColor: sun / crescent moon / half-filled circle.
+const _THEME_ICON_SHAPES = {
+  light: [
+    ["circle", { cx: 12, cy: 12, r: 4 }],
+    ["path", { d: "M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" }],
+  ],
+  dark: [
+    ["path", { d: "M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" }],
+  ],
+  auto: [
+    ["circle", { cx: 12, cy: 12, r: 8 }],
+    ["path", { d: "M12 4a8 8 0 0 1 0 16z", fill: "currentColor" }],
+  ],
+};
+
+function _createThemeIcon(mode) {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "18");
+  svg.setAttribute("height", "18");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  for (const [tag, attrs] of _THEME_ICON_SHAPES[mode]) {
+    const el = document.createElementNS(ns, tag);
+    for (const k of Object.keys(attrs)) el.setAttribute(k, attrs[k]);
+    svg.appendChild(el);
+  }
+  return svg;
+}
 
 function _systemDark() {
   return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -25,10 +59,7 @@ function _applyTheme() {
   document.documentElement.setAttribute("data-theme", resolved);
   const btn = document.getElementById("theme-toggle");
   btn.textContent = "";
-  const icon = document.createElement("span");
-  icon.setAttribute("aria-hidden", "true");
-  icon.textContent = _THEME_ICONS[_themeMode];
-  btn.appendChild(icon);
+  btn.appendChild(_createThemeIcon(_themeMode));
   btn.title = window.i18n.t("theme.title." + _themeMode);
   btn.setAttribute("aria-label", window.i18n.t("theme.aria_state." + _themeMode));
 }
