@@ -12,7 +12,7 @@ from matplotlib.gridspec import GridSpec
 from analyze_loudness.analysis import SILENCE_THRESHOLD, compute_stats, compute_silence_pct
 
 # Use a CJK-capable font if available, fallback to sans-serif
-for _font in ("Meiryo", "Yu Gothic", "Noto Sans CJK JP", "MS Gothic"):
+for _font in ("Meiryo", "Yu Gothic", "Hiragino Sans", "Noto Sans CJK JP", "MS Gothic"):
     if _font in {f.name for f in matplotlib.font_manager.fontManager.ttflist}:
         matplotlib.rcParams["font.family"] = _font
         break
