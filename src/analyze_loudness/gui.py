@@ -29,6 +29,7 @@ from analyze_loudness.download import (
     AUDIO_EXTENSIONS, compute_middle, is_network_path, is_url, local_path, probe_duration,
     resolve_source, sanitize_filename,
 )
+from analyze_common.web import COMMON_CSS
 
 
 def _get_base_dir() -> Path:
@@ -229,8 +230,13 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             return None
         return result if isinstance(result, str) else result[0]
 
+    _COMMON_CSS_URL = "/common/common.css"
+
     def do_GET(self):
         if not self._check_host():
+            return
+        if self.path.split("?", 1)[0] == self._COMMON_CSS_URL:
+            self._send_common_css()
             return
         super().do_GET()
 
@@ -244,6 +250,19 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             self._json_error(415, f"Content-Type must be {expected}")
             return False
         return True
+
+    def _send_common_css(self):
+        """Serve analyze_common's shared stylesheet, which lives outside FRONTEND_DIR."""
+        try:
+            body = COMMON_CSS.read_bytes()
+        except OSError:
+            self.send_error(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/css; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_POST(self):
         if not self._check_host():
