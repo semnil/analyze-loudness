@@ -31,8 +31,14 @@
       <input id="url-input" type="url" inputmode="url" placeholder="YouTube URL" data-i18n-placeholder="url.placeholder"
              autocomplete="off" autocapitalize="off" spellcheck="false" required>
       <button id="submit-btn" type="submit" data-i18n="btn.analyze">Analyze</button>
+      <button id="add-btn" type="button" data-i18n="btn.add" data-i18n-aria-label="btn.add.aria" aria-label="Add the URL as a track for comparison">+ Add Track</button>
       <button id="load-btn" type="button" data-i18n="btn.load_json" data-i18n-aria-label="btn.load_json.aria" aria-label="Load saved JSON result">&#x1F4C4; Load JSON</button>
     </form>
+
+    <div id="track-list" role="list" data-i18n-aria-label="track_list.aria" aria-label="Tracks queued for comparison"></div>
+    <div id="compare-bar" class="compare-bar" hidden>
+      <button id="clear-btn" type="button" data-i18n="btn.clear" data-i18n-aria-label="btn.clear.aria" aria-label="Clear all queued tracks">Clear All</button>
+    </div>
 
     <div id="status" role="status" aria-live="polite"></div>
     <div id="results" tabindex="-1"></div>

@@ -46,6 +46,7 @@ function resetState() {
   document.getElementById("status").className = "";
   document.getElementById("results").innerHTML = "";
   document.getElementById("results").className = "";
+  compareQueue = [];
   _setBusy(false);
 }
 
@@ -109,6 +110,29 @@ function fakeResult(sourceUrl) {
       source_url: sourceUrl || "https://www.youtube.com/watch?v=test",
     },
   };
+}
+
+// Two cut tracks; summary.gate_threshold (-99) is a whole-length value that
+// must not drive the gate over the cut range.
+function fakeCompare() {
+  var a = fakeResult("https://www.youtube.com/watch?v=a");
+  var b = fakeResult("https://www.youtube.com/watch?v=b");
+  a.summary.gate_threshold = -99;
+  b.summary.gate_threshold = -99;
+  return {
+    meta: { schema_version: 3, version: "1.0.0", analyzed_at: "2026-01-01T00:00:00Z" },
+    compare: { truncate_sec: 0.8, tracks: [a, b] },
+  };
+}
+
+function fakeStats() {
+  var st = {
+    duration_sec: 0.8, frames: 8, integrated: -21.5,
+    short_term: { median: -21, p10: -22, p90: -20 },
+    momentary: { median: -22, p10: -23, p90: -21 },
+    silence_pct: 0,
+  };
+  return [st, st];
 }
 
 // ------ Tests ------
@@ -396,6 +420,11 @@ function fakeResult(sourceUrl) {
     "chart.no_data_silence",
     "gate.lane_label", "gate.counted", "gate.out", "gate.silence",
     "gate.counted_of_timeline", "gate.excluded_detail", "aria.gate_lane",
+    "btn.add", "btn.compare", "btn.clear", "track.move_up", "track.move_down", "track.remove",
+    "err.max_tracks", "err.compare_min", "err.compare_queue_busy", "err.url_scheme",
+    "compare.title", "compare.scope", "table.integrated_full", "table.true_peak_full",
+    "table.lra_full", "tip.integrated_full", "tip.true_peak_full", "tip.lra_full",
+    "gate.lane_label_n", "gate.cmp_counted", "chart.cmp_track", "chart.cmp_seg_title",
   ];
   window.i18n.setLang("en");
   for (var i = 0; i < requiredKeys.length; i++) {
@@ -450,6 +479,163 @@ function fakeResult(sourceUrl) {
   assertEqual(tipEl.textContent, "lazy-1", "Lazy tip text uses function result");
   _hideTip();
   document.body.removeChild(anchor2);
+
+
+  // ================================================
+  suite("Comparison queue: Add Track / Clear All");
+  // ================================================
+
+  var addBtn = document.getElementById("add-btn");
+  var clearBtn = document.getElementById("clear-btn");
+  var compareBar = document.getElementById("compare-bar");
+  var trackListEl = document.getElementById("track-list");
+
+  resetState();
+  urlInput.value = "https://www.youtube.com/watch?v=a";
+  addBtn.click();
+  assertEqual(compareQueue.length, 1, "Add Track queues the URL");
+  assertEqual(urlInput.value, "", "URL field cleared after queuing");
+  assertEqual(trackListEl.querySelectorAll(".track-item").length, 1, "One queue row rendered");
+  assertEqual(compareBar.hidden, false, "Clear All bar shown with a queued track");
+  assertEqual(submitBtn.textContent, "Compare", "Submit reads Compare with tracks queued");
+  assertEqual(urlInput.required, false, "URL field not required while tracks are queued");
+
+  urlInput.value = "ftp://example.com/x";
+  addBtn.click();
+  assertEqual(compareQueue.length, 1, "Non-http(s) URL is not queued");
+  assert(statusEl.classList.contains("error"), "Non-http(s) URL shows an error");
+
+  clearBtn.click();
+  assertEqual(compareQueue.length, 0, "Clear All empties the queue");
+  assertEqual(compareBar.hidden, true, "Clear All bar hidden when empty");
+  assertEqual(submitBtn.textContent, "Analyze", "Submit reads Analyze again");
+  assertEqual(urlInput.required, true, "URL field required again");
+
+  // ================================================
+  suite("Comparison queue: cap, reorder, remove");
+  // ================================================
+
+  resetState();
+  for (var q = 0; q < MAX_TRACKS; q++) {
+    urlInput.value = "https://www.youtube.com/watch?v=" + q;
+    addBtn.click();
+  }
+  assertEqual(compareQueue.length, MAX_TRACKS, "Queue fills to MAX_TRACKS");
+  urlInput.value = "https://www.youtube.com/watch?v=extra";
+  addBtn.click();
+  assertEqual(compareQueue.length, MAX_TRACKS, "Add beyond MAX_TRACKS is refused");
+  assert(statusEl.textContent.indexOf(String(MAX_TRACKS)) !== -1, "Cap error names the limit");
+  assertEqual(urlInput.value, "https://www.youtube.com/watch?v=extra", "Refused URL stays in the field");
+
+  var rows = trackListEl.querySelectorAll(".track-item");
+  var firstUp = rows[0].querySelectorAll(".track-btn")[0];
+  assert(firstUp.classList.contains("placeholder") && firstUp.disabled, "First row has no move-up");
+  rows[0].querySelectorAll(".track-btn")[1].click();  // move track 1 down
+  assertEqual(compareQueue[0].label, "https://www.youtube.com/watch?v=1", "Move down swaps rows 1 and 2");
+  assertEqual(compareQueue[1].label, "https://www.youtube.com/watch?v=0", "Moved track is now second");
+  trackListEl.querySelectorAll(".track-item")[0].querySelector(".track-btn.remove").click();
+  assertEqual(compareQueue.length, MAX_TRACKS - 1, "Remove drops one track");
+  assertEqual(compareQueue[0].label, "https://www.youtube.com/watch?v=0", "Remove took the first row");
+  assertEqual(trackListEl.querySelector(".track-btn.remove").getAttribute("aria-label"),
+              "Remove track 1", "Remove button names its track number");
+
+  // ================================================
+  suite("Compare needs two tracks");
+  // ================================================
+
+  resetState();
+  urlInput.value = "https://www.youtube.com/watch?v=a";
+  addBtn.click();
+  document.getElementById("analyze-form").dispatchEvent(new Event("submit"));
+  await new Promise(function(r) { setTimeout(r, 50); });
+  assertEqual(_isBusy, false, "One queued track does not start a comparison");
+  assert(statusEl.classList.contains("error"), "Comparison with one track shows an error");
+
+  // ================================================
+  suite("Load JSON while tracks are queued");
+  // ================================================
+
+  resetState();
+  urlInput.value = "https://www.youtube.com/watch?v=a";
+  addBtn.click();
+  mockFetch(function() { return makeJsonResponse({ loaded: true, data: fakeResult() }); });
+  loadBtn.click();
+  await new Promise(function(r) { setTimeout(r, 100); });
+  assertEqual(compareQueue.length, 2, "A single result joins the queue");
+  assertEqual(compareQueue[1].kind, "json", "Loaded result is queued as JSON");
+  assert(!resultsEl.classList.contains("visible"), "Loaded result is not rendered on its own");
+
+  mockFetch(function() {
+    return makeJsonResponse({ loaded: true, data: fakeCompare(), stats: fakeStats() });
+  });
+  loadBtn.click();
+  await new Promise(function(r) { setTimeout(r, 100); });
+  assertEqual(compareQueue.length, 2, "A comparison JSON is not queued");
+  assert(statusEl.classList.contains("error"), "Comparison JSON with a non-empty queue is refused");
+  assert(resultsEl.querySelector(".compare-table") === null, "Refused comparison is not rendered");
+
+  // ================================================
+  suite("Load comparison JSON with an empty queue");
+  // ================================================
+
+  resetState();
+  var captured = null;
+  var origCmpTimeline = window.renderCompareTimeline;
+  window.renderCompareTimeline = function(c, t, items) { captured = items; return { destroy: function(){}, ctx: null }; };
+  mockFetch(function() {
+    return makeJsonResponse({ loaded: true, data: fakeCompare(), stats: fakeStats() });
+  });
+  loadBtn.click();
+  await new Promise(function(r) { setTimeout(r, 100); });
+  assert(resultsEl.querySelector(".compare-table") !== null, "Comparison table rendered");
+  assertEqual(resultsEl.querySelectorAll(".compare-table thead th").length, 3, "One column per track plus the row header");
+  assertEqual(resultsEl.querySelectorAll(".cmp-seg-title").length, 2, "One segment chart per track");
+  assert(captured !== null && captured.length === 2, "Timeline receives both tracks");
+  // fakeCompare stores a whole-length gate_threshold of -99 that does not
+  // belong to the cut range; the relative gate must come from the series.
+  assert(captured[0].gate !== null && Math.abs(captured[0].gate.threshold - (-99)) > 1,
+         "Gate threshold is recomputed on the cut range, not taken from summary");
+  window.renderCompareTimeline = origCmpTimeline;
+
+  // Theme switch: table swatches follow the new palette.
+  var origGetTheme = window.getTheme;
+  window.getTheme = function() {
+    var th = origGetTheme();
+    th.trackColors = ["#000001", "#000002", "#000003", "#000004", "#000005", "#000006"];
+    return th;
+  };
+  _reRenderCharts();
+  var headSwatch = resultsEl.querySelector(".compare-table thead .track-swatch");
+  assertEqual(headSwatch.style.background, "rgb(0, 0, 1)",
+              "Table swatch recoloured on chart re-render");
+  window.getTheme = origGetTheme;
+
+  // ================================================
+  suite("Compare runs /analyze per URL track, then /compare");
+  // ================================================
+
+  resetState();
+  urlInput.value = "https://www.youtube.com/watch?v=a";
+  addBtn.click();
+  compareQueue.push({ kind: "json", label: "Loaded", data: fakeResult("https://example.com/b") });
+  _renderQueue();
+  var compareBody = null;
+  mockFetch(function(url) {
+    return makeNdjsonResponse([{ type: "result", data: fakeResult("https://www.youtube.com/watch?v=a") }]);
+  });
+  mockFetch(function(url, opts) {
+    compareBody = JSON.parse(opts.body);
+    return makeJsonResponse({ data: fakeCompare(), stats: fakeStats() });
+  });
+  document.getElementById("analyze-form").dispatchEvent(new Event("submit"));
+  await new Promise(function(r) { setTimeout(r, 300); });
+  assert(compareBody !== null, "/compare was called");
+  assertEqual(compareBody && compareBody.tracks.length, 2, "/compare receives both tracks");
+  assertEqual(compareBody && compareBody.tracks[1].meta.source_url, "https://example.com/b",
+              "Queued JSON is sent as-is in queue order");
+  assert(resultsEl.querySelector(".compare-table") !== null, "Comparison rendered after /compare");
+  assertEqual(compareQueue.length, 2, "Queue is kept after a comparison");
+  assertEqual(_isBusy, false, "Not busy after the comparison");
 
   // ================================================
   // Summary

@@ -1,8 +1,10 @@
 /**
  * 5-minute segment bar chart with P10-P90 error bars on Canvas.
+ * `color` (optional) replaces the theme accent for the bars and the
+ * integrated line; comparison mode passes the track colour.
  */
 
-function renderSegments(canvas, t, S, integrated, silenceThreshold) {
+function renderSegments(canvas, t, S, integrated, silenceThreshold, color) {
   silenceThreshold = silenceThreshold ?? -60;
   const segSec = 5 * 60;
   const segments = [];
@@ -89,8 +91,10 @@ function renderSegments(canvas, t, S, integrated, silenceThreshold) {
     if (s.mean != null) {
       // bar
       const barH = ((s.mean - yMin) / yRange) * ph;
-      ctx.fillStyle = th.barFill;
+      ctx.fillStyle = color || th.barFill;
+      ctx.globalAlpha = color ? 0.75 : 1;
       ctx.fillRect(cx - barW / 2, pad.top + ph - barH, barW, barH);
+      ctx.globalAlpha = 1;
 
       // error bar
       const y10 = pad.top + ph - ((s.p10 - yMin) / yRange) * ph;
@@ -117,7 +121,7 @@ function renderSegments(canvas, t, S, integrated, silenceThreshold) {
   // integrated line
   if (integrated != null) {
     const iy = pad.top + ph - ((integrated - yMin) / yRange) * ph;
-    ctx.strokeStyle = th.accent;
+    ctx.strokeStyle = color || th.accent;
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
     ctx.beginPath();

@@ -1,13 +1,25 @@
 let activeUPlots = [];
+// {canvas, label} per chart, in page order; label is baked into the PNG export.
 let chartCanvasRefs = [];
 let lastRenderedData = null;
+let lastCompareStats = null;
 let lastGate = null;
 let activeAbort = null;
+
+// Mirror of MIN_TRACKS / MAX_TRACKS in src/analyze_loudness/compare.py.
+const MIN_TRACKS = 2;
+const MAX_TRACKS = 6;
+// Queued comparison tracks: {kind: "url", label} or {kind: "json", label, data}.
+let compareQueue = [];
 
 const form = document.getElementById("analyze-form");
 const urlInput = document.getElementById("url-input");
 const submitBtn = document.getElementById("submit-btn");
+const addBtn = document.getElementById("add-btn");
 const loadBtn = document.getElementById("load-btn");
+const clearBtn = document.getElementById("clear-btn");
+const trackList = document.getElementById("track-list");
+const compareBar = document.getElementById("compare-bar");
 const statusEl = document.getElementById("status");
 const resultsEl = document.getElementById("results");
 
@@ -69,6 +81,7 @@ function _setThemeMode(mode) {
   localStorage.setItem("loudness-theme", mode);
   const wasDark = isDark();
   _applyTheme();
+  _renderQueue();
   if (isDark() !== wasDark && lastRenderedData) _reRenderCharts();
 }
 
@@ -101,6 +114,7 @@ document.getElementById("lang-toggle").addEventListener("click", function () {
 window.i18n.onChange(function () {
   _applyLangButton();
   _applyTheme();
+  _renderQueue();
   if (lastRenderedData) rerender();
 });
 
@@ -110,6 +124,7 @@ if (window.matchMedia) {
     if (_themeMode === "auto") {
       const wasDark = isDark();
       _applyTheme();
+      _renderQueue();
       if (isDark() !== wasDark && lastRenderedData) _reRenderCharts();
     }
   });
@@ -136,9 +151,15 @@ function safeName(title) {
 
 let _isBusy = false;
 
+function _submitLabel() {
+  return window.i18n.t(compareQueue.length > 0 ? "btn.compare" : "btn.analyze");
+}
+
 function _setBusy(busy, cancelable = true) {
   _isBusy = busy;
   loadBtn.disabled = busy;
+  addBtn.disabled = busy;
+  clearBtn.disabled = busy;
   if (busy) {
     if (cancelable) {
       submitBtn.textContent = window.i18n.t("btn.cancel");
@@ -154,7 +175,7 @@ function _setBusy(busy, cancelable = true) {
     form.setAttribute("aria-busy", "true");
     statusEl.classList.add("loading");
   } else {
-    submitBtn.textContent = window.i18n.t("btn.analyze");
+    submitBtn.textContent = _submitLabel();
     submitBtn.classList.remove("cancelling");
     submitBtn.disabled = false;
     submitBtn.removeAttribute("aria-label");
@@ -162,6 +183,7 @@ function _setBusy(busy, cancelable = true) {
     statusEl.classList.remove("loading");
     activeAbort = null;
   }
+  _renderQueue();
 }
 
 function _cancelActive() {
@@ -196,6 +218,9 @@ var _TIP_KEYS = {
   "table.mom_median": "tip.mom_median",
   "table.mom_p10p90": "tip.mom_p10p90",
   "table.silence": "tip.silence",
+  "table.integrated_full": "tip.integrated_full",
+  "table.true_peak_full": "tip.true_peak_full",
+  "table.lra_full": "tip.lra_full",
   "chart.timeline_title": "tip.chart_timeline",
   "chart.histogram": "tip.chart_histogram",
   "chart.segments": "tip.chart_segments",
@@ -306,6 +331,7 @@ function _setStatusWithCountdown(message, countdownText) {
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (_isBusy) { _cancelActive(); return; }
+  if (compareQueue.length > 0) { await _runCompare(); return; }
   const url = urlInput.value.trim();
   if (!url) return;
 
@@ -381,6 +407,27 @@ loadBtn.addEventListener("click", async () => {
       return;
     }
 
+    if (result.data.compare) {
+      if (compareQueue.length > 0) {
+        endedAbnormally = true;
+        showError(window.i18n.t("err.compare_queue_busy"));
+        return;
+      }
+      clearResults();
+      statusEl.textContent = "";
+      renderCompare(result.data, result.stats);
+      return;
+    }
+    if (compareQueue.length > 0) {
+      if (!_queueTrack({ kind: "json", label: result.data.title || window.i18n.t("summary.untitled"),
+                         data: result.data })) {
+        endedAbnormally = true;
+        return;
+      }
+      statusEl.textContent = "";
+      return;
+    }
+
     clearResults();
     statusEl.textContent = "";
     var src = result.data.meta && result.data.meta.source_url;
@@ -400,7 +447,191 @@ loadBtn.addEventListener("click", async () => {
   }
 });
 
-async function readNdjsonStream(resp, signal) {
+// ------ Comparison queue ------
+
+// Adds a track to the queue; shows the error and returns false when full.
+function _queueTrack(item) {
+  if (compareQueue.length >= MAX_TRACKS) {
+    showError(window.i18n.t("err.max_tracks", { max: MAX_TRACKS }));
+    return false;
+  }
+  compareQueue.push(item);
+  _renderQueue();
+  return true;
+}
+
+// Moves a non-empty URL field into the queue.  Returns false (with the error
+// shown) on a non-http(s) URL or a full queue; an empty field is a no-op.
+function _queueUrlInput() {
+  const url = urlInput.value.trim();
+  if (!url) return true;
+  if (!/^https?:\/\//i.test(url)) {
+    showError(window.i18n.t("err.url_scheme"));
+    return false;
+  }
+  if (!_queueTrack({ kind: "url", label: url })) return false;
+  urlInput.value = "";
+  return true;
+}
+
+addBtn.addEventListener("click", () => {
+  if (_isBusy) return;
+  if (!urlInput.value.trim()) { urlInput.focus(); return; }
+  _setStatusNormal();
+  statusEl.textContent = "";
+  if (_queueUrlInput()) urlInput.focus();
+});
+
+clearBtn.addEventListener("click", () => {
+  if (_isBusy) return;
+  compareQueue = [];
+  _renderQueue();
+  urlInput.focus();
+});
+
+function _moveTrack(from, to) {
+  const item = compareQueue[from];
+  compareQueue[from] = compareQueue[to];
+  compareQueue[to] = item;
+  _renderQueue();
+}
+
+function _trackButton(cls, text, ariaKey, n, onClick) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "track-btn " + cls;
+  btn.textContent = text;
+  btn.setAttribute("aria-label", window.i18n.t(ariaKey, { n }));
+  btn.disabled = _isBusy;
+  btn.addEventListener("click", onClick);
+  return btn;
+}
+
+// Up/down arrows keep their slot at the ends so rows stay aligned.
+function _placeholder(btn) {
+  btn.classList.add("placeholder");
+  btn.disabled = true;
+  btn.setAttribute("aria-hidden", "true");
+  btn.tabIndex = -1;
+  return btn;
+}
+
+function _renderQueue() {
+  trackList.textContent = "";
+  const colors = getTheme().trackColors;
+  compareQueue.forEach(function (item, k) {
+    const n = k + 1;
+    const row = document.createElement("div");
+    row.className = "track-item";
+    row.setAttribute("role", "listitem");
+
+    const swatch = document.createElement("span");
+    swatch.className = "track-swatch";
+    swatch.setAttribute("aria-hidden", "true");
+    swatch.style.background = colors[k];
+    row.appendChild(swatch);
+
+    const num = document.createElement("span");
+    num.className = "track-num";
+    num.textContent = String(n);
+    row.appendChild(num);
+
+    const tag = document.createElement("span");
+    tag.className = "track-tag";
+    tag.textContent = window.i18n.t(item.kind === "url" ? "track.tag_url" : "track.tag_json");
+    row.appendChild(tag);
+
+    const label = document.createElement("span");
+    label.className = "track-label";
+    label.textContent = item.label;
+    label.title = item.label;
+    row.appendChild(label);
+
+    const up = _trackButton("", "↑", "track.move_up", n, () => _moveTrack(k, k - 1));
+    row.appendChild(k === 0 ? _placeholder(up) : up);
+    const down = _trackButton("", "↓", "track.move_down", n, () => _moveTrack(k, k + 1));
+    row.appendChild(k === compareQueue.length - 1 ? _placeholder(down) : down);
+    row.appendChild(_trackButton("remove", "×", "track.remove", n, () => {
+      compareQueue.splice(k, 1);
+      _renderQueue();
+    }));
+    trackList.appendChild(row);
+  });
+  compareBar.hidden = compareQueue.length === 0;
+  // With tracks queued an empty field is a valid Compare.
+  urlInput.required = compareQueue.length === 0;
+  if (!_isBusy) submitBtn.textContent = _submitLabel();
+}
+
+async function _runCompare() {
+  _setStatusNormal();
+  statusEl.textContent = "";
+  if (!_queueUrlInput()) return;
+  if (compareQueue.length < MIN_TRACKS) {
+    showError(window.i18n.t("err.compare_min"));
+    return;
+  }
+  const items = compareQueue.slice();
+  statusEl.textContent = window.i18n.t("status.starting");
+  _setBusy(true);
+  clearResults();
+
+  activeAbort = new AbortController();
+  const signal = activeAbort.signal;
+  let endedAbnormally = false;
+  try {
+    const tracks = [];
+    for (let k = 0; k < items.length; k++) {
+      const item = items[k];
+      if (item.kind === "json") { tracks.push(item.data); continue; }
+      const prefix = window.i18n.t("status.track_prefix", { i: k + 1, n: items.length });
+      statusEl.textContent = prefix + window.i18n.t("status.starting");
+      try {
+        const resp = await fetch(window.location.origin + "/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: item.label }),
+          signal,
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${resp.status}`);
+        }
+        tracks.push(await readNdjsonStream(resp, signal, prefix));
+      } catch (err) {
+        if (err.name === "AbortError") throw err;
+        throw new Error(window.i18n.t("err.track_failed", { i: k + 1, msg: err.message }));
+      }
+    }
+
+    statusEl.textContent = window.i18n.t("status.comparing");
+    const resp = await fetch(window.location.origin + "/compare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tracks }),
+      signal,
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(body.error || `HTTP ${resp.status}`);
+    statusEl.textContent = "";
+    renderCompare(body.data, body.stats);
+    resultsEl.focus({ preventScroll: true });
+  } catch (err) {
+    endedAbnormally = true;
+    if (err.name === "AbortError") {
+      _setStatusNormal();
+      statusEl.textContent = window.i18n.t("status.cancelled");
+    } else {
+      showError(err.message);
+    }
+  } finally {
+    _setBusy(false);
+    if (endedAbnormally) urlInput.focus();
+  }
+}
+
+// `prefix` leads every status line (comparison: which track is running).
+async function readNdjsonStream(resp, signal, prefix = "") {
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -443,7 +674,7 @@ async function readNdjsonStream(resp, signal) {
             const minUnit = window.i18n.t("summary.min");
             const cdParams = { duration: durationMin, unit: minUnit };
             const countdown = _setStatusWithCountdown(
-              event.message, window.i18n.t("status.countdown", { ...cdParams, remaining }));
+              prefix + event.message, window.i18n.t("status.countdown", { ...cdParams, remaining }));
             countdownTimer = setInterval(() => {
               remaining -= step;
               if (remaining > 0) {
@@ -456,10 +687,10 @@ async function readNdjsonStream(resp, signal) {
               }
             }, tick);
           } else {
-            statusEl.textContent = event.message;
+            statusEl.textContent = prefix + event.message;
           }
         } else if (event.type === "warning") {
-          statusEl.textContent = "\u26a0 " + event.message;
+          statusEl.textContent = "\u26a0 " + prefix + event.message;
         } else if (event.type === "result") {
           result = event.data;
         } else if (event.type === "error") {
@@ -483,7 +714,25 @@ async function readNdjsonStream(resp, signal) {
 function rerender() {
   if (!lastRenderedData) return;
   clearResults();
-  render(lastRenderedData);
+  if (lastRenderedData.compare) renderCompare(lastRenderedData, lastCompareStats);
+  else render(lastRenderedData);
+}
+
+function _appendSaveButtons(row, data) {
+  for (const [key, save] of [["btn.save_json", saveResult], ["btn.save_image", saveImage]]) {
+    const btn = document.createElement("button");
+    btn.className = "save-btn";
+    btn.textContent = window.i18n.t(key);
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        await save(data);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+    row.appendChild(btn);
+  }
 }
 
 function render(data) {
@@ -503,32 +752,7 @@ function render(data) {
   titleEl.textContent = title || window.i18n.t("summary.untitled");
   titleRow.appendChild(titleEl);
 
-  const saveBtn = document.createElement("button");
-  saveBtn.className = "save-btn";
-  saveBtn.textContent = window.i18n.t("btn.save_json");
-  saveBtn.addEventListener("click", async () => {
-    saveBtn.disabled = true;
-    try {
-      await saveResult(data);
-    } finally {
-      saveBtn.disabled = false;
-    }
-  });
-  titleRow.appendChild(saveBtn);
-
-  const saveImgBtn = document.createElement("button");
-  saveImgBtn.className = "save-btn";
-  saveImgBtn.textContent = window.i18n.t("btn.save_image");
-  saveImgBtn.addEventListener("click", async () => {
-    saveImgBtn.disabled = true;
-    try {
-      await saveImage(data);
-    } finally {
-      saveImgBtn.disabled = false;
-    }
-  });
-  titleRow.appendChild(saveImgBtn);
-
+  _appendSaveButtons(titleRow, data);
   resultsEl.appendChild(titleRow);
 
   if (meta) {
@@ -618,7 +842,7 @@ function _renderCharts(data) {
   resultsEl.appendChild(timeDiv);
   const uplot = renderTimeline(timeDiv, series.t, series.S, summary.integrated, lastGate);
   activeUPlots.push(uplot);
-  if (uplot.ctx) chartCanvasRefs.push(uplot.ctx.canvas);
+  if (uplot.ctx) chartCanvasRefs.push({ canvas: uplot.ctx.canvas, label: timeHeading.textContent });
   if (lastGate) resultsEl.appendChild(_buildGateCaption(lastGate));
 
   const histRow = document.createElement("div");
@@ -660,7 +884,8 @@ function _renderCharts(data) {
   resultsEl.appendChild(histRow);
   renderHistogram(canvasS, series.S, window.i18n.t("chart.label_short_term"), summary.integrated);
   renderHistogram(canvasM, series.M, window.i18n.t("chart.label_momentary"), summary.integrated);
-  chartCanvasRefs.push(canvasS, canvasM);
+  chartCanvasRefs.push({ canvas: canvasS, label: histSTitle.textContent },
+                      { canvas: canvasM, label: histMTitle.textContent });
 
   const segHeading = document.createElement("h3");
   segHeading.className = "chart-title";
@@ -679,7 +904,7 @@ function _renderCharts(data) {
   segDiv.appendChild(segCanvas);
   resultsEl.appendChild(segDiv);
   renderSegments(segCanvas, series.t, series.S, summary.integrated);
-  chartCanvasRefs.push(segCanvas);
+  chartCanvasRefs.push({ canvas: segCanvas, label: segHeading.textContent });
 }
 
 function _reRenderCharts() {
@@ -688,7 +913,16 @@ function _reRenderCharts() {
   activeUPlots = [];
   chartCanvasRefs = [];
   resultsEl.querySelectorAll("[data-chart-block]").forEach(n => n.remove());
-  _renderCharts(lastRenderedData);
+  if (lastRenderedData.compare) {
+    // Track swatches outside the chart blocks (table headings) take the new colours.
+    const colors = getTheme().trackColors;
+    resultsEl.querySelectorAll(".track-swatch[data-track]").forEach(function (sw) {
+      sw.style.background = colors[Number(sw.dataset.track)];
+    });
+    _renderCompareCharts(lastRenderedData, lastCompareStats);
+  } else {
+    _renderCharts(lastRenderedData);
+  }
 }
 
 // Reading row under the timeline: what the GATE lane adds up to, plus the key
@@ -711,7 +945,11 @@ function _buildGateCaption(gate) {
       silent: fmt(gate.silentPct, 1),
     })));
   row.appendChild(facts);
+  row.appendChild(_buildGateLegend());
+  return row;
+}
 
+function _buildGateLegend() {
   const legend = document.createElement("p");
   legend.className = "gate-legend";
   for (const [cls, key] of [["counted", "gate.counted"],
@@ -726,8 +964,223 @@ function _buildGateCaption(gate) {
     item.appendChild(document.createTextNode(window.i18n.t(key)));
     legend.appendChild(item);
   }
-  row.appendChild(legend);
-  return row;
+  return legend;
+}
+
+// ------ Comparison view ------
+
+// Stats are per track over the cut range (server-computed); whole-track
+// figures come from each track's own summary.
+function renderCompare(doc, stats) {
+  lastRenderedData = doc;
+  lastCompareStats = stats || [];
+  lastGate = null;
+  resultsEl.className = "visible";
+  chartCanvasRefs = [];
+  const tracks = doc.compare.tracks;
+
+  const titleRow = document.createElement("div");
+  titleRow.className = "title-row";
+  const titleEl = document.createElement("h2");
+  titleEl.className = "video-title";
+  titleEl.textContent = window.i18n.t("compare.title", { n: tracks.length });
+  titleRow.appendChild(titleEl);
+  _appendSaveButtons(titleRow, doc);
+  resultsEl.appendChild(titleRow);
+
+  const scope = document.createElement("p");
+  scope.className = "compare-scope";
+  scope.textContent = window.i18n.t("compare.scope", { mins: fmt(doc.compare.truncate_sec / 60, 1) });
+  resultsEl.appendChild(scope);
+
+  resultsEl.appendChild(_buildCompareTable(tracks, lastCompareStats));
+  _renderCompareCharts(doc, lastCompareStats);
+}
+
+function _trackHeading(tag, cls, k, text) {
+  const el = document.createElement(tag);
+  el.className = cls;
+  const swatch = document.createElement("span");
+  swatch.className = "track-swatch";
+  swatch.setAttribute("aria-hidden", "true");
+  swatch.dataset.track = String(k);
+  swatch.style.background = getTheme().trackColors[k];
+  el.appendChild(swatch);
+  el.appendChild(document.createTextNode(text));
+  return el;
+}
+
+function _buildCompareTable(tracks, stats) {
+  const t = window.i18n.t;
+  const minUnit = t("summary.min");
+  const framesUnit = t("summary.frames");
+  const rows = [
+    ["table.duration", (tr, st) =>
+      fmt(st.duration_sec / 60, 1) + " " + minUnit + " (" + fmt(st.frames, 0) + " " + framesUnit + ")"],
+    ["table.integrated", (tr, st) => fmt(st.integrated, 1) + " LUFS"],
+    ["table.integrated_full", (tr) => fmt(tr.summary.integrated, 1) + " LUFS"],
+    ["table.true_peak_full", (tr) => tr.summary.true_peak != null
+      ? fmt(tr.summary.true_peak, 1, true) + " dBFS" : _naCell(t("summary.true_peak_na"))],
+    ["table.lra_full", (tr) => fmt(tr.summary.lra, 1) + " LU"],
+    ["table.sterm_median", (tr, st) => fmt((st.short_term || {}).median, 1) + " LUFS"],
+    ["table.sterm_p10p90", (tr, st) =>
+      fmt((st.short_term || {}).p10, 1) + " / " + fmt((st.short_term || {}).p90, 1) + " LUFS"],
+    ["table.mom_median", (tr, st) => fmt((st.momentary || {}).median, 1) + " LUFS"],
+    ["table.mom_p10p90", (tr, st) =>
+      fmt((st.momentary || {}).p10, 1) + " / " + fmt((st.momentary || {}).p90, 1) + " LUFS"],
+    ["table.silence", (tr, st) => fmt(st.silence_pct, 1) + "%"],
+  ];
+
+  const table = document.createElement("table");
+  table.className = "summary-table compare-table";
+  table.setAttribute("aria-label", t("summary.aria.compare"));
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  const corner = document.createElement("th");
+  corner.setAttribute("scope", "col");
+  corner.textContent = t("table.track");
+  headRow.appendChild(corner);
+  tracks.forEach(function (tr, k) {
+    const name = tr.title || t("summary.untitled");
+    const th = _trackHeading("th", "track-head", k, (k + 1) + ": " + name);
+    th.setAttribute("scope", "col");
+    th.title = name;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  for (const [key, cell] of rows) {
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.setAttribute("scope", "row");
+    th.textContent = t(key);
+    const tip = _tipFor(key);
+    if (tip) _addTip(th, tip);
+    tr.appendChild(th);
+    tracks.forEach(function (track, k) {
+      const td = document.createElement("td");
+      const v = cell(track, stats[k] || {});
+      if (v instanceof Node) td.appendChild(v);
+      else td.textContent = v;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  return table;
+}
+
+function _renderCompareCharts(doc, stats) {
+  const t = window.i18n.t;
+  const tracks = doc.compare.tracks;
+  const colors = getTheme().trackColors;
+  const mins = fmt(doc.compare.truncate_sec / 60, 1);
+  // The relative gate is recomputed on the cut range: each track's
+  // summary.gate_threshold belongs to its whole length.
+  const items = tracks.map(function (tr, k) {
+    const s = tr.series;
+    return {
+      n: k + 1,
+      color: colors[k],
+      S: s.S,
+      M: s.M,
+      gate: (s.M && s.t && s.M.length === s.t.length) ? computeGate(s.M, s.t, null) : null,
+    };
+  });
+
+  const timeHeading = document.createElement("h3");
+  timeHeading.className = "chart-title";
+  timeHeading.setAttribute("data-chart-block", "1");
+  timeHeading.textContent = t("chart.timeline_title");
+  const timeTip = _tipFor("chart.timeline_title");
+  if (timeTip) _addTip(timeHeading, timeTip);
+  resultsEl.appendChild(timeHeading);
+  const anyGate = items.some(it => it.gate != null);
+  const timeDiv = document.createElement("div");
+  timeDiv.className = anyGate ? "chart-row has-gate" : "chart-row";
+  timeDiv.setAttribute("data-chart-block", "1");
+  timeDiv.setAttribute("role", "img");
+  timeDiv.setAttribute("aria-label", t("aria.cmp_timeline", { count: tracks.length, mins }));
+  resultsEl.appendChild(timeDiv);
+  const uplot = renderCompareTimeline(timeDiv, tracks[0].series.t, items);
+  activeUPlots.push(uplot);
+  if (uplot.ctx) chartCanvasRefs.push({ canvas: uplot.ctx.canvas, label: timeHeading.textContent });
+
+  if (anyGate) {
+    const caption = document.createElement("div");
+    caption.className = "gate-caption";
+    caption.setAttribute("data-chart-block", "1");
+    const facts = document.createElement("p");
+    facts.className = "gate-cmp-facts";
+    for (const it of items) {
+      if (!it.gate) continue;
+      const line = document.createElement("span");
+      line.textContent = t("gate.cmp_counted", { n: it.n, counted: fmt(it.gate.countedPct, 1) });
+      facts.appendChild(line);
+    }
+    caption.appendChild(facts);
+    caption.appendChild(_buildGateLegend());
+    resultsEl.appendChild(caption);
+  }
+
+  const histRow = document.createElement("div");
+  histRow.className = "chart-pair";
+  histRow.setAttribute("data-chart-block", "1");
+  resultsEl.appendChild(histRow);
+  const histTip = _tipFor("chart.histogram");
+  // Both columns go in before drawing: each canvas takes its size from the
+  // laid-out row.
+  const hists = [["chart.label_short_term", "S"], ["chart.label_momentary", "M"]].map(function ([labelKey, field]) {
+    const kind = t(labelKey);
+    const col = document.createElement("div");
+    const title = document.createElement("h3");
+    title.className = "chart-title";
+    title.textContent = t("chart.hist_title", { label: kind });
+    if (histTip) _addTip(title, histTip);
+    col.appendChild(title);
+    const canvas = document.createElement("canvas");
+    canvas.className = "histogram-canvas";
+    canvas.setAttribute("role", "img");
+    canvas.setAttribute("aria-label", t("aria.cmp_histogram", { kind, count: tracks.length }));
+    col.appendChild(canvas);
+    histRow.appendChild(col);
+    return { kind, field, canvas, label: title.textContent };
+  });
+  for (const h of hists) {
+    renderHistogramCompare(h.canvas, items.map(it => ({ n: it.n, color: it.color, values: it[h.field] })), h.kind);
+    chartCanvasRefs.push({ canvas: h.canvas, label: h.label });
+  }
+
+  const segHeading = document.createElement("h3");
+  segHeading.className = "chart-title";
+  segHeading.setAttribute("data-chart-block", "1");
+  segHeading.textContent = t("chart.seg_title");
+  const segTip = _tipFor("chart.segments");
+  if (segTip) _addTip(segHeading, segTip);
+  resultsEl.appendChild(segHeading);
+  tracks.forEach(function (tr, k) {
+    const st = stats[k] || {};
+    const name = tr.title || t("summary.untitled");
+    const head = _trackHeading("h4", "cmp-seg-title", k, t("chart.cmp_seg_title", { n: k + 1, title: name }));
+    head.setAttribute("data-chart-block", "1");
+    resultsEl.appendChild(head);
+    const segDiv = document.createElement("div");
+    segDiv.className = "chart-row";
+    segDiv.setAttribute("data-chart-block", "1");
+    segDiv.setAttribute("role", "img");
+    segDiv.setAttribute("aria-label", t("aria.cmp_segments", {
+      n: k + 1,
+      integrated: st.integrated != null ? fmt(st.integrated, 1) + " LUFS" : "unavailable",
+    }));
+    const canvas = document.createElement("canvas");
+    canvas.className = "segments-canvas";
+    segDiv.appendChild(canvas);
+    resultsEl.appendChild(segDiv);
+    renderSegments(canvas, tr.series.t, tr.series.S, st.integrated, undefined, colors[k]);
+    chartCanvasRefs.push({ canvas, label: head.textContent });
+  });
 }
 
 function _timelineAriaLabel(summary, series, st) {
@@ -789,8 +1242,14 @@ function _sourceUrlNode(url) {
   return document.createTextNode(url);
 }
 
+function _exportStem(data) {
+  return data.compare
+    ? `loudness_compare_${data.compare.tracks.length}tracks`
+    : `loudness_${safeName(data.title)}`;
+}
+
 async function saveResult(data) {
-  const filename = `loudness_${safeName(data.title)}.json`;
+  const filename = `${_exportStem(data)}.json`;
   try {
     const resp = await fetch(window.location.origin + "/save", {
       method: "POST",
@@ -813,10 +1272,54 @@ async function saveResult(data) {
   }
 }
 
-function captureImage(data) {
+// Header text of the PNG export for a single result: [left, right] pairs.
+function _singleImageText(data) {
   const { title, summary } = data;
   const st = summary.short_term || {};
   const mo = summary.momentary || {};
+  const tImg = window.i18n.t;
+  const mi = tImg("summary.min");
+  const fr = tImg("summary.frames");
+  return {
+    title: title || tImg("summary.untitled"),
+    lines: [
+      [`${tImg("table.duration")}: ${fmt(summary.duration_sec / 60, 1)} ${mi} (${summary.frames} ${fr})`,
+       `${tImg("table.integrated")}: ${fmt(summary.integrated, 1)} LUFS`],
+      [`${tImg("table.true_peak")}: ${summary.true_peak != null ? fmt(summary.true_peak, 1, true) + " dBFS" : "?"}`,
+       `${tImg("table.lra")}: ${fmt(summary.lra, 1)} LU`],
+      [`${tImg("table.sterm_median")}: ${fmt(st.median, 1)} LUFS`,
+       `${tImg("table.mom_median")}: ${fmt(mo.median, 1)} LUFS`],
+      [`${tImg("table.sterm_p10p90")}: ${fmt(st.p10, 1)} / ${fmt(st.p90, 1)} LUFS`,
+       `${tImg("table.mom_p10p90")}: ${fmt(mo.p10, 1)} / ${fmt(mo.p90, 1)} LUFS`],
+      [`${tImg("table.silence")}: ${fmt(summary.silence_pct, 1)}%`,
+       lastGate ? `${tImg("gate.counted")}: ${fmt(lastGate.countedPct, 1)}% (${tImg("gate.out")} ${fmt(lastGate.belowPct, 1)}% @ ${fmt(lastGate.threshold, 1)} LUFS)` : ""],
+    ],
+  };
+}
+
+// Header text of the PNG export for a comparison: the scope, then one line
+// per track (cut-range figures left, whole-track figures right).
+function _compareImageText(doc) {
+  const tImg = window.i18n.t;
+  const tracks = doc.compare.tracks;
+  const stats = lastCompareStats || [];
+  const lines = [[tImg("compare.scope", { mins: fmt(doc.compare.truncate_sec / 60, 1) }), ""]];
+  tracks.forEach(function (tr, k) {
+    const st = stats[k] || {};
+    const sm = tr.summary || {};
+    const name = tr.title || tImg("summary.untitled");
+    lines.push([
+      `${k + 1}: ${name.length > 40 ? name.slice(0, 39) + "\u2026" : name}`,
+      `${tImg("table.integrated")} ${fmt(st.integrated, 1)} LUFS ` +
+      `(${tImg("compare.full_value", { val: fmt(sm.integrated, 1) })}) · ` +
+      `${tImg("table.true_peak_full")} ${fmt(sm.true_peak, 1, true)} · ${tImg("table.lra_full")} ${fmt(sm.lra, 1)}`,
+    ]);
+  });
+  return { title: tImg("compare.title", { n: tracks.length }), lines };
+}
+
+function captureImage(data) {
+  const text = data.compare ? _compareImageText(data) : _singleImageText(data);
 
   const dpr = window.devicePixelRatio || 1;
   const SCALE = 2;
@@ -827,25 +1330,18 @@ function captureImage(data) {
 
   // Header: title + summary text block
   totalH += 32; // title
-  totalH += LINE * 7 + 12; // summary lines + spacing
+  totalH += LINE * (text.lines.length + 2) + 12; // summary lines + spacing
 
-  // Chart titles baked into the composite PNG only.  The HTML uses .chart-title
-  // above each canvas; the canvas bitmap itself has no text, so we redraw it here.
-  const chartTitles = [
-    window.i18n.t("chart.timeline_title"),
-    window.i18n.t("chart.hist_title", { label: window.i18n.t("chart.label_short_term") }),
-    window.i18n.t("chart.hist_title", { label: window.i18n.t("chart.label_momentary") }),
-    window.i18n.t("chart.seg_title"),
-  ];
-
-  // Chart heights (in CSS pixels)
+  // Chart titles are baked into the composite PNG only.  The HTML uses
+  // .chart-title above each canvas; the canvas bitmap itself has no text, so
+  // we redraw it here.
   const chartSizes = [];
-  for (let ci = 0; ci < chartCanvasRefs.length; ci++) {
-    const c = chartCanvasRefs[ci];
+  for (const ref of chartCanvasRefs) {
+    const c = ref.canvas;
     if (!c || !c.width) continue;
     const h = c.height / dpr;
     const w = c.width / dpr;
-    const label = chartTitles[ci] || null;
+    const label = ref.label || null;
     chartSizes.push({ canvas: c, w, h, label });
     if (label) totalH += 22;
     totalH += h + 16;
@@ -874,7 +1370,7 @@ function captureImage(data) {
   ctx.fillStyle = th.titleColor;
   ctx.font = "bold 18px 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "center";
-  var displayTitle = title || window.i18n.t("summary.untitled");
+  var displayTitle = text.title;
   var maxTitleW = W - PAD * 2;
   while (ctx.measureText(displayTitle).width > maxTitleW && displayTitle.length > 4) {
     displayTitle = displayTitle.slice(0, -4) + "\u2026";
@@ -888,23 +1384,7 @@ function captureImage(data) {
   ctx.textAlign = "left";
   const col1 = PAD, col2 = W / 2 + PAD;
 
-  const tImg = window.i18n.t;
-  const mi = tImg("summary.min");
-  const fr = tImg("summary.frames");
-  const lines = [
-    [`${tImg("table.duration")}: ${fmt(summary.duration_sec / 60, 1)} ${mi} (${summary.frames} ${fr})`,
-     `${tImg("table.integrated")}: ${fmt(summary.integrated, 1)} LUFS`],
-    [`${tImg("table.true_peak")}: ${summary.true_peak != null ? fmt(summary.true_peak, 1, true) + " dBFS" : "?"}`,
-     `${tImg("table.lra")}: ${fmt(summary.lra, 1)} LU`],
-    [`${tImg("table.sterm_median")}: ${fmt(st.median, 1)} LUFS`,
-     `${tImg("table.mom_median")}: ${fmt(mo.median, 1)} LUFS`],
-    [`${tImg("table.sterm_p10p90")}: ${fmt(st.p10, 1)} / ${fmt(st.p90, 1)} LUFS`,
-     `${tImg("table.mom_p10p90")}: ${fmt(mo.p10, 1)} / ${fmt(mo.p90, 1)} LUFS`],
-    [`${tImg("table.silence")}: ${fmt(summary.silence_pct, 1)}%`,
-     lastGate ? `${tImg("gate.counted")}: ${fmt(lastGate.countedPct, 1)}% (${tImg("gate.out")} ${fmt(lastGate.belowPct, 1)}% @ ${fmt(lastGate.threshold, 1)} LUFS)` : ""],
-  ];
-
-  for (const [left, right] of lines) {
+  for (const [left, right] of text.lines) {
     y += LINE;
     ctx.fillText(left, col1, y);
     if (right) ctx.fillText(right, col2, y);
@@ -940,7 +1420,7 @@ function captureImage(data) {
 }
 
 async function saveImage(data) {
-  const filename = `loudness_${safeName(data.title)}.png`;
+  const filename = `${_exportStem(data)}.png`;
   try {
     const dataUrl = captureImage(data);
     if (!dataUrl) return;
