@@ -11,11 +11,12 @@ from datetime import datetime, timezone
 import numpy as np
 
 from analyze_loudness import SCHEMA_VERSION, __version__, _json_safe
-from analyze_loudness.analysis import compute_silence_pct, compute_stats
+from analyze_loudness.analysis import compute_silence_pct, compute_stats, first_full_window
 
 MAX_TRACKS = 6
 MIN_TRACKS = 2
 
+# Mirror of the same constants in frontend/gate.js.
 GATE_ABSOLUTE = -70.0
 GATE_RELATIVE_OFFSET = -10.0
 GATE_BLOCK_SEC = 0.4
@@ -137,21 +138,9 @@ def validate_compare(data) -> str | None:
     return None
 
 
-def first_gated_index(t) -> int:
-    """First frame with a complete momentary window (gate.js _firstGatedIndex)."""
-    if len(t) == 0:
-        return 0
-    frame = float(t[1] - t[0]) if len(t) > 1 else 0.0
-    full = float(t[0]) + GATE_BLOCK_SEC - frame * 1.5
-    i = 0
-    while i < len(t) and t[i] < full:
-        i += 1
-    return i
-
-
 def gated_integrated(M, t) -> float | None:
     """BS.1770 Integrated rebuilt from Momentary blocks, relative gate recomputed."""
-    start = first_gated_index(t)
+    start = first_full_window(np.asarray(t, dtype=float), GATE_BLOCK_SEC)
     blocks = [float(m) for m in M[start:]
               if m is not None and math.isfinite(m) and m > GATE_ABSOLUTE]
     if not blocks:
