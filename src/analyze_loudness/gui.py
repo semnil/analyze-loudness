@@ -172,7 +172,9 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(FRONTEND_DIR), **kwargs)
 
     _MAX_BODY_BYTES = 64 * 1024 * 1024  # 64 MiB: large enough for full-resolution image payload
-    _MAX_LOAD_BYTES = 50 * 1024 * 1024  # 50 MB cap for /load JSON files
+    # /load cap: room for a saved comparison of MAX_TRACKS tracks at the
+    # longest length a /compare request body can carry.
+    _MAX_LOAD_BYTES = 210 * 1024 * 1024
     _ALLOWED_HOSTS = ("127.0.0.1", "localhost")
 
     def _check_host(self) -> bool:

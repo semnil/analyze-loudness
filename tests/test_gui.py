@@ -424,10 +424,11 @@ class TestLoadNanInfFallback:
 class TestLoadFileSizeLimit:
     """V-17 (from pair checklist): /load rejects files exceeding _MAX_LOAD_BYTES."""
 
-    def test_oversized_file_rejected(self, server, mock_window, tmp_path):
-        # Create a file slightly over the 50 MB limit
+    def test_oversized_file_rejected(self, server, handler_class, mock_window, tmp_path, monkeypatch):
+        # A small cap stands in for the real one so the test does not write 210 MB.
+        monkeypatch.setattr(handler_class, "_MAX_LOAD_BYTES", 1024)
         big_file = tmp_path / "huge.json"
-        big_file.write_bytes(b"x" * (50 * 1024 * 1024 + 1))
+        big_file.write_bytes(b"x" * (1024 + 1))
         mock_window.create_file_dialog.return_value = str(big_file)
         status, body = _serve_post(server, "/load", {})
         assert status == 400
