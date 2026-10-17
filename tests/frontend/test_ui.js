@@ -424,7 +424,7 @@ function fakeStats() {
     "err.max_tracks", "err.compare_min", "err.compare_queue_busy", "err.url_scheme",
     "compare.title", "compare.scope", "table.integrated_full", "table.true_peak_full",
     "table.lra_full", "tip.integrated_full", "tip.true_peak_full", "tip.lra_full",
-    "gate.lane_label_n", "gate.cmp_counted", "chart.cmp_track", "chart.cmp_seg_title",
+    "gate.lane_label_n", "gate.compare_counted", "chart.compare_track", "chart.compare_seg_title",
   ];
   window.i18n.setLang("en");
   for (var i = 0; i < requiredKeys.length; i++) {
@@ -589,7 +589,7 @@ function fakeStats() {
   await new Promise(function(r) { setTimeout(r, 100); });
   assert(resultsEl.querySelector(".compare-table") !== null, "Comparison table rendered");
   assertEqual(resultsEl.querySelectorAll(".compare-table thead th").length, 3, "One column per track plus the row header");
-  assertEqual(resultsEl.querySelectorAll(".cmp-seg-title").length, 2, "One segment chart per track");
+  assertEqual(resultsEl.querySelectorAll(".compare-seg-title").length, 2, "One segment chart per track");
   assert(captured !== null && captured.length === 2, "Timeline receives both tracks");
   // fakeCompare stores a whole-length gate_threshold of -99 that does not
   // belong to the cut range; the relative gate must come from the series.

@@ -358,9 +358,9 @@ button:focus-visible, input:focus-visible {
   margin-bottom: 12px;
 }
 
-.gate-cmp-facts { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.gate-compare-facts { display: flex; flex-wrap: wrap; gap: 4px 16px; }
 
-.cmp-seg-title {
+.compare-seg-title {
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--fg);
@@ -369,7 +369,7 @@ button:focus-visible, input:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.cmp-seg-title .track-swatch { margin-right: 8px; vertical-align: 1px; }
+.compare-seg-title .track-swatch { margin-right: 8px; vertical-align: 1px; }
 
 .summary-table .silence-row th,
 .summary-table .silence-row td {

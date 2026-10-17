@@ -234,8 +234,8 @@ def plot_compare(doc: dict, stats: list[dict], out_path: str) -> None:
     tracks = doc["compare"]["tracks"]
     n = len(tracks)
     arrays = []
-    for tr in tracks:
-        s = tr["series"]
+    for track in tracks:
+        s = track["series"]
         arrays.append(tuple(
             np.array([np.nan if v is None else float(v) for v in s[k]], dtype=float)
             for k in ("t", "S", "M")))
@@ -260,12 +260,12 @@ def plot_compare(doc: dict, stats: list[dict], out_path: str) -> None:
     col_labels = ["#", "Track", "Integrated", "Integrated (full)", "True Peak (full)",
                   "LRA (full)", "S-term Median", "Mom. Median", "Silence"]
     cells = []
-    for i, (tr, st) in enumerate(zip(tracks, stats)):
-        title = tr.get("title") or "untitled"
+    for i, (track, st) in enumerate(zip(tracks, stats)):
+        title = track.get("title") or "untitled"
         cells.append([
             str(i + 1), title if len(title) <= 32 else title[:31] + "\u2026",
-            _fmt(st["integrated"]), _fmt(tr["summary"].get("integrated")),
-            _fmt(tr["summary"].get("true_peak"), "+"), _fmt(tr["summary"].get("lra")),
+            _fmt(st["integrated"]), _fmt(track["summary"].get("integrated")),
+            _fmt(track["summary"].get("true_peak"), "+"), _fmt(track["summary"].get("lra")),
             _fmt(st["short_term"]["median"]), _fmt(st["momentary"]["median"]),
             f"{_fmt(st['silence_pct'])}%",
         ])
@@ -274,14 +274,14 @@ def plot_compare(doc: dict, stats: list[dict], out_path: str) -> None:
                        colWidths=[0.03, 0.27] + [0.7 / 7] * 7)
     tbl.auto_set_font_size(False)
     tbl.set_fontsize(9)
-    for (row, col), cell in tbl.get_celld().items():
+    for (row, column), cell in tbl.get_celld().items():
         cell.set_edgecolor("#CCCCCC")
         if row == 0:
             cell.set_facecolor("#E1BEE7")
             cell.set_text_props(fontweight="bold")
-        elif col == 0:
+        elif column == 0:
             cell.set_text_props(color=TRACK_COLORS[row - 1], fontweight="bold")
-        elif col == 1:
+        elif column == 1:
             cell.set_text_props(ha="left")
             cell.PAD = 0.02
 
@@ -289,11 +289,11 @@ def plot_compare(doc: dict, stats: list[dict], out_path: str) -> None:
     for i, (t, S, _M) in enumerate(arrays):
         step = max(1, len(t) // 3000)
         td = t[::step] / 60
-        sm = _moving_avg(S[::step])
-        col = TRACK_COLORS[i]
-        ax0.plot(td, sm, color=col, linewidth=1.8, label=f"{i + 1}")
-        ax0.annotate(str(i + 1), (td[-1], sm[-1]), xytext=(4, 0), textcoords="offset points",
-                     color=col, fontsize=10, fontweight="bold", va="center")
+        smooth = _moving_avg(S[::step])
+        color = TRACK_COLORS[i]
+        ax0.plot(td, smooth, color=color, linewidth=1.8, label=f"{i + 1}")
+        ax0.annotate(str(i + 1), (td[-1], smooth[-1]), xytext=(4, 0), textcoords="offset points",
+                     color=color, fontsize=10, fontweight="bold", va="center")
     ax0.axhline(-23, color="#4CAF50", linestyle="--", alpha=0.6, linewidth=1.2,
                 label="Target \u221223 LUFS")
     ax0.set_ylabel("Short-term LUFS (60s moving avg)")
@@ -304,8 +304,8 @@ def plot_compare(doc: dict, stats: list[dict], out_path: str) -> None:
     ax0.grid(True, alpha=0.3)
 
     bins = np.arange(-55, -5, 0.5)
-    for col_idx, (key, name) in enumerate(((1, "Short-term"), (2, "Momentary"))):
-        ax = fig.add_subplot(gs[2, col_idx])
+    for column, (key, name) in enumerate(((1, "Short-term"), (2, "Momentary"))):
+        ax = fig.add_subplot(gs[2, column])
         for i, arr in enumerate(arrays):
             v = arr[key]
             v = v[np.isfinite(v) & (v > SILENCE_THRESHOLD)]
@@ -323,15 +323,15 @@ def plot_compare(doc: dict, stats: list[dict], out_path: str) -> None:
         ax = fig.add_subplot(gs[3 + i, :])
         starts, means, p10s, p90s = _segment_stats(t, S)
         x = np.arange(len(starts))
-        col = TRACK_COLORS[i]
-        ax.bar(x, means, color=col, alpha=0.75)
+        color = TRACK_COLORS[i]
+        ax.bar(x, means, color=color, alpha=0.75)
         ax.errorbar(x, means, yerr=[means - p10s, p90s - means],
                     fmt="none", ecolor="gray", alpha=0.6, capsize=3)
         ax.set_xticks(x)
         ax.set_xticklabels([f"{int(s / 60)}\u2013{int((s + 300) / 60)}" for s in starts], fontsize=8)
         title = tracks[i].get("title") or "untitled"
         ax.set_title(f"{i + 1}: {title}  (5-minute segments, error bars P10\u2013P90)",
-                     fontsize=10, color=col, loc="left")
+                     fontsize=10, color=color, loc="left")
         ax.set_ylabel("Mean S LUFS")
         ax.grid(True, alpha=0.3, axis="y")
 

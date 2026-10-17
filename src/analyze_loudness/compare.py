@@ -132,7 +132,7 @@ def validate_compare(data) -> str | None:
     err = validate_tracks(comp.get("tracks"))
     if err:
         return f"Invalid comparison JSON: {err}"
-    if len({len(tr["series"]["t"]) for tr in comp["tracks"]}) != 1:
+    if len({len(track["series"]["t"]) for track in comp["tracks"]}) != 1:
         return "Invalid comparison JSON: tracks must have the same number of frames"
     return None
 
@@ -165,10 +165,10 @@ def gated_integrated(M, t) -> float | None:
 
 def common_frames(tracks: list[dict]) -> int:
     """Frame count every track keeps: up to the shortest track's last instant."""
-    end = min(float(tr["series"]["t"][-1]) for tr in tracks)
+    end = min(float(track["series"]["t"][-1]) for track in tracks)
     counts = []
-    for tr in tracks:
-        t = tr["series"]["t"]
+    for track in tracks:
+        t = track["series"]["t"]
         frame = float(t[1] - t[0]) if len(t) > 1 else 0.0
         counts.append(sum(1 for x in t if x <= end + frame / 2))
     return min(counts)
@@ -185,7 +185,7 @@ def build_compare(tracks: list[dict]) -> dict:
     if not (MIN_TRACKS <= len(tracks) <= MAX_TRACKS):
         raise ValueError(f"expected {MIN_TRACKS}-{MAX_TRACKS} tracks, got {len(tracks)}")
     n = common_frames(tracks)
-    cut = [truncate_track(tr, n) for tr in tracks]
+    cut = [truncate_track(track, n) for track in tracks]
     return {
         "meta": make_meta(),
         "compare": {

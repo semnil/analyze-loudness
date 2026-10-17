@@ -158,7 +158,7 @@ def _cache_put(url: str, duration: float | None, result_dict: dict) -> str:
 
 
 def _compare_stats(doc: dict) -> list[dict]:
-    return _json_safe([truncated_stats(tr) for tr in doc["compare"]["tracks"]])
+    return _json_safe([truncated_stats(track) for track in doc["compare"]["tracks"]])
 
 
 class _ClientDisconnected(Exception):

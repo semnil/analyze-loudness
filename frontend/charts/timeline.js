@@ -206,7 +206,7 @@ function renderTimeline(container, t, S, integrated, gate) {
 }
 
 // Room right of the plot for the track numbers at each line's end.
-var CMP_END_LABEL_PAD = 22;
+var COMPARE_END_LABEL_PAD = 22;
 
 /** Track number at the last drawn point of each line, in the line's colour. */
 function trackEndLabelPlugin(tracks) {
@@ -248,9 +248,9 @@ function renderCompareTimeline(container, t, tracks) {
 
   const series = [{ label: i("chart.tl_time") }];
   const data = [tMin];
-  for (const tr of tracks) {
-    series.push({ label: i("chart.cmp_track", { n: tr.n }), stroke: tr.color, width: 2 });
-    data.push(movingAvg(tr.S, 60));
+  for (const track of tracks) {
+    series.push({ label: i("chart.compare_track", { n: track.n }), stroke: track.color, width: 2 });
+    data.push(movingAvg(track.S, 60));
   }
   series.push({
     label: i("chart.tl_target"),
@@ -261,12 +261,12 @@ function renderCompareTimeline(container, t, tracks) {
   });
   data.push(new Float64Array(t.length).fill(-23));
 
-  const laneOn = tracks.some(tr => tr.gate != null);
+  const laneOn = tracks.some(track => track.gate != null);
   const lanes = tracks.length;
   const opts = {
     width: container.clientWidth,
     height: TL_HEIGHT + (laneOn ? _gateExtraFor(lanes) : 0),
-    padding: [null, CMP_END_LABEL_PAD, null, null],
+    padding: [null, COMPARE_END_LABEL_PAD, null, null],
     scales: {
       x: { time: false },
       y: {
@@ -299,8 +299,8 @@ function renderCompareTimeline(container, t, tracks) {
     plugins: [trackEndLabelPlugin(tracks)],
   };
   if (laneOn) {
-    opts.plugins.push(gateLanePlugin(tracks.map(tr => ({
-      gate: tr.gate, label: i("gate.lane_label_n", { n: tr.n }),
+    opts.plugins.push(gateLanePlugin(tracks.map(track => ({
+      gate: track.gate, label: i("gate.lane_label_n", { n: track.n }),
     }))));
   }
   return new uPlot(opts, data, container);

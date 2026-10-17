@@ -162,7 +162,7 @@ def _run_compare(sources: list[str], outdir: Path) -> None:
 
     doc = build_compare(tracks)
     cut = doc["compare"]["tracks"]
-    stats = [truncated_stats(tr) for tr in cut]
+    stats = [truncated_stats(track) for track in cut]
 
     def _fmt(x, sign=""):
         return "N/A" if x is None else f"{x:{sign}.1f}"
@@ -171,21 +171,21 @@ def _run_compare(sources: list[str], outdir: Path) -> None:
     print(f"Comparison: first {doc['compare']['truncate_sec'] / 60:.1f} min of each track "
           "(True Peak / LRA / full Integrated: whole track)")
     rows = [
-        ("Integrated", lambda tr, st: _fmt(st["integrated"])),
-        ("Integrated (full)", lambda tr, st: _fmt(tr["summary"].get("integrated"))),
-        ("True Peak (full)", lambda tr, st: _fmt(tr["summary"].get("true_peak"), "+")),
-        ("LRA (full)", lambda tr, st: _fmt(tr["summary"].get("lra"))),
-        ("S-term median", lambda tr, st: _fmt(st["short_term"]["median"])),
-        ("S-term P10/P90", lambda tr, st: f"{_fmt(st['short_term']['p10'])}/{_fmt(st['short_term']['p90'])}"),
-        ("Mom. median", lambda tr, st: _fmt(st["momentary"]["median"])),
-        ("Mom. P10/P90", lambda tr, st: f"{_fmt(st['momentary']['p10'])}/{_fmt(st['momentary']['p90'])}"),
-        ("Silence %", lambda tr, st: _fmt(st["silence_pct"])),
+        ("Integrated", lambda track, st: _fmt(st["integrated"])),
+        ("Integrated (full)", lambda track, st: _fmt(track["summary"].get("integrated"))),
+        ("True Peak (full)", lambda track, st: _fmt(track["summary"].get("true_peak"), "+")),
+        ("LRA (full)", lambda track, st: _fmt(track["summary"].get("lra"))),
+        ("S-term median", lambda track, st: _fmt(st["short_term"]["median"])),
+        ("S-term P10/P90", lambda track, st: f"{_fmt(st['short_term']['p10'])}/{_fmt(st['short_term']['p90'])}"),
+        ("Mom. median", lambda track, st: _fmt(st["momentary"]["median"])),
+        ("Mom. P10/P90", lambda track, st: f"{_fmt(st['momentary']['p10'])}/{_fmt(st['momentary']['p90'])}"),
+        ("Silence %", lambda track, st: _fmt(st["silence_pct"])),
     ]
     print(f"  {'':18}" + "".join(f"{'#' + str(i + 1):>14}" for i in range(len(cut))))
     for label, get in rows:
-        print(f"  {label:18}" + "".join(f"{get(tr, st):>14}" for tr, st in zip(cut, stats)))
-    for i, tr in enumerate(cut):
-        print(f"  #{i + 1}: {tr.get('title') or 'untitled'}")
+        print(f"  {label:18}" + "".join(f"{get(track, st):>14}" for track, st in zip(cut, stats)))
+    for i, track in enumerate(cut):
+        print(f"  #{i + 1}: {track.get('title') or 'untitled'}")
 
     stem = _unique_stem(outdir, "loudness_compare")
     json_path = outdir / f"{stem}.json"
