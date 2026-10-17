@@ -160,7 +160,7 @@ uPlot のインラインスタイル上書きは `!important` の正当なユー
 
 CSS 変数 (`--bg`, `--fg`, `--accent` 等) + `[data-theme="dark"]` でテーマを切り替え。
 `theme.js` の `getTheme()` がチャート描画時のカラーパレットを返す。
-fixed top-right pill ボタン (☾/☀/◐) で light → dark → auto をサイクル。
+fixed top-right pill ボタン (太陽 / 三日月 / 半分を塗った円の SVG) で light → dark → auto をサイクル。
 `auto` は OS の `prefers-color-scheme` に追従し、`matchMedia` の `change` イベントでリアルタイム反映。
 選択は `localStorage("loudness-theme")` に永続化。UI は analyze-spectrum プロジェクトと統一。
 
