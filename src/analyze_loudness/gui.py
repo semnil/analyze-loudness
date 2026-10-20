@@ -30,6 +30,8 @@ from analyze_loudness.download import (
     resolve_source, sanitize_filename,
 )
 from analyze_loudness.update import UPDATE_CONFIG
+from analyze_common.settings import SETTINGS_NAME, SettingsStore, settings_dir
+from analyze_common.ui_settings import UiSettings
 from analyze_common.update import UpdateError, Updater, hold_instance_mutex
 from analyze_common.web import COMMON_CSS, UPDATE_JS
 
@@ -95,7 +97,10 @@ def _cleanup_orphan_tempdirs() -> None:
 
 atexit.register(_cleanup_orphan_tempdirs)
 
-_updater = Updater(UPDATE_CONFIG)
+# One store, so the update settings and the theme / language share its lock.
+_settings = SettingsStore(settings_dir(UPDATE_CONFIG.product) / SETTINGS_NAME)
+_updater = Updater(UPDATE_CONFIG, _settings)
+_ui_settings = UiSettings(_settings)
 
 
 def _exit_now() -> None:
@@ -255,7 +260,11 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         if not self._check_host():
             return
-        common = self._COMMON_FILES.get(self.path.split("?", 1)[0])
+        path = self.path.split("?", 1)[0]
+        if path == "/common/settings.js":
+            self._send_settings_script()
+            return
+        common = self._COMMON_FILES.get(path)
         if common:
             self._send_common(*common)
             return
@@ -278,9 +287,24 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         except OSError:
             self.send_error(404)
             return
+        self._send_asset(body, content_type)
+
+    def _send_settings_script(self):
+        """The shared settings.js with the stored theme and language, read anew
+        for every page load."""
+        try:
+            body = _ui_settings.script()
+        except OSError:
+            self.send_error(404)
+            return
+        self._send_asset(body, "text/javascript; charset=utf-8", no_store=True)
+
+    def _send_asset(self, body: bytes, content_type: str, no_store: bool = False):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        if no_store:
+            self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 
@@ -296,6 +320,7 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             "/compare": self._handle_compare,
             "/browse": self._handle_browse,
             "/upload": self._handle_upload,
+            "/settings": self._handle_settings,
             "/update/status": self._handle_update_status,
             "/update/settings": self._handle_update_settings,
             "/update/check": self._handle_update_check,
@@ -556,6 +581,18 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         except OSError:
             pass
 
+    def _handle_settings(self):
+        """Store the theme or the language in the app's settings file."""
+        try:
+            values = _ui_settings.update(self._read_json_body())
+        except ValueError as e:
+            self._json_error(400, str(e))
+            return
+        except OSError as e:
+            self._json_error(500, str(e))
+            return
+        self._json_response(200, values)
+
     def _handle_update_status(self):
         self._json_response(200, _updater.status())
 
@@ -800,55 +837,6 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         pass  # suppress access logs
 
 
-_BG_LIGHT = "#fafafa"
-_BG_DARK = "#1a1a2e"
-
-
-from analyze_common.platform import IS_WINDOWS, IS_MAC  # noqa: E402
-from analyze_common.theme import is_dark_mode  # noqa: E402
-
-
-def _read_theme_from_leveldb(ls_dir: Path, storage_key: str) -> str | None:
-    """Scan a Chromium LevelDB directory for a localStorage key value."""
-    try:
-        if not ls_dir.is_dir():
-            return None
-        candidates = list(ls_dir.glob("*.log")) + list(ls_dir.glob("*.ldb"))
-        for ldb in sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True):
-            raw = ldb.read_bytes()
-            idx = raw.find(storage_key.encode())
-            if idx == -1:
-                continue
-            tail = raw[idx + len(storage_key):idx + len(storage_key) + 40]
-            if b"dark" in tail:
-                return "dark"
-            if b"light" in tail:
-                return "light"
-    except Exception:
-        pass
-    return None
-
-
-def _resolve_background_color(storage_key: str) -> str:
-    """Resolve the pywebview initial background color from the theme setting."""
-    mode: str | None = None
-    if IS_WINDOWS:
-        profile = Path(os.environ.get("LOCALAPPDATA", "")) / "pywebview" / "Default"
-        mode = _read_theme_from_leveldb(profile / "Local Storage" / "leveldb", storage_key)
-    elif IS_MAC:
-        home = Path.home()
-        for base in (
-            home / "Library/WebKit/org.python.python/WebsiteData/LocalStorage",
-            home / "Library/Application Support/pywebview/WebsiteData/LocalStorage",
-        ):
-            mode = _read_theme_from_leveldb(base, storage_key)
-            if mode:
-                break
-    if mode is None:
-        return _BG_DARK if is_dark_mode() else _BG_LIGHT
-    return _BG_DARK if mode == "dark" else _BG_LIGHT
-
-
 def _set_application_user_model_id():
     """Set Windows AppUserModelID so the taskbar shows the application icon."""
     if sys.platform == "win32":
@@ -879,7 +867,7 @@ def main():
     thread.start()
 
     global _window
-    bg = _resolve_background_color("loudness-theme")
+    bg = _ui_settings.background_color()
     icon = str(_ICON_PATH) if _ICON_PATH.exists() else None
     _window = webview.create_window(
         "Loudness Analyzer (BS.1770 / EBU R128)",

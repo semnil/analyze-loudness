@@ -891,6 +891,37 @@ class TestCommonCss:
         html = (Path(__import__('analyze_loudness.gui', fromlist=['FRONTEND_DIR']).FRONTEND_DIR) / "index.html").read_text(encoding="utf-8")
         assert 0 <= html.index('src="common/update.js"') < html.index('src="main.js"')
 
+    def test_settings_js_carries_the_stored_theme_and_language(self, handler_class):
+        import analyze_loudness.gui as gui_mod
+        from analyze_common.web import SETTINGS_JS
+        gui_mod._ui_settings.update({"theme": "dark"})
+        gui_mod._ui_settings.update({"lang": "ja"})
+        resp, body = self._get(handler_class, "/common/settings.js")
+        assert resp.status == 200
+        assert resp.getheader("Content-Type").startswith("text/javascript")
+        assert resp.getheader("Cache-Control") == "no-store"
+        assert body == b'window.analyzeSettingsStored = {"theme": "dark", "lang": "ja"};\n' + SETTINGS_JS.read_bytes()
+
+    def test_settings_js_without_a_settings_file(self, handler_class):
+        resp, body = self._get(handler_class, "/common/settings.js")
+        assert resp.status == 200
+        assert body.startswith(b'window.analyzeSettingsStored = {"theme": "auto", "lang": null};\n')
+
+    def test_settings_js_carries_only_allowed_values(self, handler_class):
+        import analyze_loudness.gui as gui_mod
+        path = gui_mod._settings.path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"theme": "</script><script>alert(1)</script>", "lang": "\";alert(1);\""}), encoding="utf-8")
+        resp, body = self._get(handler_class, "/common/settings.js")
+        assert resp.status == 200
+        assert body.startswith(b'window.analyzeSettingsStored = {"theme": "auto", "lang": null};\n')
+        assert b"alert" not in body
+
+    def test_index_loads_settings_js_before_i18n_js(self, handler_class):
+        from pathlib import Path
+        html = (Path(__import__('analyze_loudness.gui', fromlist=['FRONTEND_DIR']).FRONTEND_DIR) / "index.html").read_text(encoding="utf-8")
+        assert 0 <= html.index('src="common/settings.js"') < html.index('src="i18n.js"')
+
     def test_index_loads_common_css_before_style_css(self, handler_class):
         from pathlib import Path
         html = (Path(__import__('analyze_loudness.gui', fromlist=['FRONTEND_DIR']).FRONTEND_DIR) / "index.html").read_text(encoding="utf-8")
@@ -898,13 +929,10 @@ class TestCommonCss:
 
 
 @pytest.fixture
-def update_settings(tmp_path, monkeypatch):
-    """Point the app's update settings at a temporary file."""
+def update_settings(_isolated_settings):
+    """The app's one settings store, in the temp folder conftest set up."""
     import analyze_loudness.gui as gui_mod
-    from analyze_common.settings import SettingsStore
-    store = SettingsStore(tmp_path / "settings.json")
-    monkeypatch.setattr(gui_mod._updater, "settings", store)
-    return store
+    return gui_mod._settings
 
 
 class TestUpdateEndpoints:
@@ -1031,3 +1059,51 @@ class TestUpdateEndpoints:
         assert not cache.exists() and not upload.exists()
         sweep.assert_called_once()
         exit_.assert_called_once_with(0)
+
+
+class TestUiSettingsEndpoint:
+    def test_update_and_ui_settings_share_one_store(self):
+        import analyze_loudness.gui as gui_mod
+        assert gui_mod._updater.settings is gui_mod._settings
+        assert gui_mod._ui_settings.settings is gui_mod._settings
+
+    def test_theme_is_saved_to_the_settings_file(self, server, update_settings):
+        status, body = _serve_post(server, "/settings", {"theme": "dark"})
+        assert (status, body) == (200, {"theme": "dark", "lang": None})
+        assert json.loads(update_settings.path.read_text(encoding="utf-8")) == {"theme": "dark"}
+
+    def test_language_is_saved_next_to_the_update_setting(self, server, update_settings):
+        update_settings.set("update_check_at_launch", False)
+        status, body = _serve_post(server, "/settings", {"lang": "ja"})
+        assert (status, body) == (200, {"theme": "auto", "lang": "ja"})
+        assert json.loads(update_settings.path.read_text(encoding="utf-8")) == {
+            "update_check_at_launch": False, "lang": "ja"}
+
+    @pytest.mark.parametrize("payload", [{}, {"theme": "blue"}, {"lang": "fr"}, {"font": "large"},
+                                         {"theme": "dark", "lang": "ja"}])
+    def test_anything_else_is_refused_without_writing(self, server, update_settings, payload):
+        status, body = _serve_post(server, "/settings", payload)
+        assert status == 400
+        assert body["error"]
+        assert not update_settings.path.exists()
+
+    def test_a_failed_write_is_a_server_error(self, server, update_settings, monkeypatch):
+        def refuse(key, value):
+            raise PermissionError(13, "Permission denied")
+        monkeypatch.setattr(update_settings, "set", refuse)
+        status, body = _serve_post(server, "/settings", {"theme": "dark"})
+        assert status == 500
+        assert "Permission denied" in body["error"]
+
+    @pytest.mark.parametrize("theme", ["dark", "light"])
+    def test_window_opens_in_the_stored_theme_color(self, update_settings, monkeypatch, theme):
+        import analyze_loudness.gui as gui_mod
+        from analyze_common.ui_settings import BG_DARK, BG_LIGHT
+        gui_mod._ui_settings.update({"theme": theme})
+        webview = MagicMock()
+        monkeypatch.setattr(gui_mod, "webview", webview)
+        monkeypatch.setattr(gui_mod, "hold_instance_mutex", MagicMock())
+        monkeypatch.setattr(gui_mod, "_HTTPServer", MagicMock(return_value=MagicMock(server_address=("127.0.0.1", 1))))
+        monkeypatch.setattr(gui_mod, "_window", None)
+        gui_mod.main()
+        assert webview.create_window.call_args.kwargs["background_color"] == (BG_DARK if theme == "dark" else BG_LIGHT)

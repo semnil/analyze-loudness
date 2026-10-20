@@ -154,7 +154,7 @@ def test_outside_press_keeps_escape_in_the_settings_dialog():
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page(viewport={"width": 1100, "height": 800})
-            page.add_init_script("localStorage.setItem('loudness-lang', 'en');")
+            gui._ui_settings.update({"lang": "en"})
             page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
             page.evaluate("window.analyzeUpdate.ready")
             page.evaluate("window.cancelled = false; activeAbort = { abort: () => { window.cancelled = true; } };")
@@ -176,5 +176,57 @@ def test_outside_press_keeps_escape_in_the_settings_dialog():
     finally:
         release.set()
         gui._updater.status, gui._updater.check = saved
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_theme_and_language_carry_over_to_a_new_page():
+    """The theme and the language picked on one page are what the next page,
+    with empty webview storage, starts with, and the window color follows."""
+    import json
+    import sys
+    import time
+    from analyze_common.ui_settings import BG_DARK
+    server = _app_server("analyze_loudness.gui")
+    gui = sys.modules["analyze_loudness.gui"]
+    url = f"http://127.0.0.1:{server.server_address[1]}/index.html"
+
+    def stored():
+        try:
+            return json.loads(gui._settings.path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {}
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            first = browser.new_context(color_scheme="light", locale="en-US").new_page()
+            first.goto(url)
+            first.wait_for_load_state("networkidle")
+            first.click("#theme-toggle")
+            first.click("#theme-toggle")
+            first.click("#lang-toggle")
+            deadline = time.monotonic() + 10
+            while stored() != {"theme": "dark", "lang": "ja"} and time.monotonic() < deadline:
+                time.sleep(0.05)
+            assert stored() == {"theme": "dark", "lang": "ja"}
+
+            second = browser.new_context(color_scheme="light", locale="en-US").new_page()
+            # The first data-theme the page sets: the one painted before main.js runs.
+            second.add_init_script(
+                "new MutationObserver(function (records, observer) {"
+                " window.firstTheme = document.documentElement.getAttribute('data-theme');"
+                " observer.disconnect(); }).observe(document, {attributes: true, subtree: true, attributeFilter: ['data-theme']});")
+            second.goto(url)
+            second.wait_for_load_state("networkidle")
+            assert second.evaluate("window.firstTheme") == "dark"
+            assert second.evaluate("document.documentElement.getAttribute('data-theme')") == "dark"
+            assert second.evaluate("document.documentElement.lang") == "ja"
+            assert second.evaluate("window.i18n.lang()") == "ja"
+            assert second.evaluate("localStorage.length") == 0
+            assert gui._ui_settings.background_color() == BG_DARK
+            browser.close()
+    finally:
         server.shutdown()
         server.server_close()

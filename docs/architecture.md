@@ -35,7 +35,7 @@ graph LR
 | Component | Responsibility |
 |-----------|---------------|
 | `AnalyzeHandler` | `SimpleHTTPRequestHandler` 継承。frontend 配信 + POST エンドポイント処理 |
-| `do_POST()` | `/analyze`, `/compare`, `/save`, `/save-image`, `/load`, `/browse`, `/upload`, `/update/status`, `/update/check`, `/update/install` のルーティング。Content-Type の検査 (`_check_content_type`) |
+| `do_POST()` | `/analyze`, `/compare`, `/save`, `/save-image`, `/load`, `/browse`, `/upload`, `/settings`, `/update/status`, `/update/settings`, `/update/check`, `/update/install` のルーティング。Content-Type の検査 (`_check_content_type`) |
 | `_handle_browse()` | ローカルの音声ファイルを選ぶネイティブダイアログ |
 | `_handle_upload()` | ドロップされたファイルを一時ディレクトリ `_upload_dir` に保存 |
 | `_run_analysis()` | download -> probe -> ebur128 (計時) -> stats -> result の NDJSON ストリーム |
@@ -168,7 +168,9 @@ CSS 変数 (`--bg`, `--text`, `--accent` 等。共通分は `analyze_common/web/
 `theme.js` の `getTheme()` がチャート描画時のカラーパレットを返す。
 fixed top-right pill ボタン (太陽 / 三日月 / 半分を塗った円の SVG) で light → dark → auto をサイクル。
 `auto` は OS の `prefers-color-scheme` に追従し、`matchMedia` の `change` イベントでリアルタイム反映。
-選択は `localStorage("loudness-theme")` に永続化。UI は analyze-spectrum プロジェクトと統一。
+選択はアプリの設定ファイル (`settings.json`) の `theme` に `/settings` で保存し、`/common/settings.js` が次の起動のページへ渡す
+(webview の localStorage が次の起動に残らない理由は「起動時に確認」の保存先と同じ)。ウィンドウの背景色も同じ値から決める。言語も同じファイルの `lang` に置く。
+UI は analyze-spectrum プロジェクトと統一。
 
 ### 9. Analysis cancel (AbortController)
 
@@ -389,5 +391,5 @@ Build pipeline:
 | Moving average window | 60 frames | plot.py, timeline.js | Timeline smoothing window |
 | Downsample target | ~3000 points | plot.py | Plot responsiveness |
 | Default theme | "auto" | main.js | OS prefers-color-scheme 追従 |
-| Theme storage key | "loudness-theme" | main.js | localStorage persistence key |
-| Language storage key | "loudness-lang" | i18n.js | localStorage persistence key (en/ja) |
+| Theme setting key | "theme" | analyze_common/ui_settings.py | settings.json のキー (light/dark/auto) |
+| Language setting key | "lang" | analyze_common/ui_settings.py | settings.json のキー (en/ja) |
