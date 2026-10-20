@@ -1,9 +1,11 @@
 # Architecture Design Document
 
+> 日本語版は [architecture.ja.md](architecture.ja.md) を参照してください.
+
 ## Overview
 
-analyze-loudness は YouTube 動画の音声ラウドネスを BS.1770 / EBU R128 準拠で分析するツール。
-CLI ツールとしてローカル実行可能であり、Windows GUI アプリケーション (pywebview) としても提供する。
+analyze-loudness is a tool that analyzes the audio loudness of YouTube videos in compliance with BS.1770 / EBU R128.
+It can run locally as a CLI tool, and is also provided as a Windows GUI application (pywebview).
 
 ## System Architecture
 
@@ -25,42 +27,42 @@ graph LR
 | Module | Responsibility |
 |--------|---------------|
 | `cli.py` | argparse + orchestration, static-ffmpeg PATH setup |
-| `download.py` | `yt_dlp.YoutubeDL` Python API でダウンロード + タイトル取得、ローカルファイルの解決 (`resolve_source`)、ffprobe duration, filename sanitization |
+| `download.py` | Download + title retrieval with the `yt_dlp.YoutubeDL` Python API, resolving local files (`resolve_source`), ffprobe duration, filename sanitization |
 | `analysis.py` | ffmpeg ebur128 stderr parsing, numpy-based statistics |
 | `plot.py` | matplotlib 4-row figure generation (timeline, histograms, segments); comparison figure (`plot_compare`) |
-| `compare.py` | 単体結果 JSON の組み立て (`build_result`)・検証 (`validate_single`)、比較 JSON の組み立て (`build_compare`)・検証 (`validate_compare`)、切り詰めた範囲の統計 (`truncated_stats`) |
+| `compare.py` | Building (`build_result`) and validating (`validate_single`) single-result JSON, building (`build_compare`) and validating (`validate_compare`) comparison JSON, statistics over the truncated range (`truncated_stats`) |
 
 ### GUI Application (`src/analyze_loudness/gui.py`)
 
 | Component | Responsibility |
 |-----------|---------------|
-| `AnalyzeHandler` | `SimpleHTTPRequestHandler` 継承。frontend 配信 + POST エンドポイント処理 |
-| `do_POST()` | `/analyze`, `/compare`, `/save`, `/save-image`, `/load`, `/browse`, `/upload`, `/settings`, `/update/status`, `/update/settings`, `/update/check`, `/update/install` のルーティング。Content-Type の検査 (`_check_content_type`) |
-| `_handle_browse()` | ローカルの音声ファイルを選ぶネイティブダイアログ |
-| `_handle_upload()` | ドロップされたファイルを一時ディレクトリ `_upload_dir` に保存 |
-| `_run_analysis()` | download -> probe -> ebur128 (計時) -> stats -> result の NDJSON ストリーム |
-| `_handle_save()` | JSON 保存 (ネイティブファイルダイアログ) |
-| `_handle_save_image()` | base64 PNG → バイナリ保存 (ネイティブファイルダイアログ) |
-| `_handle_compare()` | 2〜6 本の単体結果を受け取り、比較 JSON と切り詰めた範囲の統計を返す |
-| `_handle_load()` | JSON 読み込み + バリデーション (ネイティブファイルダイアログ)。比較 JSON は統計を添えて返し、キャッシュには入れない |
-| `_handle_update_*()` | 自動更新の状態・確認・適用。処理は `_updater` (`analyze_common.update.Updater`) に渡す |
-| `_exit_now()` | macOS の更新で bundle を入れ替えた後の終了。atexit の後始末を行ってから `os._exit(0)` |
-| `_speed_factor` | runtime-calibrated 速度係数。分析時間から次回の推定時間を算出 |
-| `_set_application_user_model_id()` | Windows AppUserModelID 設定 (タスクバーアイコン反映) |
-| `main()` | Windows の mutex の保持 (`hold_instance_mutex`) + HTTPServer (127.0.0.1:0) 起動 + pywebview ウインドウ表示 |
+| `AnalyzeHandler` | Inherits `SimpleHTTPRequestHandler`. Serves the frontend + handles the POST endpoints |
+| `do_POST()` | Routing of `/analyze`, `/compare`, `/save`, `/save-image`, `/load`, `/browse`, `/upload`, `/settings`, `/update/status`, `/update/settings`, `/update/check`, `/update/install`. Content-Type check (`_check_content_type`) |
+| `_handle_browse()` | Native dialog for choosing a local audio file |
+| `_handle_upload()` | Saves a dropped file to the temporary directory `_upload_dir` |
+| `_run_analysis()` | NDJSON stream of download -> probe -> ebur128 (timed) -> stats -> result |
+| `_handle_save()` | JSON save (native file dialog) |
+| `_handle_save_image()` | base64 PNG → binary save (native file dialog) |
+| `_handle_compare()` | Receives 2-6 single results and returns the comparison JSON and the statistics over the truncated range |
+| `_handle_load()` | JSON loading + validation (native file dialog). Returns comparison JSON with the statistics attached, and does not put it in the cache |
+| `_handle_update_*()` | Auto-update status, check and apply. The work is passed to `_updater` (`analyze_common.update.Updater`) |
+| `_exit_now()` | Exit after a macOS update has swapped the bundle. Runs the atexit cleanup, then `os._exit(0)` |
+| `_speed_factor` | runtime-calibrated speed factor. Computes the next estimated time from the analysis time |
+| `_set_application_user_model_id()` | Sets the Windows AppUserModelID (reflected in the taskbar icon) |
+| `main()` | Holds the Windows mutex (`hold_instance_mutex`) + starts the HTTPServer (127.0.0.1:0) + shows the pywebview window |
 
 ### Frontend (`frontend/`)
 
 | File | Responsibility |
 |------|---------------|
 | `index.html` | SPA entry point, local vendor files |
-| `main.js` | Fetch orchestration, NDJSON progress parsing, DOM rendering, save/load/image capture, theme toggle, language toggle, cancel (AbortController), `_addTip` ツールチップ, 比較の待ち行列 (`compareQueue`) と比較表示 (`renderCompare`) |
-| `theme.js` | `isDark()`, `getTheme()` — theme detection + chart color provider (比較トラックの 6 色 `trackColors` を含む) |
+| `main.js` | Fetch orchestration, NDJSON progress parsing, DOM rendering, save/load/image capture, theme toggle, language toggle, cancel (AbortController), `_addTip` tooltips, the comparison queue (`compareQueue`) and comparison display (`renderCompare`) |
+| `theme.js` | `isDark()`, `getTheme()` — theme detection + chart color provider (includes the 6 comparison track colors `trackColors`) |
 | `i18n.js` | en / ja DICT + `window.i18n.t / setLang / onChange / applyStatic` |
-| `gate.js` | `computeGate()` — BS.1770 の絶対 / 相対ゲートを `series.M` から再構成 |
-| `charts/timeline.js` | uPlot time series (60-frame moving average, GATE lane, theme-aware)。比較用 `renderCompareTimeline` (トラックごとの線と GATE 帯、線の右端にトラック番号) |
-| `charts/histogram.js` | Canvas density histogram (theme-aware, タイトルは HTML 側)。比較用 `renderHistogramCompare` (トラックごとの輪郭線、最頻ビンにトラック番号) |
-| `charts/segments.js` | Canvas 5-min segment bar chart (theme-aware, タイトルは HTML 側)。比較ではトラック色を渡してトラックごとに 1 枚描く |
+| `gate.js` | `computeGate()` — rebuilds the BS.1770 absolute / relative gates from `series.M` |
+| `charts/timeline.js` | uPlot time series (60-frame moving average, GATE lane, theme-aware). `renderCompareTimeline` for comparison (a line and GATE band per track, the track number at the right end of the line) |
+| `charts/histogram.js` | Canvas density histogram (theme-aware, the title is on the HTML side). `renderHistogramCompare` for comparison (an outline per track, the track number at the mode bin) |
+| `charts/segments.js` | Canvas 5-min segment bar chart (theme-aware, the title is on the HTML side). In comparison, passes the track color and draws one chart per track |
 | `style.css` | CSS variables + `[data-theme="dark"]` rules, purple accent (#9C27B0) |
 | `vendor/` | uPlot.iife.min.js, uPlot.min.css (bundled) |
 
@@ -68,7 +70,7 @@ graph LR
 
 | Function | Responsibility |
 |----------|---------------|
-| `_subprocess_kwargs()` | Windows frozen mode で subprocess のコンソールウインドウを非表示にする |
+| `_subprocess_kwargs()` | Hides the subprocess console window in Windows frozen mode |
 
 ## Data Flow
 
@@ -102,7 +104,7 @@ graph TD
 
 ### NDJSON Progress Stream
 
-GUI の `/analyze` エンドポイントは `application/x-ndjson` でストリーミング応答する:
+The GUI `/analyze` endpoint streams its response as `application/x-ndjson`:
 
 ```
 {"type":"progress","stage":"download","message":"Downloading audio..."}
@@ -112,146 +114,146 @@ GUI の `/analyze` エンドポイントは `application/x-ndjson` でストリ�
 {"type":"result","data":{...}}
 ```
 
-入力 validation 失敗 (URL/duration の型/範囲不正) は HTTP 400 + JSON で返す。
-それ以降のダウンロード・解析フェーズで発生したエラーは **HTTP 200 + NDJSON `{"type":"error","error":"..."}`** として返る。
-応答ヘッダ送信後に HTTP ステータスを変更できないための設計上の契約であり、クライアントは HTTP ステータスだけでなく NDJSON の `type` フィールドで成否を判定する。
-`Content-Length` / `Transfer-Encoding: chunked` は付与せず、フレーム境界は `Connection: close` で確定させる。
+Input validation failures (invalid type/range of URL/duration) are returned as HTTP 400 + JSON.
+Errors that occur in the later download and analysis phases are returned as **HTTP 200 + NDJSON `{"type":"error","error":"..."}`**.
+This is a design contract that follows from the HTTP status being unchangeable after the response headers are sent; the client judges success or failure by the NDJSON `type` field, not only by the HTTP status.
+`Content-Length` / `Transfer-Encoding: chunked` are not set, and the frame boundary is fixed by `Connection: close`.
 
 ## Key Design Decisions
 
 ### 1. ebur128 stderr parsing (not WAV decoding)
 
-ffmpeg の ebur128 フィルタは stderr にフレーム毎のラウドネス値を出力する。
-50分の音声を WAV デコードすると 4GB 超のメモリが必要になるため、
-stderr テキストのみを処理し、メモリ消費を数MB に抑えている。
+ffmpeg's ebur128 filter outputs per-frame loudness values to stderr.
+WAV-decoding 50 minutes of audio requires more than 4GB of memory, so
+only the stderr text is processed, keeping memory consumption to a few MB.
 
 ### 2. Local HTTP server + pywebview
 
-pywebview は OS のネイティブ WebView (Windows: WebView2) を使用し、
-バンドルサイズを小さく保てる。
-`HTTPServer` を 127.0.0.1 のランダムポート (port 0) で起動し、
-same-origin で frontend を配信する。
+pywebview uses the OS's native WebView (Windows: WebView2),
+which keeps the bundle size small.
+`HTTPServer` is started on a random port (port 0) on 127.0.0.1,
+and serves the frontend from the same origin.
 
 ### 3. Runtime-calibrated time estimation
 
-`_speed_factor` を分析の実測時間から更新し、次回以降の推定精度を向上。
-初期値は 55.0 (実時間の約 55 倍速) で、各分析完了後に `analyze_sec / elapsed` で更新。
+`_speed_factor` is updated from the measured analysis time, improving the accuracy of later estimates.
+The initial value is 55.0 (about 55 times real-time speed), and it is updated with `analyze_sec / elapsed` after each analysis completes.
 
 ### 4. yt-dlp Python API (not bundled binary)
 
-`yt_dlp.YoutubeDL` クラスを Python ライブラリとして直接呼び出し、`FFmpegExtractAudio` postprocessor で opus 抽出。`extract_info(download=True)` の戻り値にタイトルが含まれるため、並行実行が不要。
+The `yt_dlp.YoutubeDL` class is called directly as a Python library, and opus is extracted with the `FFmpegExtractAudio` postprocessor. The return value of `extract_info(download=True)` includes the title, so parallel execution is not needed.
 
-バイナリ同梱 (`yt-dlp_macos` など) を避けることで、macOS 向けの codesign 再署名時に発生する Team ID 不一致問題 (onefile バイナリ内部の Python.framework が再署名できず hardened runtime で拒否される) を根本的に回避している。Windows / Linux でも同方式で統一。
+Avoiding a bundled binary (`yt-dlp_macos` etc.) avoids at its root the Team ID mismatch problem that occurs during codesign re-signing for macOS (the Python.framework inside a onefile binary cannot be re-signed and is rejected by the hardened runtime). The same approach is used on Windows / Linux as well.
 
 ### 5. Middle extraction
 
-長時間動画は中盤のみを分析する。`ffmpeg -ss <start> -t <duration>` で
-ebur128 分析時に直接切り出し。
+Long videos have only their middle portion analyzed. It is cut out directly during the ebur128 analysis with
+`ffmpeg -ss <start> -t <duration>`.
 
-CLI のみが `--duration` オプションでこの機能を公開する。GUI にはこれに相当する入力 UI を実装しない (常に全尺を分析)。GUI は URL かローカルファイルのパスだけを受け取るシンプルなワークフローを優先し、部分抽出が必要な用途は CLI に委ねる方針。
+Only the CLI exposes this feature, through the `--duration` option. The GUI does not implement an equivalent input UI (it always analyzes the full length). The policy is that the GUI favors a simple workflow that only takes a URL or a local file path, and leaves uses that need partial extraction to the CLI.
 
 ### 6. Conditional static-ffmpeg (CLI only)
 
-CLI ではシステムに ffmpeg がインストールされていれば `static-ffmpeg` を使わない。
-`shutil.which("ffmpeg")` で検出し、不在時のみ `static_ffmpeg.add_paths()` を呼ぶ。
+In the CLI, `static-ffmpeg` is not used if ffmpeg is installed on the system.
+It is detected with `shutil.which("ffmpeg")`, and `static_ffmpeg.add_paths()` is called only when it is absent.
 
-### 7. uPlot ダークモードと CSS `!important`
+### 7. uPlot dark mode and CSS `!important`
 
-uPlot は凡例・タイトルの `color` をインラインスタイルで設定するため、CSS から上書くには
-`!important` が必要。JS で DOM を直接操作する方法もあるが、テーマ切替のたびに uPlot 内部 DOM を
-走査する必要があり、バージョンアップ時の破綻リスクは CSS `!important` と同等かそれ以上。
-uPlot のインラインスタイル上書きは `!important` の正当なユースケースであり、現状維持とする。
+uPlot sets the `color` of the legend and title with inline styles, so overriding it from CSS requires
+`!important`. Manipulating the DOM directly from JS is also possible, but it requires walking uPlot's internal DOM
+on every theme switch, and its risk of breaking on version upgrades is equal to or greater than that of CSS `!important`.
+Overriding uPlot's inline styles is a legitimate use case for `!important`, and it is kept as is.
 
 ### 8. Dark mode (light / dark / auto)
 
-CSS 変数 (`--bg`, `--text`, `--accent` 等。共通分は `analyze_common/web/common.css`) + `[data-theme="dark"]` でテーマを切り替え。
-`theme.js` の `getTheme()` がチャート描画時のカラーパレットを返す。
-fixed top-right pill ボタン (太陽 / 三日月 / 半分を塗った円の SVG) で light → dark → auto をサイクル。
-`auto` は OS の `prefers-color-scheme` に追従し、`matchMedia` の `change` イベントでリアルタイム反映。
-選択はアプリの設定ファイル (`settings.json`) の `theme` に `/settings` で保存し、`/common/settings.js` が次の起動のページへ渡す
-(webview の localStorage が次の起動に残らない理由は「起動時に確認」の保存先と同じ)。ウィンドウの背景色も同じ値から決め、macOS ではページが描かれるまでその色を見せる (`show_window_color_until_paint()`。WKWebView が最初の描画まで描く白を消す)。言語も同じファイルの `lang` に置く。
-UI は analyze-spectrum プロジェクトと統一。
+Themes are switched with CSS variables (`--bg`, `--text`, `--accent` etc. The shared ones are in `analyze_common/web/common.css`) + `[data-theme="dark"]`.
+`getTheme()` in `theme.js` returns the color palette used when drawing charts.
+A fixed top-right pill button (a sun / crescent moon / half-filled circle SVG) cycles light → dark → auto.
+`auto` follows the OS `prefers-color-scheme`, and reflects changes in real time through the `matchMedia` `change` event.
+The choice is saved to `theme` in the app's settings file (`settings.json`) through `/settings`, and `/common/settings.js` passes it to the page on the next launch
+(the reason the webview's localStorage does not survive to the next launch is the same as for the storage location of "Check at launch"). The window background color is also decided from the same value, and on macOS that color is shown until the page is drawn (`show_window_color_until_paint()`. It removes the white that WKWebView draws until its first paint). The language is also kept in `lang` of the same file.
+The UI is unified with the analyze-spectrum project.
 
 ### 9. Analysis cancel (AbortController)
 
-分析中に Analyze ボタンが Cancel に変化 (赤色)。`AbortController.signal` を `fetch()` と
-NDJSON `ReadableStream.getReader()` に渡し、キャンセル時にストリーム読み取りを中断。
-`_isBusy` フラグで Load ボタンを無効化し、二重実行を防止。
+During analysis the Analyze button changes to Cancel (red). `AbortController.signal` is passed to `fetch()` and
+NDJSON `ReadableStream.getReader()`, and stream reading is interrupted on cancel.
+The `_isBusy` flag disables the Load button, preventing double execution.
 
 ### 10. Windows subprocess console hiding
 
-PyInstaller frozen mode では `subprocess.STARTUPINFO` + `STARTF_USESHOWWINDOW` で
-ffmpeg / ffprobe のコンソールウインドウを非表示にする。yt-dlp は Python API として動作するため subprocess 起動しない。
+In PyInstaller frozen mode, `subprocess.STARTUPINFO` + `STARTF_USESHOWWINDOW` hide
+the ffmpeg / ffprobe console windows. yt-dlp runs as a Python API, so it does not start a subprocess.
 
-### 11. GATE lane (案 C)
+### 11. GATE lane (option C)
 
-Integrated は BS.1770 の絶対ゲート (-70 LUFS) と相対ゲート (絶対ゲート通過ブロックの平均 -10 LU) を
-越えた 400 ms ブロックだけを集計するが、タイムラインはこの取捨を表示していなかった。
-Timeline の x 軸ガター (プロット領域とメモリラベルの間) に高さ 12 px の GATE 帯を置き、
-除外ブロックを琥珀色 (相対ゲート以下) / スレート (絶対ゲート以下) で示す。
+Integrated aggregates only the 400 ms blocks that pass the BS.1770 absolute gate (-70 LUFS) and relative gate (the mean of the blocks that passed the absolute gate -10 LU),
+but the timeline did not show this selection.
+A 12 px high GATE band is placed in the timeline's x-axis gutter (between the plot area and the tick labels),
+showing excluded blocks in amber (at or below the relative gate) / slate (at or below the absolute gate).
 
-- **ffmpeg のウォームアップ 3 フレームを除外する**。100 ms ごとに出力されるが Momentary 窓は 400 ms
-  のため、t = 0.1 / 0.2 / 0.3 は窓が埋まらず無音フロア -120.7 になる。ゲート対象ブロックではないので
-  `_firstGatedIndex()` が `series.t` から先頭を判定し、統計の分母からも外す。
-  実測で 36 秒クリップの無音 0.91% はすべてこのフレームだった (修正後 0.00%)。
-- **相対ゲートは `summary.gate_threshold` (schema 2) を使い、無ければ `series.M` から再計算する**
-  (`gate.js` の `computeGate(M, threshold)`)。schema 1 の保存済み JSON はフォールバック経路に乗る。
-  再計算した Integrated は保存済み JSON 13 本すべてで保存値と 0.05 LU 以内で一致する。
-  最長ファイル (116,299 ブロック) で `computeGate` は 1.03 ms → 0.25 ms。
-  ffmpeg の値は小数 1 桁に丸められているため 2 経路の結果は完全一致せず、しきい値ちょうどに乗った
-  ブロックの判定だけが変わる (実測最大 303 / 95,957 ブロック = 算入率で 0.3 ポイント)。
-- **プロット領域は不変**。x 軸の `gap` / `size` とチャート高さを同じ 11 px ずつ広げて帯の場所を作るため、
-  帯の有無でプロット bbox は 2160x540 device px のまま変わらない (実測)。
-- **1 画素列に算入・除外が混在する場合は除外として描く** (案 C の 2 値化)。
-  この丸めのため、長尺では帯の塗り面積が実際の除外率を上回る (61-193 分の実ファイルで
-  除外 10-25% に対し帯の塗り 27-80%)。x 軸をドラッグズームすると 1 列あたりのブロック数が減り、
-  帯は実際の除外区間に収束する。
-- 数値サマリー (算入率 / 除外率 / しきい値) はチャート直下の `.gate-caption` に置き、
-  composite PNG には summary テキストの 1 行として焼き込む。
+- **Exclude ffmpeg's 3 warm-up frames**. Frames are output every 100 ms, but the Momentary window is 400 ms,
+  so at t = 0.1 / 0.2 / 0.3 the window is not filled and the value is the silence floor -120.7. These are not gated blocks, so
+  `_firstGatedIndex()` determines the start from `series.t` and also removes them from the denominator of the statistics.
+  Measured: the 0.91% silence of a 36-second clip was entirely these frames (0.00% after the fix).
+- **The relative gate uses `summary.gate_threshold` (schema 2), and is recomputed from `series.M` when it is absent**
+  (`computeGate(M, threshold)` in `gate.js`). Saved JSON from schema 1 goes through the fallback path.
+  The recomputed Integrated matches the saved value within 0.05 LU for all 13 saved JSON files.
+  For the longest file (116,299 blocks), `computeGate` went from 1.03 ms → 0.25 ms.
+  ffmpeg's values are rounded to 1 decimal place, so the results of the 2 paths do not match exactly; only the decision for blocks that land exactly on the threshold
+  changes (measured maximum 303 / 95,957 blocks = 0.3 points of included ratio).
+- **The plot area is unchanged**. The x-axis `gap` / `size` and the chart height are widened by the same 11 px each to make room for the band, so
+  the plot bbox stays 2160x540 device px with or without the band (measured).
+- **When a single pixel column mixes included and excluded blocks, it is drawn as excluded** (the binarization of option C).
+  Because of this rounding, on long recordings the painted area of the band exceeds the actual excluded ratio (on real files of 61-193 minutes,
+  excluded 10-25% against band paint 27-80%). Drag-zooming the x axis reduces the number of blocks per column, and
+  the band converges to the actual excluded ranges.
+- The numeric summary (included ratio / excluded ratio / threshold) is placed in `.gate-caption` directly below the chart,
+  and is burned into the composite PNG as one line of the summary text.
 
 ### 12. Comparison mode
 
-2〜6 本の結果を先頭から重ね、一番短いトラックの長さで全トラックを切り詰めて比べる。
+2-6 results are overlaid from the start, and all tracks are truncated to the length of the shortest track for comparison.
 
-- **入力**: GUI は待ち行列 (`+ Add Track` で URL、待ち行列が空でないときの Load JSON で保存済みの単体 JSON) を
-  Compare で処理する。URL の行は `/analyze` で順に分析し、全トラックを `/compare` へ送る。
-  単体の結果を表示しているときに入力欄がその `source_url` と同じなら、`+ Add Track` は表示中の結果そのものを
-  行に持たせる (`/load` のキャッシュは URL ごとに最後に読んだ結果だけを持つため、URL で引き直すと別の結果に入れ替わりうる)。
-  CLI は位置引数を 2〜6 個受け取り、`.json` で終わるローカルパスを保存済みの単体 JSON として読む。
-  比較では `--duration` を受け付けない。
-- **切り詰め**: `compare.common_frames()` が一番短いトラックの最終時刻 (+ 半フレーム) までのフレーム数を
-  各トラックで数え、その最小値で全トラックの `series` を切る。全トラックのフレーム数が揃うので、
-  タイムラインは 1 本の時間軸を共有する。
-- **統計は Python の 1 か所で計算する**。切り詰めた範囲の Integrated・S/M の中央値と P10/P90・無音率は
-  `compare.truncated_stats()` が保存済みの系列から算出し、`/compare` と `/load` の応答に `stats` として添える。
-  比較 JSON には保存しない。True Peak と LRA は系列から算出できない (True Peak) か ffmpeg と同じ値になる保証がない
-  (LRA) ため、各トラックの全長の値を「(full)」と明示して表示する。
-- **切り詰めた範囲の Integrated は相対ゲートを切り詰めた範囲で計算し直す**。全長の `summary.gate_threshold`
-  を使わない。同梱 ffmpeg 8.1 で、全長の系列 M の先頭 T 秒から再計算した値と、同じ音声を `-t T` で測った
-  ffmpeg の Integrated (`ebur128=metadata=1` の `lavfi.r128.I`、小数 3 桁) を照合した結果、
-  4 本の音声 (33 秒〜144.5 分) × T = 20 / 37.3 / 60 / 300 / 1800 / 3600 秒のうち音声より短い 17 件で
-  差は最大 0.014 LU。全長の `gate_threshold` を流用すると最大 2.92 LU ずれる。
-  `-t T` で測った t / M / S は全長の先頭フレームと一致する (差 0)。
-  フロントエンドの GATE 帯も `computeGate(M, t, null)` で相対ゲートを計算し直す。
-- **比較 JSON** (schema 3): `{"meta": {...}, "compare": {"truncate_sec": T, "tracks": [単体結果, ...]}}`。
-  各トラックの `summary` は全長の値、`series` は切り詰めた範囲。一番上に `summary` / `series` を置かないので、
-  schema 2 以前の版は「missing summary or series」で読み込みを拒む。読み込みの分岐は `compare` の有無で行う。
-  待ち行列が空でないときの比較 JSON の読み込みは拒否する。
-- **サイズの上限**: `/compare` の要求本文は 64 MiB まで (`_MAX_BODY_BYTES`)。保存済みの単体 JSON 9 本
-  (43,092〜116,299 フレーム) を区切り無しで書き出すと 1 フレーム 18.2〜18.5 バイトで、6 トラック × 各 1010 分
-  まで送れる。GUI と CLI は比較 JSON をインデント付きで保存し、3 トラック・12,123 フレームの比較 JSON で
-  1 フレーム 56.4 バイト。その大きさで 6 × 1010 分の比較を保存しても開けるよう、`/load` の上限
-  (`_MAX_LOAD_BYTES`) を 210 MB にしている。
-- **トラックの区別**: 色は `theme.js` の `trackColors` (ライト / ダーク各 6 色、チャート背景とのコントラスト比は
-  最小 3.05)。色だけに頼らないよう、タイムラインの線の右端・ヒストグラムの最頻ビン・GATE 帯のラベル・
-  セグメントの見出しにトラック番号を描く。CLI の図はライトの 6 色 (`plot.py` の `TRACK_COLORS`) を使う。
+- **Input**: the GUI processes the queue (URLs with `+ Add Track`, saved single JSON with Load JSON while the queue is not empty) with
+  Compare. URL rows are analyzed in order with `/analyze`, and all tracks are sent to `/compare`.
+  When a single result is displayed and the input field equals its `source_url`, `+ Add Track` gives the row the displayed result itself
+  (the `/load` cache holds only the last loaded result per URL, so looking it up again by URL could swap in a different result).
+  The CLI takes 2-6 positional arguments, and reads local paths ending in `.json` as saved single JSON.
+  Comparison does not accept `--duration`.
+- **Truncation**: `compare.common_frames()` counts, for each track, the frames up to the last time of the shortest track (+ half a frame),
+  and cuts the `series` of all tracks at the minimum of those counts. All tracks have the same number of frames, so
+  the timeline shares a single time axis.
+- **Statistics are computed in one place, in Python**. The Integrated, the S/M median and P10/P90, and the silence ratio over the truncated range are
+  computed by `compare.truncated_stats()` from the saved series, and attached as `stats` to the `/compare` and `/load` responses.
+  They are not saved in the comparison JSON. True Peak and LRA either cannot be computed from the series (True Peak) or are not guaranteed to equal ffmpeg's value
+  (LRA), so each track's full-length value is shown, marked explicitly as "(full)".
+- **The Integrated over the truncated range recomputes the relative gate over the truncated range**. The full-length `summary.gate_threshold`
+  is not used. With the bundled ffmpeg 8.1, the value recomputed from the first T seconds of the full-length series M was checked against
+  ffmpeg's Integrated measured on the same audio with `-t T` (`lavfi.r128.I` of `ebur128=metadata=1`, 3 decimal places);
+  across 4 audio files (33 seconds to 144.5 minutes) × T = 20 / 37.3 / 60 / 300 / 1800 / 3600 seconds, in the 17 cases shorter than the audio
+  the difference was at most 0.014 LU. Reusing the full-length `gate_threshold` deviates by up to 2.92 LU.
+  The t / M / S measured with `-t T` match the leading frames of the full length (difference 0).
+  The frontend GATE band also recomputes the relative gate with `computeGate(M, t, null)`.
+- **Comparison JSON** (schema 3): `{"meta": {...}, "compare": {"truncate_sec": T, "tracks": [single result, ...]}}`.
+  Each track's `summary` holds the full-length values, and its `series` the truncated range. There is no `summary` / `series` at the top level, so
+  versions up to schema 2 refuse to load it with "missing summary or series". Loading branches on the presence of `compare`.
+  Loading a comparison JSON while the queue is not empty is refused.
+- **Size limits**: the `/compare` request body is up to 64 MiB (`_MAX_BODY_BYTES`). Writing out the 9 saved single JSON files
+  (43,092-116,299 frames) without separators gives 18.2-18.5 bytes per frame, so up to 6 tracks × 1010 minutes each
+  can be sent. The GUI and the CLI save comparison JSON with indentation, and a comparison JSON of 3 tracks and 12,123 frames is
+  56.4 bytes per frame. So that a 6 × 1010-minute comparison saved at that size can still be opened, the `/load` limit
+  (`_MAX_LOAD_BYTES`) is set to 210 MB.
+- **Telling tracks apart**: the colors are `trackColors` in `theme.js` (6 colors each for light / dark; the contrast ratio against the chart background is
+  at least 3.05). So as not to rely on color alone, the track number is drawn at the right end of the timeline line, at the mode bin of the histogram, on the GATE band label,
+  and in the segment heading. The CLI figure uses the 6 light colors (`TRACK_COLORS` in `plot.py`).
 
 ### 13. Auto-update
 
-インストール版 (frozen の Windows x64 / macOS arm64) は起動時に GitHub の最新の Release を確認し、
-確認ダイアログで OK のときだけ更新を取得・検証・適用する。クライアントは py-analyze-common の
-`analyze_common/update.py`、UI は `analyze_common/web/update.js` (`/common/update.js` で配信) で、
-analyze-spectrum と共有する。このリポジトリの固有部分は `src/analyze_loudness/update.py` の `UPDATE_CONFIG`。
+The installed version (frozen Windows x64 / macOS arm64) checks GitHub's latest Release at launch,
+and fetches, verifies and applies the update only when OK is chosen in the confirmation dialog. The client is py-analyze-common's
+`analyze_common/update.py`, and the UI is `analyze_common/web/update.js` (served as `/common/update.js`); both are
+shared with analyze-spectrum. The part specific to this repository is `UPDATE_CONFIG` in `src/analyze_loudness/update.py`.
 
 ```mermaid
 sequenceDiagram
@@ -289,57 +291,57 @@ sequenceDiagram
     end
 ```
 
-- **署名**: `latest.json` は OS ごとに `url` と `signature` を持つ。署名の対象は
-  `analyze-update-v1\n{product}\n{version}\n{platform}\n{sha256}\n` で、版と OS が入るので、
-  古い正規のインストーラーへの版番号の付け替えと別 OS のファイルの流用は検証で落ちる。Ed25519 の検証は
-  純 Python (`analyze_common/ed25519.py`、RFC 8032) で、`cryptography` は bundle から除いたまま。
-  署名は CI で `openssl pkeyutl -rawin` が作り、`analyze_common/update_manifest.py` がアプリの公開鍵で検証し直す。
-- **macOS の終わり方**: PyInstaller は遅延 import のたびにアーカイブをパスで開き直すため、bundle を入れ替えた後に
-  import が走ると新しい版のファイルを読む。入れ替えの後は `_exit_now()` が atexit の後始末を自分で行い、
-  `os._exit(0)` で interpreter の終了処理を通らずに終わる。入れ替えはアプリ自身が行う (Tauri の updater と同じ方式)。
-- **再起動したプロセスの環境**: `open` で起動したアプリには呼び出し側の環境変数が渡る (2026-10-20 に、
-  テスト用の変数と `_PYI_PARENT_PROCESS_LEVEL=1` が再起動後のプロセスに渡ることを `ps -wwE` で確認)。
-  PyInstaller 6.9 以降の bootloader は、`_PYI_ARCHIVE_FILE` が自分と同じなら親の worker として振る舞うので、
-  再起動用のシェルとインストーラーに `PYINSTALLER_RESET_ENVIRONMENT=1` を渡して独立したプロセスとして起動させる。
-- **Windows の UAC**: Inno Setup の loader は `asInvoker` で起動し、必要になってから昇格を求めるので、UAC はアプリが
-  閉じた後に出る。拒否するとインストールされず、アプリは閉じたままになる (起動し直すと旧版が起動する)。
-- **「起動時に確認」の保存先**: アプリの設定ファイル (`analyze_common/settings.py` の `SettingsStore`。macOS は
-  `~/Library/Application Support/analyze-loudness/settings.json`、Windows は `%APPDATA%\analyze-loudness\settings.json`)。
-  webview の localStorage は次の起動に残らない: pywebview 6.2.1 の `webview.start()` は既定で `private_mode=True` で、
-  起動ごとに website data を消す。private mode を切っても、ローカルサーバーのポートは起動ごとに変わり origin が変わる
-  (2026-10-20 に pywebview を 2 回起動して確認: private mode 既定・同じポートでも前回の値は読めず、private mode を切ると
-  同じポートでは読め、別のポートでは読めない)。
-- **同じアプリの別プロセス**: macOS では、同じ実行ファイルの別プロセスがあると入れ替えない (入れ替えた bundle の
-  上で動き続けることになるため)。Windows はインストーラーが mutex の消えるのを待つ。
-- **macOS の実機確認** (2026-10-20、ローカルでビルドした未署名の 1.4.1 / 1.4.2、ローカルの配信):
-  1.4.1 から更新すると、`/update/install` の応答の 3.8 秒後に旧プロセスが終わり、4.1 秒後に同じパスから
-  1.4.2 が起動した。一時ディレクトリと `.app` の隣のファイルは残らなかった。1 バイトを反転した DMG は拒否され、
-  旧版が動き続けた。2 つ起動しているときは入れ替えなかった。frozen のビルドから github.com への確認は
-  TLS とリダイレクトを通り、`v1.4.1` に `latest.json` が無いことによる 404 になった。
+- **Signature**: `latest.json` holds a `url` and a `signature` per OS. The signed statement is
+  `analyze-update-v1\n{product}\n{version}\n{platform}\n{sha256}\n`, and since it includes the version and OS,
+  relabeling an older genuine installer with a new version number and reusing a file for another OS fail verification. Ed25519 verification is
+  pure Python (`analyze_common/ed25519.py`, RFC 8032), and `cryptography` stays excluded from the bundle.
+  The signature is made in CI by `openssl pkeyutl -rawin`, and `analyze_common/update_manifest.py` re-verifies it with the app's public key.
+- **How macOS exits**: PyInstaller reopens the archive by path on every lazy import, so if an import runs after the bundle has been swapped,
+  it reads the new version's files. After the swap, `_exit_now()` runs the atexit cleanup itself, and
+  exits with `os._exit(0)` without going through the interpreter's shutdown. The app does the swap itself (the same approach as Tauri's updater).
+- **Environment of the relaunched process**: an app started with `open` receives the caller's environment variables (on 2026-10-20,
+  confirmed with `ps -wwE` that a test variable and `_PYI_PARENT_PROCESS_LEVEL=1` reach the relaunched process).
+  The bootloader of PyInstaller 6.9 and later behaves as the parent's worker when `_PYI_ARCHIVE_FILE` is the same as itself, so
+  `PYINSTALLER_RESET_ENVIRONMENT=1` is passed to the relaunch shell and the installer to make them start as independent processes.
+- **Windows UAC**: Inno Setup's loader starts `asInvoker` and asks for elevation only when it becomes necessary, so UAC appears after the app
+  has closed. If it is refused, nothing is installed and the app stays closed (starting it again starts the old version).
+- **Storage location of "Check at launch"**: the app's settings file (`SettingsStore` in `analyze_common/settings.py`. On macOS
+  `~/Library/Application Support/analyze-loudness/settings.json`, on Windows `%APPDATA%\analyze-loudness\settings.json`).
+  The webview's localStorage does not survive to the next launch: `webview.start()` in pywebview 6.2.1 defaults to `private_mode=True`, and
+  clears website data on every launch. Even with private mode off, the local server's port changes on every launch, so the origin changes
+  (confirmed on 2026-10-20 by launching pywebview twice: with private mode at its default, the previous value could not be read even on the same port; with private mode off,
+  it could be read on the same port and could not be read on a different port).
+- **Another process of the same app**: on macOS, the swap is not done when another process of the same executable exists (because that process would keep running on top of the swapped
+  bundle). On Windows, the installer waits for the mutex to disappear.
+- **macOS real-device check** (2026-10-20, locally built unsigned 1.4.1 / 1.4.2, served locally):
+  when updating from 1.4.1, the old process ended 3.8 seconds after the `/update/install` response, and 4.1 seconds after it
+  1.4.2 started from the same path. No temporary directory or file next to the `.app` was left behind. A DMG with one byte flipped was rejected, and
+  the old version kept running. When two were running, it did not swap. The check from the frozen build to github.com
+  went through TLS and the redirect, and ended in a 404 because `v1.4.1` has no `latest.json`.
 
 ## Accessibility
 
 ### prefers-reduced-motion
 
-`@media (prefers-reduced-motion: reduce)` で CSS animation / transition を一括無効化している。
+CSS animation / transition are disabled all at once with `@media (prefers-reduced-motion: reduce)`.
 
-チャート描画 (uPlot, Canvas histogram, Canvas segments) についてはアニメーション処理を持たず、
-全て即時描画のため個別対応は不要。uPlot のカーソル追従はユーザー操作に対するリアルタイム応答であり、
-WCAG 2.3.3 が対象とするアニメーションには該当しない。
+Chart drawing (uPlot, Canvas histogram, Canvas segments) has no animation processing,
+and everything is drawn immediately, so no individual handling is needed. uPlot's cursor tracking is a real-time response to user operation, and
+does not fall under the animation that WCAG 2.3.3 covers.
 
-カウントダウン表示は `matchMedia("(prefers-reduced-motion: reduce)")` で更新間隔を
-1 秒 → 5 秒に変更済み (main.js)。
+The countdown display already changes its update interval from
+1 second → 5 seconds with `matchMedia("(prefers-reduced-motion: reduce)")` (main.js).
 
-### チャートの `role="img"` 配置
+### Placement of the charts' `role="img"`
 
-各チャートには統計値を含む説明文を `aria-label` として持つ `role="img"` ノードを置く。
-histogram は canvas 自体に付与し (analyze-spectrum の `_addCanvasChart` と同形)、
-timeline / segments は uPlot が DOM を生成する都合上コンテナ div に付与する。
+Each chart has a `role="img"` node whose `aria-label` holds a description that includes the statistics.
+histogram attaches it to the canvas itself (the same form as analyze-spectrum's `_addCanvasChart`), and
+timeline / segments attach it to the container div because uPlot generates the DOM.
 
-タイトルの `<h3 class="chart-title">` は必ずこのノードの**外側**に置く。
-ARIA は `role="img"` の子孫を presentational として扱うため、内側に入れると
-タイトルと `_addTip()` が張る `aria-describedby` (ツールチップ本文) が
-支援技術に渡らないエンジンが生じる。
+The title `<h3 class="chart-title">` is always placed **outside** this node.
+ARIA treats descendants of `role="img"` as presentational, so placing it inside creates engines in which
+the title and the `aria-describedby` (tooltip text) set by `_addTip()`
+do not reach assistive technology.
 
 ## Build & Distribution
 
@@ -360,36 +362,36 @@ python build.py --installer  # + Inno Setup installer
 ```
 
 Build pipeline:
-1. `build.py --skip-download` or auto-download: ffmpeg, ffprobe, deno, uPlot (yt-dlp は Python 依存)
+1. `build.py --skip-download` or auto-download: ffmpeg, ffprobe, deno, uPlot (yt-dlp is a Python dependency)
 2. PyInstaller (`analyze-loudness.spec`): bundles Python + dependencies + frontend + binaries
-3. Inno Setup (`installer.iss`): Windows installer with license display. `vendor/py-analyze-common/installer/auto_update.iss` を include し、`build.py` が `/DMyAppMutex=` を渡す
-4. `release.yaml`: インストーラーと DMG の SHA-256 に署名した `latest.json` を Release に載せる (13. Auto-update)
+3. Inno Setup (`installer.iss`): Windows installer with license display. Includes `vendor/py-analyze-common/installer/auto_update.iss`, and `build.py` passes `/DMyAppMutex=`
+4. `release.yaml`: puts `latest.json`, which signs the SHA-256 of the installer and the DMG, on the Release (13. Auto-update)
 
 ### Bundled Assets (`build_assets/bin/`)
 
 | Binary | Source | License |
 |--------|--------|---------|
 | deno.exe | GitHub Releases (latest) | MIT |
-| ffmpeg.exe | BtbN/FFmpeg-Builds (latest の、`build_assets/ffmpeg.json` の系列の gpl ビルド) | GPL-3.0+ |
-| ffprobe.exe | BtbN/FFmpeg-Builds (latest の、`build_assets/ffmpeg.json` の系列の gpl ビルド) | GPL-3.0+ |
+| ffmpeg.exe | BtbN/FFmpeg-Builds (the gpl build of the `build_assets/ffmpeg.json` series in latest) | GPL-3.0+ |
+| ffprobe.exe | BtbN/FFmpeg-Builds (the gpl build of the `build_assets/ffmpeg.json` series in latest) | GPL-3.0+ |
 
 ## Constants
 
 | Constant | Value | Location | Description |
 |----------|-------|----------|-------------|
-| SCHEMA_VERSION | 3 | \_\_init\_\_.py | 結果 JSON のスキーマ版数 (2 = `summary.gate_threshold` 追加, 3 = 比較 JSON 追加) |
-| MIN_TRACKS / MAX_TRACKS | 2 / 6 | compare.py, main.js | 比較できるトラック数 |
+| SCHEMA_VERSION | 3 | \_\_init\_\_.py | Schema version of the result JSON (2 = `summary.gate_threshold` added, 3 = comparison JSON added) |
+| MIN_TRACKS / MAX_TRACKS | 2 / 6 | compare.py, main.js | Number of tracks that can be compared |
 | SILENCE_THRESHOLD | -60 LUFS | analysis.py | Stats exclude frames <= this |
-| GATE_ABSOLUTE | -70 LUFS | gate.js, compare.py | BS.1770 絶対ゲート |
-| GATE_BLOCK_SEC | 0.4 s | gate.js, compare.py | Momentary 窓長。ウォームアップフレームの判定に使う |
-| SHORT_TERM_WINDOW_SEC | 3.0 s | analysis.py | Short-term 窓長。無音率のウォームアップ判定に使う |
-| SILENCE_PCT_THRESHOLD | -40 LUFS | analysis.py | 無音率の判定しきい値 |
-| GATE_RELATIVE_OFFSET | -10 LU | gate.js, compare.py | BS.1770 相対ゲート (通過ブロック平均からのオフセット) |
-| GATE_LANE_H | 12 px | timeline.js | GATE 帯の高さ |
+| GATE_ABSOLUTE | -70 LUFS | gate.js, compare.py | BS.1770 absolute gate |
+| GATE_BLOCK_SEC | 0.4 s | gate.js, compare.py | Momentary window length. Used to detect the warm-up frames |
+| SHORT_TERM_WINDOW_SEC | 3.0 s | analysis.py | Short-term window length. Used to detect the warm-up for the silence ratio |
+| SILENCE_PCT_THRESHOLD | -40 LUFS | analysis.py | Threshold for the silence ratio |
+| GATE_RELATIVE_OFFSET | -10 LU | gate.js, compare.py | BS.1770 relative gate (offset from the mean of the passing blocks) |
+| GATE_LANE_H | 12 px | timeline.js | Height of the GATE band |
 | _speed_factor | 55.0 (initial) | gui.py | Runtime-calibrated analysis speed |
 | Segment size | 5 min | plot.py, segments.js | Bar chart segment width |
 | Moving average window | 60 frames | plot.py, timeline.js | Timeline smoothing window |
 | Downsample target | ~3000 points | plot.py | Plot responsiveness |
-| Default theme | "auto" | main.js | OS prefers-color-scheme 追従 |
-| Theme setting key | "theme" | analyze_common/ui_settings.py | settings.json のキー (light/dark/auto) |
-| Language setting key | "lang" | analyze_common/ui_settings.py | settings.json のキー (en/ja) |
+| Default theme | "auto" | main.js | Follows OS prefers-color-scheme |
+| Theme setting key | "theme" | analyze_common/ui_settings.py | Key in settings.json (light/dark/auto) |
+| Language setting key | "lang" | analyze_common/ui_settings.py | Key in settings.json (en/ja) |
