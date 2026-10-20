@@ -192,6 +192,36 @@ function fakeStats() {
   _setBusy(false);
 
   // ================================================
+  suite("NDJSON stream: abort");
+  // ================================================
+
+  var unhandledReasons = [];
+  function onUnhandled(e) { unhandledReasons.push(e.reason); e.preventDefault(); }
+  window.addEventListener("unhandledrejection", onUnhandled);
+  var rejectRead = null;
+  var abortedStream = {
+    body: {
+      getReader: function() {
+        return {
+          read: function() { return new Promise(function(resolve, reject) { rejectRead = reject; }); },
+          cancel: function() {
+            rejectRead(new DOMException("Fetch is aborted", "AbortError"));
+            return Promise.reject(new DOMException("Fetch is aborted", "AbortError"));
+          },
+        };
+      },
+    },
+  };
+  var streamAbort = new AbortController();
+  var reading = readNdjsonStream(abortedStream, streamAbort.signal).catch(function(e) { return e; });
+  streamAbort.abort();
+  var readError = await reading;
+  await new Promise(function(r) { setTimeout(r, 50); });
+  window.removeEventListener("unhandledrejection", onUnhandled);
+  assertEqual(readError.name, "AbortError", "An aborted stream ends in AbortError");
+  assertEqual(unhandledReasons.length, 0, "Cancelling the aborted stream leaves no unhandled rejection");
+
+  // ================================================
   suite("Submit empty URL is a no-op");
   // ================================================
 

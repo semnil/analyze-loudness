@@ -760,7 +760,9 @@ async function readNdjsonStream(resp, signal, prefix = "") {
   let countdownTimer = null;
 
   if (signal) {
-    signal.addEventListener("abort", () => reader.cancel(), { once: true });
+    // Cancelling a stream the abort has already errored rejects; the abort is
+    // reported by the read below.
+    signal.addEventListener("abort", () => reader.cancel().catch(() => {}), { once: true });
   }
 
   try {
