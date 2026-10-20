@@ -424,6 +424,7 @@ function fakeStats() {
 
   resetState();
   _setThemeMode("light");
+  window.analyzeSettings.saved = [];
   assertEqual(document.documentElement.getAttribute("data-theme"), "light", "Theme starts light");
   var themeBtn = document.getElementById("theme-toggle");
   assert(themeBtn.querySelector("svg") !== null, "Light icon is an SVG");
@@ -438,21 +439,39 @@ function fakeStats() {
   assert(autoTheme === "light" || autoTheme === "dark", "Auto resolves to light or dark");
   assert(themeBtn.querySelector("svg") !== null, "Auto icon is an SVG");
   assertEqual(themeBtn.textContent, "", "Auto icon has no text glyph");
+  assertEqual(JSON.stringify(window.analyzeSettings.saved), JSON.stringify([["theme", "dark"], ["theme", "auto"]]),
+              "Each theme click saves the new theme through the app");
   _setThemeMode("light");
 
   // ================================================
-  suite("Lang toggle EN <-> JA persists in localStorage");
+  suite("A theme save that fails is reported");
+  // ================================================
+
+  resetState();
+  window.analyzeSettings.failWith = "Permission denied";
+  themeBtn.click();
+  await new Promise(function(r) { setTimeout(r, 20); });
+  assertEqual(document.documentElement.getAttribute("data-theme"), "dark", "The picked theme stays in effect");
+  assert(statusEl.classList.contains("error"), "The failed save is shown as an error");
+  assert(statusEl.textContent.indexOf("The setting could not be saved: Permission denied") !== -1, "The error names the cause");
+  window.analyzeSettings.failWith = null;
+  _setThemeMode("light");
+  resetState();
+
+  // ================================================
+  suite("Lang toggle EN <-> JA saves through the app");
   // ================================================
 
   resetState();
   window.i18n.setLang("en");
+  window.analyzeSettings.saved = [];
   assertEqual(window.i18n.lang(), "en", "Lang starts en");
   document.getElementById("lang-toggle").click();
   assertEqual(window.i18n.lang(), "ja", "Lang toggled to ja");
-  assertEqual(localStorage.getItem("loudness-lang"), "ja", "ja persisted in localStorage");
   document.getElementById("lang-toggle").click();
   assertEqual(window.i18n.lang(), "en", "Lang toggled back to en");
-  assertEqual(localStorage.getItem("loudness-lang"), "en", "en persisted in localStorage");
+  assertEqual(JSON.stringify(window.analyzeSettings.saved), JSON.stringify([["lang", "ja"], ["lang", "en"]]),
+              "Each language click saves the new language through the app");
 
   // ================================================
   suite("Lang dict completeness for required keys");
