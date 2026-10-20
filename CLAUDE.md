@@ -54,6 +54,7 @@ analyze-loudness/
 │   ├── test_update.py          # UPDATE_CONFIG と、それに合わせる installer.iss / spec / release.yaml
 │   ├── test_ffmpeg_binary.py   # PATH の ffmpeg / ffprobe をアプリのパーサーで読む (EXPECT_FFMPEG_DIR で同梱バイナリを指定)
 │   ├── test_release_workflow.py # release.yaml が配布物に入った ffmpeg / ffprobe に test_ffmpeg_binary.py を通すこと
+│   ├── test_third_party_licenses.py # THIRD_PARTY_LICENSES.txt が指す GPL の全文と、それを同梱する spec / installer.iss
 │   ├── test_frontend.py        # Playwright headless Chromium runner
 │   └── frontend/
 │       ├── test_ui.html        # test harness page (DOM + stubs)
@@ -67,6 +68,7 @@ analyze-loudness/
 ├── analyze-loudness.spec       # PyInstaller spec
 ├── installer.iss               # Inno Setup script
 ├── THIRD_PARTY_LICENSES.txt    # Bundled license file
+├── licenses/                   # GPL v2 / v3 の全文 (THIRD_PARTY_LICENSES.txt の FFmpeg の節が指す。spec が同じ階層に同梱する)
 ├── build_assets/ffmpeg.json    # 同梱する ffmpeg / ffprobe の系列と、macOS のビルドの URL・SHA256
 └── build_assets/bin/           # ffmpeg, ffprobe, deno (git 管理外)
 ```
