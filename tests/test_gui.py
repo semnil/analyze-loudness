@@ -1107,3 +1107,15 @@ class TestUiSettingsEndpoint:
         monkeypatch.setattr(gui_mod, "_window", None)
         gui_mod.main()
         assert webview.create_window.call_args.kwargs["background_color"] == (BG_DARK if theme == "dark" else BG_LIGHT)
+
+    def test_window_keeps_its_color_until_the_page_paints(self, update_settings, monkeypatch):
+        import analyze_loudness.gui as gui_mod
+        webview = MagicMock()
+        shown = []
+        monkeypatch.setattr(gui_mod, "webview", webview)
+        monkeypatch.setattr(gui_mod, "hold_instance_mutex", MagicMock())
+        monkeypatch.setattr(gui_mod, "_HTTPServer", MagicMock(return_value=MagicMock(server_address=("127.0.0.1", 1))))
+        monkeypatch.setattr(gui_mod, "_window", None)
+        monkeypatch.setattr(gui_mod, "show_window_color_until_paint", shown.append)
+        gui_mod.main()
+        assert shown == [webview.create_window.return_value]
