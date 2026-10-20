@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gui = ["pywebview"]
+gui = ["pywebview", "certifi"]
 dev = ["pytest", "playwright>=1.40"]
 
 [project.scripts]

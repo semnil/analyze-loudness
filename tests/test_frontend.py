@@ -136,3 +136,45 @@ def test_interactive_states_follow_stylesheet_order(scheme):
     finally:
         server.shutdown()
         server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_outside_press_keeps_escape_in_the_settings_dialog():
+    """A real press outside the settings dialog does not move focus: Escape
+    after it still reaches the dialog while a check holds the dialog open, and
+    focus returns to the settings button when the press closes the dialog."""
+    import sys
+    server = _app_server("analyze_loudness.gui")
+    gui = sys.modules["analyze_loudness.gui"]
+    release = threading.Event()
+    saved = (gui._updater.status, gui._updater.check)
+    gui._updater.status = lambda: {"current": "1.4.1", "supported": True, "launch_check": False}
+    gui._updater.check = lambda: release.wait(10) and None
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(viewport={"width": 1100, "height": 800})
+            page.add_init_script("localStorage.setItem('loudness-lang', 'en');")
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.evaluate("window.analyzeUpdate.ready")
+            page.evaluate("window.cancelled = false; activeAbort = { abort: () => { window.cancelled = true; } };")
+            page.focus("#settings-toggle")
+            page.keyboard.press("Enter")
+            page.focus("#settings-update-now")
+            page.keyboard.press("Enter")
+            page.wait_for_function("document.getElementById('settings-update-now').disabled")
+            page.mouse.click(5, 5)
+            page.keyboard.press("Escape")
+            assert page.evaluate("window.cancelled") is False
+            assert page.is_visible(".settings-box")
+            release.set()
+            page.wait_for_function("!document.getElementById('settings-update-now').disabled")
+            page.mouse.click(5, 5)
+            assert not page.is_visible(".settings-box")
+            assert page.evaluate("document.activeElement.id") == "settings-toggle"
+            browser.close()
+    finally:
+        release.set()
+        gui._updater.status, gui._updater.check = saved
+        server.shutdown()
+        server.server_close()

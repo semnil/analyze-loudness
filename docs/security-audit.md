@@ -1,10 +1,11 @@
 # Security Audit Report
 
-**Date**: 2026-04-04 (初版は 2026-04-03、SEC-16 と Summary の件数は 2026-04-04 に追加、CI/CD 節は 2026-09-30 に確認、SEC-17〜SEC-19 は 2026-10-17 に追加)
+**Date**: 2026-04-04 (初版は 2026-04-03、SEC-16 と Summary の件数は 2026-04-04 に追加、CI/CD 節は 2026-09-30 に確認、SEC-17〜SEC-19 は 2026-10-17 に追加、SEC-20 は 2026-10-20 に追加)
 **Scope**:
 - 2026-04-03〜04 の監査: CLI (`src/analyze_loudness/`), GUI (`src/analyze_loudness/gui.py`), Frontend SPA (`frontend/`), Build/Distribution (`build.py`, `analyze-loudness.spec`, `installer.iss`)
 - 2026-09-30 の確認: CI (`.github/workflows/`, `.github/tests/`) の action の固定と検査 (CI/CD 節)
 - 2026-10-17 の確認: ローカルファイル入力 (`/analyze` のローカルパス、`/browse`、`/upload`) と POST の Content-Type (SEC-17〜SEC-19)
+- 2026-10-20 の確認: 自動更新 (`/update/*`、`vendor/py-analyze-common` の `analyze_common/update.py` / `ed25519.py` / `update_manifest.py` / `installer/auto_update.iss`、`release.yaml` の署名) (SEC-20)
 
 ## Summary
 
@@ -19,11 +20,12 @@
 | Subprocess Management | 2 | 0 | 1 | 1 |
 | Bundled Binaries | 2 | 0 | 2 | 0 |
 | Resource Management | 1 | 0 | 0 | 1 |
-| **Total** | **19** | **0** | **8** | **11** |
+| Auto-update | 1 | 0 | 1 | 0 |
+| **Total** | **20** | **0** | **9** | **11** |
 
-**Open: 0** / Resolved: 8 / Accepted (risk acknowledged): 11
+**Open: 0** / Resolved: 9 / Accepted (risk acknowledged): 11
 
-Summary の件数は 2026-10-17 に SEC-17〜SEC-19 を追加した時点のもの (2026-04-04 に SEC-16 を追加した時点では 16 件、Resolved 7、Accepted 9) (2026-04-03 の初版は SEC-01〜SEC-15 の 15 件、Accepted 8)。個々の指摘の本文は、その後のコード変更に合わせて更新されている (履歴は `git log -- docs/security-audit.md`)。2026-09-30 の CI/CD 節の確認はこの表に含まない。
+Summary の件数は 2026-10-20 に SEC-20 を追加した時点のもの (2026-10-17 に SEC-17〜SEC-19 を追加した時点では 19 件、Resolved 8) (2026-04-04 に SEC-16 を追加した時点では 16 件、Resolved 7、Accepted 9) (2026-04-03 の初版は SEC-01〜SEC-15 の 15 件、Accepted 8)。個々の指摘の本文は、その後のコード変更に合わせて更新されている (履歴は `git log -- docs/security-audit.md`)。2026-09-30 の CI/CD 節の確認はこの表に含まない。
 
 ---
 
@@ -83,6 +85,20 @@ Summary の件数は 2026-10-17 に SEC-17〜SEC-19 を追加した時点のも�
 - **Location**: [gui.py](../src/analyze_loudness/gui.py) (`_check_content_type`)
 - **Finding**: サーバーは Content-Type を見ずに本文を JSON として処理していた。`text/plain` や `application/x-www-form-urlencoded` は preflight の要らない単純リクエストなので、ポート番号を当てた外部サイトが `/analyze` を実行させられた (2026-10-17 に `text/plain` の POST が処理されることを確認)。
 - **Resolution**: JSON のエンドポイントは `application/json`、`/upload` は `application/octet-stream` 以外を 415 で拒否する。ブラウザはこれらの型の cross-origin POST の前に preflight (OPTIONS) を送り、サーバーは応答しないため、本体の POST は送られない。
+
+### SEC-20: 自動更新で取得するインストーラーの真正性 -- RESOLVED
+
+- **Added**: 2026-10-20
+- **Risk**: HIGH (対策がなければ) -> RESOLVED
+- **Location**: [update.py](../src/analyze_loudness/update.py) (`UPDATE_CONFIG`)、[gui.py](../src/analyze_loudness/gui.py) (`/update/*`)、`vendor/py-analyze-common/src/analyze_common/update.py` / `ed25519.py` / `update_manifest.py`、[release.yaml](../.github/workflows/release.yaml) (Sign Update Manifest)
+- **Finding**: 自動更新はネットワークから取得した実行ファイルを、ユーザーの確認の後に実行・インストールする。取得物が正規のビルドであることを確かめなければ、配布経路 (GitHub の Release、その手前の通信) を書き換えられる者がユーザーの計算機でコードを実行できる。macOS では、ネットワークから取得した DMG に quarantine 属性が付かないため、Gatekeeper の検査も働かない。
+- **Resolution**:
+  - 各 Release の `latest.json` が OS ごとのインストーラーの URL と Ed25519 署名を持つ。署名の対象は `analyze-update-v1` / 製品名 / 版 / OS / インストーラーの SHA-256 を改行でつないだ文で、アプリに組み込んだ公開鍵 (`PUBLIC_KEY`) で検証する。検証に通らないファイルは削除し、実行もインストールもしない。秘密鍵はリポジトリの secret `UPDATE_SIGNING_KEY` にだけ置き、`release.yaml` が署名の直後に `PUBLIC_KEY` で検証し直す (食い違えばリリースが失敗する)
+  - 版を署名に含めるので、古い正規のインストーラーに新しい版番号を付けた差し替え (ダウングレード) は検証で落ちる。OS と製品名も含めるので、別 OS 向けや別アプリのファイルの流用も落ちる。マニフェストの版が実行中の版より新しいときだけ更新を出す
+  - 取得は HTTPS (CA は certifi)。URL は `https://github.com/semnil/analyze-loudness/releases/download/<tag>/<name>` の形だけを受け付け、リダイレクトは https のままのものだけを辿る。マニフェストは 64 KiB、インストーラーは 1 GiB と 600 秒の締め切りを上限にする
+  - macOS は、DMG の中の `.app` の識別子と版が一致すること、現在の版が Team ID 付きで署名されているときは同じ Team ID で `codesign --verify --deep --strict` が通ることも確かめてから入れ替える
+  - `/update/install` は直前の `/update/check` が示した版だけを受け付ける。ローカルのページから呼ばれても、署名を検証できる更新しか適用されない (外部サイトからの呼び出しは SEC-17 の Content-Type の検査で preflight が要る)
+  - 検証: `vendor/py-analyze-common/tests/` の Ed25519 (RFC 8032 の検証ベクトル)、改ざん・版の付け替え・別 OS の署名・別の鍵・サイズ上限・締め切り・URL の範囲外・scheme の変わるリダイレクトのテストと、OpenSSL で作った署名をアプリ側の検証が受け付けるテスト。2026-10-20 に macOS の実機 (ローカルでビルドした未署名の 1.4.1 / 1.4.2) で、1 バイトを反転した DMG が "The downloaded update does not match its signature" で拒否され、旧版がそのまま動き続けることを確認した
 
 ---
 
@@ -228,6 +244,7 @@ Summary の件数は 2026-10-17 に SEC-17〜SEC-19 を追加した時点のも�
 | GUI HTTP | 127.0.0.1 only | N/A (localhost) | Content-Type + URL / local path + duration + JSON body validation |
 | Frontend SPA | pywebview (WebView2) | N/A | Static files, no SSR |
 | File dialogs | Native OS | User interaction required | pywebview SAVE_DIALOG / OPEN_DIALOG, `_dialog_lock` non-blocking try-lock (409 on concurrent) |
+| Update check / download | HTTPS to github.com (outbound) | N/A | Ed25519 signature over product / version / OS / SHA-256, URL prefix, https-only redirects, size and time caps (SEC-20) |
 
 ### Abuse Scenarios
 
@@ -246,6 +263,9 @@ Summary の件数は 2026-10-17 に SEC-17〜SEC-19 を追加した時点のも�
 | XSS via loaded JSON title | Code execution | `textContent` (no HTML parse) | Not vulnerable |
 | Invalid base64 in /save-image | Server crash | `ValueError` caught | Resolved |
 | Cancel during subprocess | Orphaned process (~11s) | `_ClientDisconnected` + `TemporaryDirectory` cleanup | Accepted (low) |
+| Tampered installer or manifest on the release path | Code execution | Ed25519 signature checked before anything runs | Resolved (SEC-20) |
+| Older genuine installer relabelled as newer | Downgrade | Version is part of the signed statement | Resolved (SEC-20) |
+| Redirect to plain HTTP or another host | Tampering in transit | https-only redirects, URL prefix check | Resolved (SEC-20) |
 
 ```mermaid
 graph TD
@@ -266,6 +286,7 @@ graph TD
 - No authentication tokens or cookies
 - No PII processing
 - No network listeners on external interfaces
+- Outbound: the update check reads `latest.json` from github.com at launch (turned off by "Check at launch" in Settings). The request carries the app name and version (User-Agent) and nothing about the user or the analysed media
 - YouTube content analyzed locally, deleted after display
 - ffmpeg bundled under GPL-2.0+ (source availability required for redistribution)
 - THIRD_PARTY_LICENSES.txt included in installer

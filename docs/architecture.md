@@ -35,7 +35,7 @@ graph LR
 | Component | Responsibility |
 |-----------|---------------|
 | `AnalyzeHandler` | `SimpleHTTPRequestHandler` 継承。frontend 配信 + POST エンドポイント処理 |
-| `do_POST()` | `/analyze`, `/compare`, `/save`, `/save-image`, `/load`, `/browse`, `/upload` のルーティング。Content-Type の検査 (`_check_content_type`) |
+| `do_POST()` | `/analyze`, `/compare`, `/save`, `/save-image`, `/load`, `/browse`, `/upload`, `/update/status`, `/update/check`, `/update/install` のルーティング。Content-Type の検査 (`_check_content_type`) |
 | `_handle_browse()` | ローカルの音声ファイルを選ぶネイティブダイアログ |
 | `_handle_upload()` | ドロップされたファイルを一時ディレクトリ `_upload_dir` に保存 |
 | `_run_analysis()` | download -> probe -> ebur128 (計時) -> stats -> result の NDJSON ストリーム |
@@ -43,9 +43,11 @@ graph LR
 | `_handle_save_image()` | base64 PNG → バイナリ保存 (ネイティブファイルダイアログ) |
 | `_handle_compare()` | 2〜6 本の単体結果を受け取り、比較 JSON と切り詰めた範囲の統計を返す |
 | `_handle_load()` | JSON 読み込み + バリデーション (ネイティブファイルダイアログ)。比較 JSON は統計を添えて返し、キャッシュには入れない |
+| `_handle_update_*()` | 自動更新の状態・確認・適用。処理は `_updater` (`analyze_common.update.Updater`) に渡す |
+| `_exit_now()` | macOS の更新で bundle を入れ替えた後の終了。atexit の後始末を行ってから `os._exit(0)` |
 | `_speed_factor` | runtime-calibrated 速度係数。分析時間から次回の推定時間を算出 |
 | `_set_application_user_model_id()` | Windows AppUserModelID 設定 (タスクバーアイコン反映) |
-| `main()` | HTTPServer (127.0.0.1:0) 起動 + pywebview ウインドウ表示 |
+| `main()` | Windows の mutex の保持 (`hold_instance_mutex`) + HTTPServer (127.0.0.1:0) 起動 + pywebview ウインドウ表示 |
 
 ### Frontend (`frontend/`)
 
@@ -242,6 +244,77 @@ Timeline の x 軸ガター (プロット領域とメモリラベルの間) に�
   最小 3.05)。色だけに頼らないよう、タイムラインの線の右端・ヒストグラムの最頻ビン・GATE 帯のラベル・
   セグメントの見出しにトラック番号を描く。CLI の図はライトの 6 色 (`plot.py` の `TRACK_COLORS`) を使う。
 
+### 13. Auto-update
+
+インストール版 (frozen の Windows x64 / macOS arm64) は起動時に GitHub の最新の Release を確認し、
+確認ダイアログで OK のときだけ更新を取得・検証・適用する。クライアントは py-analyze-common の
+`analyze_common/update.py`、UI は `analyze_common/web/update.js` (`/common/update.js` で配信) で、
+analyze-spectrum と共有する。このリポジトリの固有部分は `src/analyze_loudness/update.py` の `UPDATE_CONFIG`。
+
+```mermaid
+sequenceDiagram
+    participant UI as update.js
+    participant S as gui.py
+    participant U as analyze_common.update
+    participant GH as GitHub Releases
+    participant Setup as Inno Setup (Windows)
+    participant Sh as relaunch shell (macOS)
+    UI->>S: POST /update/status
+    S-->>UI: current, supported, launch_check
+    UI->>S: POST /update/check (at launch when on)
+    S->>U: Updater.check()
+    U->>GH: GET releases/latest/download/latest.json
+    GH-->>U: redirect to the tag, then latest.json
+    U-->>S: newer version or None
+    S-->>UI: available, version
+    UI->>UI: window.confirm (OK or Cancel)
+    UI->>S: POST /update/install with the version
+    S->>U: Updater.install(version)
+    U->>GH: GET the installer (https only)
+    U->>U: Ed25519 verify of product, version, OS, SHA-256
+    alt Windows
+        U->>Setup: os.startfile with /SILENT and /UPDATE=1
+        S-->>UI: restarting
+        S->>S: window.destroy()
+        Setup->>Setup: wait for the app mutex, install, start the app
+    else macOS
+        U->>U: hdiutil attach, ditto, check id, version, Team ID
+        U->>U: swap with the running .app (renamex_np)
+        U->>Sh: start, waits for this PID
+        S-->>UI: restarting
+        S->>S: _exit_now() then os._exit(0)
+        Sh->>Sh: open the new .app
+    end
+```
+
+- **署名**: `latest.json` は OS ごとに `url` と `signature` を持つ。署名の対象は
+  `analyze-update-v1\n{product}\n{version}\n{platform}\n{sha256}\n` で、版と OS が入るので、
+  古い正規のインストーラーへの版番号の付け替えと別 OS のファイルの流用は検証で落ちる。Ed25519 の検証は
+  純 Python (`analyze_common/ed25519.py`、RFC 8032) で、`cryptography` は bundle から除いたまま。
+  署名は CI で `openssl pkeyutl -rawin` が作り、`analyze_common/update_manifest.py` がアプリの公開鍵で検証し直す。
+- **macOS の終わり方**: PyInstaller は遅延 import のたびにアーカイブをパスで開き直すため、bundle を入れ替えた後に
+  import が走ると新しい版のファイルを読む。入れ替えの後は `_exit_now()` が atexit の後始末を自分で行い、
+  `os._exit(0)` で interpreter の終了処理を通らずに終わる。入れ替えはアプリ自身が行う (Tauri の updater と同じ方式)。
+- **再起動したプロセスの環境**: `open` で起動したアプリには呼び出し側の環境変数が渡る (2026-10-20 に、
+  テスト用の変数と `_PYI_PARENT_PROCESS_LEVEL=1` が再起動後のプロセスに渡ることを `ps -wwE` で確認)。
+  PyInstaller 6.9 以降の bootloader は、`_PYI_ARCHIVE_FILE` が自分と同じなら親の worker として振る舞うので、
+  再起動用のシェルとインストーラーに `PYINSTALLER_RESET_ENVIRONMENT=1` を渡して独立したプロセスとして起動させる。
+- **Windows の UAC**: Inno Setup の loader は `asInvoker` で起動し、必要になってから昇格を求めるので、UAC はアプリが
+  閉じた後に出る。拒否するとインストールされず、アプリは閉じたままになる (起動し直すと旧版が起動する)。
+- **「起動時に確認」の保存先**: アプリの設定ファイル (`analyze_common/settings.py` の `SettingsStore`。macOS は
+  `~/Library/Application Support/analyze-loudness/settings.json`、Windows は `%APPDATA%\analyze-loudness\settings.json`)。
+  webview の localStorage は次の起動に残らない: pywebview 6.2.1 の `webview.start()` は既定で `private_mode=True` で、
+  起動ごとに website data を消す。private mode を切っても、ローカルサーバーのポートは起動ごとに変わり origin が変わる
+  (2026-10-20 に pywebview を 2 回起動して確認: private mode 既定・同じポートでも前回の値は読めず、private mode を切ると
+  同じポートでは読め、別のポートでは読めない)。
+- **同じアプリの別プロセス**: macOS では、同じ実行ファイルの別プロセスがあると入れ替えない (入れ替えた bundle の
+  上で動き続けることになるため)。Windows はインストーラーが mutex の消えるのを待つ。
+- **macOS の実機確認** (2026-10-20、ローカルでビルドした未署名の 1.4.1 / 1.4.2、ローカルの配信):
+  1.4.1 から更新すると、`/update/install` の応答の 3.8 秒後に旧プロセスが終わり、4.1 秒後に同じパスから
+  1.4.2 が起動した。一時ディレクトリと `.app` の隣のファイルは残らなかった。1 バイトを反転した DMG は拒否され、
+  旧版が動き続けた。2 つ起動しているときは入れ替えなかった。frozen のビルドから github.com への確認は
+  TLS とリダイレクトを通り、`v1.4.1` に `latest.json` が無いことによる 404 になった。
+
 ## Accessibility
 
 ### prefers-reduced-motion
@@ -287,7 +360,8 @@ python build.py --installer  # + Inno Setup installer
 Build pipeline:
 1. `build.py --skip-download` or auto-download: ffmpeg, ffprobe, deno, uPlot (yt-dlp は Python 依存)
 2. PyInstaller (`analyze-loudness.spec`): bundles Python + dependencies + frontend + binaries
-3. Inno Setup (`installer.iss`): Windows installer with license display
+3. Inno Setup (`installer.iss`): Windows installer with license display. `vendor/py-analyze-common/installer/auto_update.iss` を include し、`build.py` が `/DMyAppMutex=` を渡す
+4. `release.yaml`: インストーラーと DMG の SHA-256 に署名した `latest.json` を Release に載せる (13. Auto-update)
 
 ### Bundled Assets (`build_assets/bin/`)
 

@@ -28,6 +28,7 @@ analyze-loudness/
 │   ├── download.py             # yt_dlp.YoutubeDL API, ローカルファイルの解決 (resolve_source), ffprobe duration
 │   ├── analysis.py             # ebur128 stderr parsing, compute_stats
 │   ├── compare.py              # 単体 / 比較 JSON の組み立てと検証, 切り詰めた範囲の統計
+│   ├── update.py               # 自動更新の識別 (UPDATE_CONFIG: 製品名・リポジトリ・公開鍵・mutex 名)
 │   └── plot.py                 # matplotlib figure generation (CLI only)
 ├── frontend/
 │   ├── index.html
@@ -50,6 +51,7 @@ analyze-loudness/
 │   ├── test_download.py
 │   ├── test_gui.py
 │   ├── test_plot.py
+│   ├── test_update.py          # UPDATE_CONFIG と、それに合わせる installer.iss / spec / release.yaml
 │   ├── test_frontend.py        # Playwright headless Chromium runner
 │   └── frontend/
 │       ├── test_ui.html        # test harness page (DOM + stubs)
@@ -116,7 +118,8 @@ analyze-loudness-gui
 - `numpy` -- 統計計算
 - `yt-dlp` -- Python ライブラリとしてバンドル (PyInstaller が自動的に含める)
 - ffmpeg, ffprobe, deno -- `build_assets/bin/` に置いてバンドル (PyInstaller frozen mode)
-- `py-analyze-common` -- git submodule (`vendor/py-analyze-common`)。OS 判定・subprocess kwargs・ダークモード検出・ffmpeg/ffprobe ラッパー・yt-dlp ダウンロード・JSON 安全化を提供。pyproject.toml には記載せず `sys.path` 注入で利用
+- `certifi` -- 自動更新の HTTPS が使う CA (`pip install -e ".[gui]"`)。PyInstaller は certifi が無くても警告だけで bundle を作るため、`build.py` の `check_prerequisites()` が無ければビルドを止める
+- `py-analyze-common` -- git submodule (`vendor/py-analyze-common`)。OS 判定・subprocess kwargs・ダークモード検出・ffmpeg/ffprobe ラッパー・yt-dlp ダウンロード・JSON 安全化・自動更新を提供。pyproject.toml には記載せず `sys.path` 注入で利用
 
 ## テスト
 
@@ -211,6 +214,10 @@ NDJSON ストリーミングでリアルタイム進捗表示。実行時に較�
 | `/load` | POST | ネイティブダイアログで JSON を選択し、結果を再可視化。比較 JSON には `stats` を添え、単体結果のキャッシュには入れない |
 | `/browse` | POST | ネイティブダイアログでローカルの音声ファイルを選び、パスを返す |
 | `/upload` | POST | ドロップされたファイル (本文そのまま、名前は `X-Filename`) を一時ディレクトリに置き、パスを返す。上限 500 MB、拡張子は `src/analyze_loudness/download.py` の `AUDIO_EXTENSIONS` |
+| `/update/status` | POST | 実行中の版 (`current`)、更新を適用できるビルドか (`supported`)、「起動時に確認」の設定 (`launch_check`) を返す |
+| `/update/settings` | POST | `{"launch_check": bool}` をアプリの設定ファイルに保存し、保存後の値を返す。bool 以外は 400、書き込めなければ 500 |
+| `/update/check` | POST | 最新の Release の `latest.json` を確認し、新しい版があれば `{"available": true, "version"}`、無ければ `{"available": false}`。失敗は 502 |
+| `/update/install` | POST | `{"version"}` (直前の確認が示した版だけ受け付ける) を取得・署名検証・適用し、`{"restarting": true}` を返してアプリを終える。失敗は 500。macOS で入れ替えた後に再起動できなかったときは `{"installed": true, "restart_error"}` を返して動き続ける |
 
 POST は Content-Type が `application/json` (`/upload` は `application/octet-stream`) のときだけ受け付け、それ以外は 415。
 
@@ -300,6 +307,28 @@ CI (GitHub Actions) では `pip install -e ".[dev]"` で Playwright Python パ�
 Analyze ボタンが分析中に Cancel ボタンに変化。`AbortController` で fetch + NDJSON ストリーム読み取りを中断。
 `_isBusy` フラグで Load JSON ボタンを無効化し、二重実行を防止。
 
+### 自動更新
+
+インストール版 (PyInstaller でビルドした Windows / macOS のアプリ) は、起動時に GitHub の最新の Release を確認し、新しい版があれば確認ダイアログ (`window.confirm`、OK / キャンセル) を出す。OK のときだけインストーラーを取得・検証・適用し、アプリを再起動する。処理の本体は py-analyze-common の `analyze_common/update.py` (確認・取得・署名検証・適用) と `analyze_common/web/update.js` (歯車ボタン・設定ダイアログ・確認の流れ) で、analyze-spectrum と共有する。このリポジトリが持つのは `src/analyze_loudness/update.py` の `UPDATE_CONFIG` と、`src/analyze_loudness/gui.py` の `/update/*` の 3 エンドポイント。
+
+- 設定: ツールバーの歯車ボタンが開く設定ダイアログに「起動時に確認」(既定 ON) と「今すぐ確認」(結果はダイアログ内に出す) と版を置く。「起動時に確認」はアプリの設定ファイル (macOS は `~/Library/Application Support/analyze-loudness/settings.json`、Windows は `%APPDATA%\analyze-loudness\settings.json`) の `update_check_at_launch` に `/update/settings` で保存し、`/update/status` が返す。webview の localStorage には置かない (pywebview は private mode で起動し、起動ごとにローカルサーバーのポート = origin が変わるので、localStorage は次の起動に残らない)。保存の要求が出ている間はトグルを無効にし (要求は重ならない)、保存後はサーバーが返した値で描き直す。保存に失敗したときは保存前の値に戻し、ダイアログ内に出す。起動時の確認は、最新だったときと失敗したときに何も出さない。起動時の確認と「今すぐ確認」が重なったときは 1 回の確認にまとめる
+- 適用できるビルド: frozen の Windows x64 と macOS arm64 (`/update/status` の `supported`)。開発実行では設定ダイアログの更新の行が無効になる
+- 分析中は確認ダイアログを出さずに断る (「今すぐ確認」ではダイアログ内に出す)。ダウンロード中は分析と設定ダイアログを止める
+- 検証: Release に載る `latest.json` が、OS ごとのインストーラーの URL と Ed25519 署名を持つ。署名の対象は `analyze-update-v1` / 製品名 / 版 / OS / インストーラーの SHA-256 を改行でつないだ文で、`UPDATE_CONFIG` の `PUBLIC_KEY` で検証する。版と OS が署名に入るので、古い正規のインストーラーに新しい版番号を付けた差し替えと、別 OS 向けのファイルの流用は検証で落ちる。URL は `https://github.com/semnil/analyze-loudness/releases/download/` の下だけを受け付け、リダイレクトは https のままのものだけを辿る。CA は certifi
+- Windows: 検証済みの `LoudnessAnalyzer-X.Y.Z-setup.exe` を `/SILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /UPDATE=1` で `os.startfile` から起動し (UAC はインストーラーが出す。Inno Setup の loader は `asInvoker` で起動し、必要になってから昇格を求める)、アプリはウィンドウを閉じて通常どおり終わる。`installer.iss` が include する `vendor/py-analyze-common/installer/auto_update.iss` が、`/UPDATE=1` のときだけ、アプリの mutex が消えるまで待ってからインストールし、終わったらアプリを元のユーザーの権限で起動する。30 秒たっても mutex が残っていれば Inno Setup の「実行中です」のメッセージを出し、OK で待ち直し、キャンセルでインストールせずに終わる。アプリはインストーラーを起動した時点で終わるので、UAC を拒否するとインストールされず、アプリは閉じたままになる (もう一度起動すると旧版が起動し、起動時の確認が ON なら同じ更新をもう一度勧める)。mutex 名は `UPDATE_CONFIG.mutex_name` だけが持ち、`main()` が `hold_instance_mutex()` で保持し、`build.py` が `/DMyAppMutex=` で Inno Setup に渡す (`installer.iss` は未定義なら `#error`)
+- macOS: DMG を開いて `.app` を同じボリュームの一時ディレクトリへ写し、識別子と版、現在の版が Team ID 付きで署名されているときは同じ Team ID と `codesign --verify --deep --strict` を確かめてから、動いている `.app` と入れ替える (`renamex_np` の `RENAME_SWAP`。権限が無ければ管理者パスワードを求める)。入れ替えの後はディスクの bundle が新しい版になっているので、`_exit_now()` が atexit の後始末を自分で行って `os._exit(0)` で終わる。再起動は、このプロセスの終了を待って `open` するシェルが行う。同じ実行ファイルの別のプロセスが動いているとき、DMG の中や App Translocation から起動しているときは入れ替えない
+- 失敗: 確認以外の失敗はステータス欄にエラーとして出し、アプリはそのまま動き続ける
+
+署名鍵は Ed25519。秘密鍵はリポジトリに入れず、PEM の中身をリポジトリの secret `UPDATE_SIGNING_KEY` に登録する。公開鍵 (生の 32 バイトの base64) を `src/analyze_loudness/update.py` の `PUBLIC_KEY` に書く。鍵の作成には OpenSSL 3 以降が要る (macOS 標準の LibreSSL 3.3 は Ed25519 を作れない。Homebrew の `openssl@3` を使う)。
+
+```bash
+openssl genpkey -algorithm ed25519 -out analyze-loudness.pem
+PYTHONPATH=vendor/py-analyze-common/src python -m analyze_common.update_manifest public-key analyze-loudness.pem
+gh secret set UPDATE_SIGNING_KEY < analyze-loudness.pem
+```
+
+`.github/workflows/release.yaml` の create-release ジョブが `python -m analyze_common.update_manifest sign` で `latest.json` を作り、インストーラーと一緒に Release に載せる。secret が無いとき、作った署名を `PUBLIC_KEY` で検証できないとき (secret と公開鍵の食い違い)、タグが `v` + `__version__` でないときはジョブが失敗する。
+
 ### ウィンドウアイコン
 
 PyInstaller の `EXE(icon=...)` は EXE ファイル自体のアイコン (エクスプローラー表示用) のみ。pywebview のウィンドウアイコン (タイトルバー・タスクバー) には `webview.start(icon=...)` で明示指定が必要 (pywebview 6.x で `create_window` から `start` に移動)。`build_assets/icon.ico` を PyInstaller の `datas` でバンドルし、`_ICON_PATH` で解決する。
@@ -361,8 +390,8 @@ PyInstaller frozen mode では `STARTF_USESHOWWINDOW` で ffmpeg / ffprobe の�
 
 1. `src/analyze_loudness/__init__.py` の `__version__` を上げる PR を出す (版上げは他の変更を含めない)
 2. マージ後、master への push で走った CI が成功すると、`.github/workflows/tag-release.yml` が `__version__` の変化を検出してマージコミットに `vX.Y.Z` タグを打ち、そのタグ上で `.github/workflows/release.yaml` を `workflow_dispatch` で起動する
-3. `.github/workflows/release.yaml` が Windows インストーラー (`LoudnessAnalyzer-X.Y.Z-setup.exe`) と macOS DMG (`Loudness-Analyzer.dmg`) をビルドし、Release を作成する (`draft: true`)
-4. Release の publish は人が行う
+3. `.github/workflows/release.yaml` が Windows インストーラー (`LoudnessAnalyzer-X.Y.Z-setup.exe`) と macOS DMG (`Loudness-Analyzer.dmg`) をビルドし、署名した `latest.json` ([自動更新](#自動更新)) と一緒に Release を作成する (`draft: true`)
+4. Release の publish は人が行う。publish した Release が `releases/latest` になり、インストール済みのアプリの更新の確認がその `latest.json` を読む
 
 版上げ PR のマージがリリースの起点。`tag-release.yml` は `__version__` が変わらない push では何もせず、同名のタグが別のコミットに既にあるときはタグを動かさない。`release.yaml` はタグの push と、タグ上の `workflow_dispatch` でもビルドとリリースを行う (ブランチ上の `workflow_dispatch` はビルドのみ)。
 

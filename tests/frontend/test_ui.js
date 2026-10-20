@@ -52,6 +52,7 @@ function resetState() {
 
 // Mock fetch — returns queued responses
 var _fetchQueue = [];
+var _fetchLog = [];  // every URL the page fetched, mocked or not
 var _origFetch = window.fetch;
 
 function mockFetch(responseFn) {
@@ -59,6 +60,7 @@ function mockFetch(responseFn) {
 }
 
 window.fetch = function(url, opts) {
+  _fetchLog.push(url);
   if (_fetchQueue.length > 0) {
     var fn = _fetchQueue.shift();
     return Promise.resolve(fn(url, opts));
@@ -755,6 +757,369 @@ function fakeStats() {
   assertEqual(urlInput.value, "", "Rejected drop leaves the field empty");
 
   // ================================================
+  suite("Update: settings button and dialog");
+  // ================================================
+
+  await window.analyzeUpdate.ready;
+  var settingsButton = document.getElementById("settings-toggle");
+  var toolbarNode = document.querySelector(".toolbar");
+  assert(settingsButton !== null, "Settings button exists");
+  assertEqual(settingsButton.parentElement, toolbarNode, "Settings button sits in the toolbar");
+  assertEqual(toolbarNode.lastElementChild, settingsButton, "Settings button comes after the theme toggle");
+  assertEqual(settingsButton.getAttribute("aria-label"), "Settings", "Settings button is labelled");
+  assertEqual(settingsButton.getAttribute("aria-haspopup"), "dialog", "Settings button announces a dialog");
+  assert(settingsButton.querySelector("svg") !== null, "Settings button draws an SVG icon");
+
+  function settingsBox() { return document.querySelector(".settings-box"); }
+  function settingsOpen() { return !document.querySelector(".settings-scrim").hidden; }
+  function escapeOn(target) {
+    target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+  }
+
+  settingsButton.focus();
+  settingsButton.click();
+  assert(settingsOpen(), "Clicking the button opens the dialog");
+  assertEqual(settingsBox().getAttribute("role"), "dialog", "Dialog role");
+  assertEqual(settingsBox().getAttribute("aria-modal"), "true", "Dialog is modal");
+  assertEqual(document.getElementById("settings-version").textContent, "Loudness Analyzer 1.4.1",
+              "Version row names the app and the running version");
+  assertEqual(document.getElementById("settings-update-launch").checked, false, "Launch check shows the setting /update/status reported");
+  assertEqual(document.getElementById("settings-update-now").disabled, false, "Check now enabled in the installed app");
+  assert(settingsBox().querySelector(".settings-tag") === null, "No installed-only tag in the installed app");
+  assertEqual(document.activeElement, settingsBox().querySelector(".settings-close"), "Focus moves to Close");
+  assert(document.querySelector("main").inert, "Page behind the dialog is inert");
+
+  var savedSettings = [];
+  function mockSave(answer, status) {
+    mockFetch(function (url, init) {
+      savedSettings.push([url, JSON.parse(init.body)]);
+      return makeJsonResponse(answer, status);
+    });
+  }
+  mockSave({ launch_check: true });
+  document.getElementById("settings-update-launch").click();
+  await new Promise(function (r) { setTimeout(r, 20); });
+  assertEqual(JSON.stringify(savedSettings[0]), JSON.stringify(["/update/settings", { launch_check: true }]),
+              "Turning the launch check on saves it through /update/settings");
+  mockSave({ launch_check: false });
+  document.getElementById("settings-update-launch").click();
+  await new Promise(function (r) { setTimeout(r, 20); });
+  assertEqual(JSON.stringify(savedSettings[1]), JSON.stringify(["/update/settings", { launch_check: false }]),
+              "Turning it off saves false");
+  assertEqual(document.getElementById("settings-update-launch").checked, false, "The toggle shows off");
+  mockSave({ error: "The setting could not be saved: [Errno 13] Permission denied" }, 500);
+  document.getElementById("settings-update-launch").click();
+  await new Promise(function (r) { setTimeout(r, 20); });
+  assertEqual(document.getElementById("settings-update-launch").checked, false, "A failed save puts the toggle back");
+  assertEqual(document.getElementById("settings-update-note").textContent, "The setting could not be saved.",
+              "A failed save is reported in the dialog");
+  assert(document.getElementById("settings-update-note").classList.contains("warn"), "The failed save is a warning");
+
+  // A save in flight holds the toggle; the server's answer decides what it shows.
+  var pendingSave = null;
+  savedSettings = [];
+  _fetchLog = [];
+  mockFetch(function (url, init) {
+    savedSettings.push([url, JSON.parse(init.body)]);
+    pendingSave = {};
+    pendingSave.promise = new Promise(function (r) { pendingSave.resolve = r; });
+    return pendingSave.promise;
+  });
+  document.getElementById("settings-update-launch").click();
+  assertEqual(document.getElementById("settings-update-launch").disabled, true, "The toggle is disabled while its save is in flight");
+  document.getElementById("settings-update-launch").click();
+  await new Promise(function (r) { setTimeout(r, 20); });
+  assertEqual(_fetchLog.filter(function (u) { return u === "/update/settings"; }).length, 1,
+              "A click during a save sends no second request");
+  pendingSave.resolve(makeJsonResponse({ launch_check: true }));
+  await new Promise(function (r) { setTimeout(r, 20); });
+  assertEqual(document.getElementById("settings-update-launch").disabled, false, "The toggle is usable again after the save");
+  assertEqual(document.getElementById("settings-update-launch").checked, true, "The toggle shows the saved value");
+  assertEqual(document.activeElement, document.getElementById("settings-update-launch"), "Focus stays on the toggle after the save");
+
+  mockSave({ launch_check: true });
+  document.getElementById("settings-update-launch").click();
+  await new Promise(function (r) { setTimeout(r, 20); });
+  assertEqual(JSON.stringify(savedSettings[1]), JSON.stringify(["/update/settings", { launch_check: false }]), "Turning it off asks for false");
+  assertEqual(document.getElementById("settings-update-launch").checked, true, "The toggle shows what the server saved, not the click");
+  window.analyzeUpdate.close();
+  settingsButton.click();
+  assertEqual(document.getElementById("settings-update-launch").checked, true, "Reopening shows the saved value");
+  mockSave({ launch_check: false });
+  document.getElementById("settings-update-launch").click();
+  await new Promise(function (r) { setTimeout(r, 20); });
+  assertEqual(document.getElementById("settings-update-launch").checked, false, "Back off for the rest of the suite");
+
+  var nodes = Array.prototype.filter.call(settingsBox().querySelectorAll("button, input"), function (n) { return !n.disabled; });
+  nodes[nodes.length - 1].focus();
+  settingsBox().dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+  assertEqual(document.activeElement, nodes[0], "Tab from the last control wraps to the first");
+  nodes[0].focus();
+  settingsBox().dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }));
+  assertEqual(document.activeElement, nodes[nodes.length - 1], "Shift+Tab from the first wraps to the last");
+
+  var aborted = false;
+  activeAbort = { abort: function () { aborted = true; } };
+  escapeOn(document.activeElement);
+  assert(!settingsOpen(), "Escape closes the dialog");
+  assertEqual(aborted, false, "Escape in the dialog does not cancel the analysis");
+  activeAbort = null;
+  assertEqual(document.activeElement, settingsButton, "Focus returns to the settings button");
+  assert(!document.querySelector("main").inert, "Page is interactive again");
+
+  window.i18n.setLang("ja");
+  assertEqual(settingsButton.getAttribute("aria-label"), "設定", "Button label follows the language");
+  settingsButton.click();
+  assertEqual(document.getElementById("settings-title").textContent, "設定", "Dialog title in Japanese");
+  assertEqual(document.getElementById("settings-update-now").textContent, "今すぐ確認", "Check now in Japanese");
+  window.i18n.setLang("en");
+  assertEqual(document.getElementById("settings-title").textContent, "Settings", "Open dialog redraws on a language switch");
+  window.analyzeUpdate.close();
+
+  // ================================================
+  suite("Update: outside the installed app");
+  // ================================================
+
+  _fetchLog = [];
+  mockFetch(function () { return makeJsonResponse({ current: "1.4.1", supported: false, launch_check: true }); });
+  await window.analyzeUpdate._boot();
+  assertEqual(_fetchLog.join(","), "/update/status", "No launch check outside the installed app");
+  settingsButton.click();
+  assertEqual(document.getElementById("settings-update-now").disabled, true, "Check now disabled");
+  assertEqual(document.getElementById("settings-update-launch").disabled, true, "Launch toggle disabled");
+  assert(settingsBox().querySelector(".settings-tag") !== null, "Installed-only tag shown");
+  window.analyzeUpdate.close();
+  mockFetch(function () { return makeJsonResponse({ current: "1.4.1", supported: true, launch_check: false }); });
+  await window.analyzeUpdate._boot();
+
+  // ------ helpers for the check flows ------
+  var updateCalls = [];
+  function mockUpdate(handler) {
+    mockFetch(function (url, init) {
+      updateCalls.push({ url: url, body: init && init.body ? JSON.parse(init.body) : null });
+      return handler(url, init);
+    });
+  }
+  function deferred() {
+    var d = {};
+    d.promise = new Promise(function (resolve) { d.resolve = resolve; });
+    return d;
+  }
+  var confirmCalls = [];
+  var confirmAnswer = false;
+  var savedConfirm = window.confirm;
+  window.confirm = function (msg) { confirmCalls.push(msg); return confirmAnswer; };
+  function tick(ms) { return new Promise(function (r) { setTimeout(r, ms || 0); }); }
+  function note() { return document.getElementById("settings-update-note"); }
+
+  // ================================================
+  suite("Update: Check now");
+  // ================================================
+
+  resetState();
+  updateCalls = [];
+  var flight = deferred();
+  mockUpdate(function () { return flight.promise; });
+  settingsButton.click();
+  document.getElementById("settings-update-now").click();
+  await tick();
+  assertEqual(note().textContent, "Checking…", "Note says Checking while in flight");
+  assertEqual(settingsBox().querySelector(".settings-close").disabled, true, "Close disabled while checking");
+  assertEqual(document.getElementById("settings-update-now").disabled, true, "Check now disabled while checking");
+  escapeOn(settingsBox());
+  assert(settingsOpen(), "Escape cannot close while checking");
+  document.querySelector(".settings-scrim").dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+  assert(settingsOpen(), "Outside press cannot close while checking");
+  flight.resolve(makeJsonResponse({ available: false }));
+  await tick(20);
+  assertEqual(updateCalls[0].url, "/update/check", "Check now posts /update/check");
+  assertEqual(note().textContent, "Already up to date.", "Up to date is reported inline");
+  assertEqual(settingsBox().querySelector(".settings-close").disabled, false, "Close enabled after the check");
+  assertEqual(document.activeElement, document.getElementById("settings-update-now"), "Focus goes back to Check now");
+
+  mockUpdate(function () { return makeJsonResponse({ error: "HTTP 404 from https://github.com/semnil/analyze-loudness/releases/download/v1.4.1/latest.json" }, 502); });
+  document.getElementById("settings-update-now").click();
+  await tick(20);
+  assertEqual(note().textContent, "Update check failed.", "Failure is reported inline");
+  assert(note().classList.contains("warn"), "Failure note is a warning");
+
+  confirmCalls = [];
+  confirmAnswer = false;
+  mockUpdate(function () { return makeJsonResponse({ available: true, version: "9.9.9" }); });
+  document.getElementById("settings-update-now").click();
+  await tick(20);
+  assertEqual(confirmCalls.length, 1, "An available update is confirmed");
+  assert(confirmCalls[0].indexOf("Version 9.9.9 is available. Update now?") === 0, "Confirm names the version");
+  assert(confirmCalls[0].indexOf("not saved") !== -1, "Confirm says unsaved results are cleared");
+  assertEqual(note().textContent, "Version 9.9.9 is available.", "Declined update stays named in the note");
+  assert(settingsOpen(), "Declining keeps the dialog open");
+
+  confirmCalls = [];
+  _setBusy(true);
+  mockUpdate(function () { return makeJsonResponse({ available: true, version: "9.9.9" }); });
+  document.getElementById("settings-update-now").click();
+  await tick(20);
+  assertEqual(confirmCalls.length, 0, "No confirm while an analysis runs");
+  assert(note().textContent.indexOf("analysis is running") !== -1, "Busy is reported inline");
+  _setBusy(false);
+  window.analyzeUpdate.close();
+
+  // ================================================
+  suite("Update: accepted install");
+  // ================================================
+
+  resetState();
+  updateCalls = [];
+  confirmCalls = [];
+  confirmAnswer = true;
+  var install = deferred();
+  mockUpdate(function () { return makeJsonResponse({ available: true, version: "9.9.9" }); });
+  mockUpdate(function () { return install.promise; });
+  settingsButton.focus();
+  settingsButton.click();
+  document.getElementById("settings-update-now").click();
+  await tick(50);
+  assert(!settingsOpen(), "Accepting closes the dialog");
+  assertEqual(updateCalls[1].url, "/update/install", "Accepting posts /update/install");
+  assertEqual(updateCalls[1].body.version, "9.9.9", "The install names the confirmed version");
+  assertEqual(statusEl.textContent, "Downloading update… the app will restart", "Download status shown");
+  assertEqual(_isBusy, true, "The app is busy while downloading");
+  assertEqual(submitBtn.disabled, true, "Analyze cannot start during the download");
+  assertEqual(document.activeElement, settingsButton, "Focus stays on the settings button during the download");
+  assertEqual(settingsButton.getAttribute("aria-disabled"), "true", "The settings button is marked unavailable during the download");
+  settingsButton.click();
+  assert(!settingsOpen(), "Settings cannot open during the download");
+  install.resolve(makeJsonResponse({ error: "The downloaded update does not match its signature" }, 500));
+  await tick(20);
+  assertEqual(_isBusy, false, "A failed install releases the app");
+  assertEqual(settingsButton.getAttribute("aria-disabled"), null, "The settings button is available again after a failure");
+  settingsButton.click();
+  assert(settingsOpen(), "Settings opens again after a failure");
+  window.analyzeUpdate.close();
+  assert(statusEl.classList.contains("error"), "Failure shown as an error");
+  assert(statusEl.textContent.indexOf("could not be downloaded and installed: The downloaded update does not match its signature") !== -1,
+         "Failure names the cause");
+
+  resetState();
+  mockUpdate(function () { return makeJsonResponse({ available: true, version: "9.9.9" }); });
+  mockUpdate(function () { return makeJsonResponse({ installed: true, restart_error: "Resource busy" }); });
+  await window.analyzeUpdate.checkForUpdates();
+  await tick(20);
+  assert(statusEl.textContent.indexOf("installed, but the app could not restart (Resource busy)") !== -1,
+         "An installed update that did not restart says so");
+  assertEqual(_isBusy, false, "The app is usable after a failed restart");
+  settingsButton.click();
+  assert(!settingsOpen(), "No second install after the bundle was replaced");
+  settingsButton.removeAttribute("aria-disabled");
+
+  // ================================================
+  suite("Update: launch check and shared flight");
+  // ================================================
+
+  resetState();
+  updateCalls = [];
+  confirmCalls = [];
+  confirmAnswer = false;
+  mockFetch(function () { return makeJsonResponse({ current: "1.4.1", supported: true, launch_check: true }); });
+  mockUpdate(function () { return makeJsonResponse({ available: true, version: "9.9.9" }); });
+  await window.analyzeUpdate._boot();
+  assertEqual(updateCalls.length, 1, "Launch check runs when on");
+  assertEqual(confirmCalls.length, 1, "Launch check confirms an available update");
+  assertEqual(statusEl.textContent, "", "A declined launch check leaves the status line alone");
+
+  updateCalls = [];
+  mockFetch(function () { return makeJsonResponse({ current: "1.4.1", supported: true, launch_check: true }); });
+  mockUpdate(function () { return makeJsonResponse({ error: "offline" }, 502); });
+  await window.analyzeUpdate._boot();
+  assertEqual(updateCalls.length, 1, "Launch check ran");
+  assertEqual(statusEl.textContent, "", "A failed launch check stays silent");
+
+  _fetchLog = [];
+  mockFetch(function () { return makeJsonResponse({ current: "1.4.1", supported: true, launch_check: false }); });
+  await window.analyzeUpdate._boot();
+  assertEqual(_fetchLog.join(","), "/update/status", "No launch check when off");
+
+  updateCalls = [];
+  mockFetch(function () { return makeJsonResponse({ current: "1.4.1", supported: true }); });
+  mockUpdate(function () { return makeJsonResponse({ available: false }); });
+  await window.analyzeUpdate._boot();
+  assertEqual(updateCalls.length, 1, "Launch check is on when the status does not name the setting");
+
+  updateCalls = [];
+  confirmCalls = [];
+  var shared = deferred();
+  mockUpdate(function () { return shared.promise; });
+  var first = window.analyzeUpdate.checkForUpdates();
+  var second = window.analyzeUpdate.checkForUpdates();
+  shared.resolve(makeJsonResponse({ available: true, version: "9.9.9" }));
+  var outcomes = await Promise.all([first, second]);
+  assertEqual(updateCalls.length, 1, "Overlapping checks send one request");
+  assertEqual(confirmCalls.length, 1, "Overlapping checks show one confirm");
+  assertEqual(outcomes[1].kind, "declined", "Both callers get the outcome");
+
+  // ================================================
+  suite("Update: keys while the dialog waits on the server");
+  // ================================================
+
+  // Keys go to document.activeElement, as a key press does; the page's own
+  // Escape handler cancels a running analysis.
+  resetState();
+  var escapeAborted = false;
+  activeAbort = { abort: function () { escapeAborted = true; } };
+  var pendingCheck = deferred();
+  mockUpdate(function () { return pendingCheck.promise; });
+  settingsButton.click();
+  document.getElementById("settings-update-now").focus();
+  document.getElementById("settings-update-now").click();
+  await tick(50);
+  assert(settingsBox().contains(document.activeElement), "Focus stays in the dialog while checking");
+  escapeOn(document.activeElement);
+  assertEqual(escapeAborted, false, "Escape while checking does not cancel the analysis");
+  assert(settingsOpen(), "Escape while checking leaves the dialog open");
+  pendingCheck.resolve(makeJsonResponse({ available: false }));
+  await tick(20);
+  assertEqual(document.activeElement, document.getElementById("settings-update-now"), "Focus returns to Check now after the check");
+
+  escapeAborted = false;
+  var pendingSave = deferred();
+  mockFetch(function () { return pendingSave.promise; });
+  document.getElementById("settings-update-launch").focus();
+  document.getElementById("settings-update-launch").click();
+  await tick(50);
+  assertEqual(document.activeElement, settingsBox(), "Focus moves to the dialog while saving");
+  escapeOn(document.activeElement);
+  assertEqual(escapeAborted, false, "Escape while saving does not cancel the analysis");
+  assert(!settingsOpen(), "Escape while saving closes the dialog");
+  pendingSave.resolve(makeJsonResponse({ launch_check: false }));
+  await tick(20);
+
+  settingsButton.click();
+  settingsBox().focus();
+  assertEqual(document.activeElement, settingsBox(), "The dialog itself can hold focus");
+  settingsBox().dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }));
+  assertEqual(document.activeElement, settingsBox().querySelector(".settings-close"), "Shift+Tab from the dialog goes to the last control");
+  settingsBox().focus();
+  settingsBox().dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+  assertEqual(document.activeElement, document.getElementById("settings-update-launch"), "Tab from the dialog goes to the first control");
+  window.analyzeUpdate.close();
+
+  escapeAborted = false;
+  var pendingStatus = deferred();
+  mockFetch(function () { return pendingStatus.promise; });
+  var booting = window.analyzeUpdate._boot();
+  settingsButton.click();
+  pendingStatus.resolve(makeJsonResponse({ current: "1.4.1", supported: true, launch_check: false }));
+  await booting;
+  assertEqual(document.activeElement, settingsBox().querySelector(".settings-close"), "Focus stays on Close when /update/status redraws the dialog");
+  escapeOn(document.activeElement);
+  assertEqual(escapeAborted, false, "Escape after the redraw does not cancel the analysis");
+  assert(!settingsOpen(), "Escape after the redraw closes the dialog");
+  activeAbort = null;
+
+  window.confirm = savedConfirm;
+  resetState();
+
+  // ================================================
   suite("UI sources and status icons contain no emoji");
   // ================================================
 
@@ -772,6 +1137,10 @@ function fakeStats() {
     var _hit = _decodeJsEscapes(_text).match(_PICTO);
     assert(_hit === null, _src + " has no emoji" + (_hit ? " (found U+" + _hit[0].codePointAt(0).toString(16).toUpperCase() + ")" : ""));
   }
+  var _updateResponse = await _origFetch.call(window, "../../vendor/py-analyze-common/src/analyze_common/web/update.js");
+  var _updateText = await _updateResponse.text();
+  assert(_updateResponse.ok && _updateText.length > 100, "update.js fetched for the emoji scan");
+  assert(!_PICTO.test(_decodeJsEscapes(_updateText)), "update.js has no emoji");
   resetState();
   showError("boom");
   assert(statusEl.querySelector(".error-icon svg") !== null, "Error icon is an SVG");
