@@ -13,8 +13,8 @@ GUI は pywebview (Windows: WebView2 / macOS: WebKit) + ローカル HTTP サー
 
 ```
 analyze-loudness/
-├── .github/workflows/          # ci.yaml (PR/push), release.yaml (v* タグ / タグ上の workflow_dispatch), tag-release.yml (master の CI 成功後、版上げならタグを打ち release.yaml を起動), workflow-checks.yml (全 PR で uses: の SHA 固定と同一リポジトリ参照の規則を検査。PR 番号を渡す workflow_dispatch でも同じ検査を行い、結果を PR の head commit に action-pins の check run として載せる), workflow-checks-test.yml (検査のフィクスチャテストと、dependabot-auto-merge.yml の workflow_dispatch の入口のテストを実行), dependabot-auto-merge.yml (Dependabot の PR で更新が semver の patch なら自動マージを予約。必須チェック auto-merge。workflow_dispatch では起動したブランチの head commit に auto-merge を報告する (dependabot/ のブランチでは失敗する))
-├── .github/tests/              # workflow-checks-test.sh (workflow-checks.yml を偽の gh とフィクスチャの git tree で実行するテスト), dependabot-auto-merge-test.sh (dependabot-auto-merge.yml の両トリガーと、dependabot/ のブランチでの dispatch を断る段のテスト)
+├── .github/workflows/          # ci.yaml (PR/push), release.yaml (v* タグ / タグ上の workflow_dispatch), tag-release.yml (master の CI 成功後、版上げならタグを打ち release.yaml を起動), workflow-checks.yml (全 PR で uses: の SHA 固定と同一リポジトリ参照の規則を検査。PR 番号を渡す workflow_dispatch でも同じ検査を行い、結果を PR の head commit に action-pins の check run として載せる), workflow-checks-test.yml (検査のフィクスチャテストと、dependabot-auto-merge.yml の workflow_dispatch の入口のテストを実行), dependabot-auto-merge.yml (Dependabot の PR で更新が semver の patch なら自動マージを予約。必須チェック auto-merge。workflow_dispatch では起動したブランチの head commit に auto-merge を報告する (dependabot/ のブランチと、dependabot[bot] が作った PR に含まれるコミットでは失敗する))
+├── .github/tests/              # workflow-checks-test.sh (workflow-checks.yml を偽の gh とフィクスチャの git tree で実行するテスト), dependabot-auto-merge-test.sh (dependabot-auto-merge.yml の両トリガーと、Dependabot のコミットへの dispatch を断る段のテスト)
 ├── .gitignore
 ├── .venv/                      # Python venv (git 管理外)
 ├── CLAUDE.md
