@@ -5,8 +5,8 @@ come from BS.1770 rather than from any ffmpeg build: for a sine of peak A in
 both channels, the integrated loudness is 10*log10(2 * A**2 / 2) LUFS, the
 relative gate is 10 LU below it, and the true peak is 20*log10(A) dBTP.
 
-With ``EXPECT_FFMPEG_DIR`` set (.github/workflows/ffmpeg-watch.yml), the
-binaries in that directory go first on PATH, must be the ones found, and a
+With ``EXPECT_FFMPEG_DIR`` set (.github/workflows/ffmpeg-watch.yml and
+release.yaml), the binaries in that directory go first on PATH, must be the ones found, and a
 missing one fails the module instead of skipping it.
 """
 

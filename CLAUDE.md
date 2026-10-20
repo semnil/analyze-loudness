@@ -53,6 +53,7 @@ analyze-loudness/
 │   ├── test_plot.py
 │   ├── test_update.py          # UPDATE_CONFIG と、それに合わせる installer.iss / spec / release.yaml
 │   ├── test_ffmpeg_binary.py   # PATH の ffmpeg / ffprobe をアプリのパーサーで読む (EXPECT_FFMPEG_DIR で同梱バイナリを指定)
+│   ├── test_release_workflow.py # release.yaml が配布物に入った ffmpeg / ffprobe に test_ffmpeg_binary.py を通すこと
 │   ├── test_frontend.py        # Playwright headless Chromium runner
 │   └── frontend/
 │       ├── test_ui.html        # test harness page (DOM + stubs)
@@ -208,7 +209,7 @@ ffmpeg / ffprobe は osxexperts.net の arm64 ネイティブビルドを取得�
     --pin build_assets/ffmpeg.json --version-file src/analyze_loudness/__init__.py --candidate <tmpdir>/ffmpeg.json
   ```
 
-- 確認: `tests/test_ffmpeg_binary.py` が、numpy で書いた 1 kHz の正弦波を PATH の ffmpeg / ffprobe とアプリのパーサー (`run_ebur128()` / `probe_duration()`) で読み、Integrated・相対ゲート・True Peak を BS.1770 の計算値と比べる。`EXPECT_FFMPEG_DIR` に同梱バイナリのディレクトリを渡すと、そこの ffmpeg / ffprobe が先に見つかることを確かめ、見つからなければ skip せずに失敗する ([テスト](#テスト)の最後の行)
+- 確認: `tests/test_ffmpeg_binary.py` が、numpy で書いた 1 kHz の正弦波を PATH の ffmpeg / ffprobe とアプリのパーサー (`run_ebur128()` / `probe_duration()`) で読み、Integrated・相対ゲート・True Peak を BS.1770 の計算値と比べる。`EXPECT_FFMPEG_DIR` に同梱バイナリのディレクトリを渡すと、そこの ffmpeg / ffprobe が先に見つかることを確かめ、見つからなければ skip せずに失敗する ([テスト](#テスト)の最後の行)。リリースのビルド (`.github/workflows/release.yaml`) は、配布物に入ったコピー (Windows は PyInstaller が集めた `dist/analyze-loudness/_internal/bin`、macOS は署名した後の `.app` の `Contents/Frameworks/bin`) をこのテストに通し、失敗すると成果物のアップロードと Draft Release の作成へ進まない (`tests/test_release_workflow.py` が、その段の位置と渡すディレクトリを spec・`installer.iss` と照らして確かめる)
 
 ### deno (yt-dlp 依存)
 
@@ -411,7 +412,7 @@ PyInstaller frozen mode では `STARTF_USESHOWWINDOW` で ffmpeg / ffprobe の�
 
 1. `src/analyze_loudness/__init__.py` の `__version__` を上げる PR を出す (版上げは他の変更を含めない)
 2. マージ後、master への push で走った CI (ffmpeg-watch.yml のマージでは、同じワークフローが master で `workflow_dispatch` した CI) が成功すると、`.github/workflows/tag-release.yml` が `__version__` の変化を検出してマージコミットに `vX.Y.Z` タグを打ち、そのタグ上で `.github/workflows/release.yaml` を `workflow_dispatch` で起動する
-3. `.github/workflows/release.yaml` が Windows インストーラー (`LoudnessAnalyzer-X.Y.Z-setup.exe`) と macOS DMG (`Loudness-Analyzer.dmg`) をビルドし、署名した `latest.json` ([自動更新](#自動更新)) と一緒に Release を作成する (`draft: true`)
+3. `.github/workflows/release.yaml` が Windows インストーラー (`LoudnessAnalyzer-X.Y.Z-setup.exe`) と macOS DMG (`Loudness-Analyzer.dmg`) をビルドし、署名した `latest.json` ([自動更新](#自動更新)) と一緒に Release を作成する (`draft: true`)。ビルドは成果物をアップロードする前に、配布物に入った ffmpeg / ffprobe を `tests/test_ffmpeg_binary.py` に通す ([同梱する ffmpeg の固定](#同梱する-ffmpeg-の固定)の「確認」)
 4. Release の publish は人が行う。publish した Release が `releases/latest` になり、インストール済みのアプリの更新の確認がその `latest.json` を読む
 
 版上げ PR のマージがリリースの起点。`tag-release.yml` は `__version__` が変わらない push では何もせず、同名のタグが別のコミットに既にあるときはタグを動かさない。`release.yaml` はタグの push と、タグ上の `workflow_dispatch` でもビルドとリリースを行う (ブランチ上の `workflow_dispatch` はビルドのみ)。
