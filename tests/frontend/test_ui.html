@@ -64,10 +64,20 @@
     };
   </script>
 
-  <!-- Ensure deterministic language for assertions -->
+  <!-- Stub the app's /common/settings.js: deterministic language and theme for
+       assertions, and saves recorded instead of posted (failWith: the error a
+       save rejects with) -->
   <script>
-    try { localStorage.setItem("loudness-lang", "en"); } catch (_) {}
-    try { localStorage.setItem("loudness-theme", "light"); } catch (_) {}
+    window.analyzeSettings = {
+      theme: "light",
+      lang: "en",
+      saved: [],
+      failWith: null,
+      save: function (name, value) {
+        this.saved.push([name, value]);
+        return this.failWith ? Promise.reject(new Error(this.failWith)) : Promise.resolve({});
+      },
+    };
   </script>
 
   <!-- update.js asks /update/status while main.js loads, before test_ui.js

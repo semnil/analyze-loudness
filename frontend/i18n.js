@@ -1,11 +1,10 @@
 // Two-language (en / ja) UI translation.  Default follows navigator.language
-// ("ja*" -> ja, otherwise en); the user's choice is persisted in localStorage.
+// ("ja*" -> ja, otherwise en); the user's choice is kept in the app's settings
+// file, read from window.analyzeSettings.lang and saved by main.js.
 //
 // Static markup uses data-i18n* attributes and is translated on DOMContentLoaded.
 // Dynamic strings created in main.js call window.i18n.t(key) directly.
 (function () {
-  const STORAGE_KEY = "loudness-lang";
-
   const DICT = {
     en: {
       "app.title": "Loudness Analyzer (BS.1770 / EBU R128)",
@@ -36,6 +35,7 @@
       "err.file_too_large": "File too large (max 500 MB)",
       "err.charts_not_ready": "Charts are not ready. Run analysis first.",
       "err.save_failed": "Save failed: ",
+      "err.setting_save_failed": "The setting could not be saved: ",
       "err.load_failed_http": "Load failed: HTTP ",
       "err.dialog_timeout": "The file dialog did not respond. Please try again.",
       "err.save_failed_http": "Save failed: HTTP ",
@@ -177,6 +177,7 @@
       "err.file_too_large": "ファイルが大きすぎます (最大 500 MB)",
       "err.charts_not_ready": "チャートが未準備です。先に分析を実行してください。",
       "err.save_failed": "保存に失敗しました: ",
+      "err.setting_save_failed": "設定を保存できませんでした: ",
       "err.load_failed_http": "読込に失敗しました: HTTP ",
       "err.dialog_timeout": "ファイルダイアログが応答しませんでした。もう一度お試しください。",
       "err.save_failed_http": "保存に失敗しました: HTTP ",
@@ -296,13 +297,8 @@
     return l.startsWith("ja") ? "ja" : "en";
   }
 
-  let current;
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    current = saved === "ja" || saved === "en" ? saved : systemLang();
-  } catch (_) {
-    current = systemLang();
-  }
+  const saved = (window.analyzeSettings || {}).lang;
+  let current = saved === "ja" || saved === "en" ? saved : systemLang();
 
   function t(key, params) {
     const d = DICT[current] || DICT.en;
@@ -346,7 +342,6 @@
     setLang: function (lang) {
       if (lang !== "ja" && lang !== "en") return;
       current = lang;
-      try { localStorage.setItem(STORAGE_KEY, lang); } catch (_) {}
       applyStatic();
       listeners.forEach((fn) => { try { fn(lang); } catch (_) {} });
     },

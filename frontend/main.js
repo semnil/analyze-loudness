@@ -92,16 +92,24 @@ function _applyTheme() {
 
 function _setThemeMode(mode) {
   _themeMode = mode;
-  localStorage.setItem("loudness-theme", mode);
   const wasDark = isDark();
   _applyTheme();
   _renderQueue();
   if (isDark() !== wasDark && lastRenderedData) _reRenderCharts();
+  _saveSetting("theme", mode);
+}
+
+// Keeps the theme or the language in the app's settings file.  When the save
+// fails, the choice stays in effect until the app quits and the cause is shown.
+function _saveSetting(name, value) {
+  window.analyzeSettings.save(name, value).catch(function (err) {
+    showError(window.i18n.t("err.setting_save_failed") + err.message);
+  });
 }
 
 // Init theme
 (function() {
-  const saved = localStorage.getItem("loudness-theme");
+  const saved = (window.analyzeSettings || {}).theme;
   _themeMode = (saved === "light" || saved === "dark") ? saved : "auto";
   _applyTheme();
 })();
@@ -124,6 +132,7 @@ _applyLangButton();
 document.getElementById("lang-toggle").addEventListener("click", function () {
   const next = window.i18n.lang() === "ja" ? "en" : "ja";
   window.i18n.setLang(next);
+  _saveSetting("lang", next);
 });
 function _applyDropText() {
   document.body.setAttribute("data-drop-text", window.i18n.t("drop.overlay"));

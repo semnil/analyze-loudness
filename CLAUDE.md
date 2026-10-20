@@ -212,6 +212,7 @@ NDJSON ストリーミングでリアルタイム進捗表示。実行時に較�
 | `/load` | POST | ネイティブダイアログで JSON を選択し、結果を再可視化。比較 JSON には `stats` を添え、単体結果のキャッシュには入れない |
 | `/browse` | POST | ネイティブダイアログでローカルの音声ファイルを選び、パスを返す |
 | `/upload` | POST | ドロップされたファイル (本文そのまま、名前は `X-Filename`) を一時ディレクトリに置き、パスを返す。上限 500 MB、拡張子は `src/analyze_loudness/download.py` の `AUDIO_EXTENSIONS` |
+| `/settings` | POST | `{"theme": ...}` か `{"lang": ...}` のどちらか 1 つをアプリの設定ファイルに保存し、保存後の `{"theme", "lang"}` を返す。それ以外は 400、書き込めなければ 500 |
 | `/update/status` | POST | 実行中の版 (`current`)、更新を適用できるビルドか (`supported`)、「起動時に確認」の設定 (`launch_check`) を返す |
 | `/update/settings` | POST | `{"launch_check": bool}` をアプリの設定ファイルに保存し、保存後の値を返す。bool 以外は 400、書き込めなければ 500 |
 | `/update/check` | POST | 最新の Release の `latest.json` を確認し、新しい版があれば `{"available": true, "version"}`、無ければ `{"available": false}`。失敗は 502 |
@@ -223,13 +224,14 @@ POST は Content-Type が `application/json` (`/upload` は `application/octet-s
 
 CSS 変数 + `[data-theme="dark"]` でライト/ダーク/auto の 3 ステートテーマ切替。
 CSS 変数名は analyze-spectrum と共通 (`--text` / `--bg-card` / `--text-secondary` / `--text-muted` 等)。両アプリで同じ CSS 変数と規則は py-analyze-common の `analyze_common/web/common.css` に置き、`src/analyze_loudness/gui.py` が `/common/common.css` として配信する (PyInstaller の spec が `analyze_common/web` に同梱)。`frontend/index.html` はこれを `frontend/style.css` より先に読み込み、`frontend/style.css` は残りの変数 (アクセントカラー等) と固有の規則を持つ。狭い画面向けの `@media (max-width: 480px)` の `h1` は各 `style.css` の `h1` より後に置く必要があるため、`style.css` に残す。
-デフォルトは `auto` (OS の `prefers-color-scheme` に追従)。選択は `localStorage("loudness-theme")` に保存。
+デフォルトは `auto` (OS の `prefers-color-scheme` に追従)。選択はアプリの設定ファイル (「自動更新」節の「設定」と同じ `settings.json`) の `theme` に `/settings` で保存する。ページは `/common/settings.js` (py-analyze-common の `UiSettings.script()`。`Cache-Control: no-store`) が渡す `window.analyzeSettings.theme` で描き始め、ウィンドウの背景色は `main()` が `UiSettings.background_color()` で決める。保存に失敗したときは、選んだテーマのまま、ステータス欄にエラーを出す。
 テーマ切替 UI は右上に固定した pill ボタン (太陽 / 三日月 / 半分を塗った円の SVG。`_createThemeIcon()` が生成)。analyze-spectrum と統一。
 チャート色は `frontend/theme.js` の `getTheme()` で一元管理し、テーマ切替時にチャートを再描画。
 
 ### i18n (多言語)
 
 `frontend/i18n.js` で en / ja の 2 言語を管理。ただし表・グラフの表示項目 (table.*, chart.*, summary.frames/min 等) は analyze-spectrum と統一して英語のみとする。ja 辞書にもこれらのキーには英語値を入れる。ボタン・ステータス・エラーメッセージ等の UI クロムは日本語訳を維持。
+選んだ言語はテーマと同じ設定ファイルの `lang` に `/settings` で保存し、`window.analyzeSettings.lang` で次のページへ渡す。保存が無いときは `navigator.language` に従う (`ja*` は ja、それ以外は en)。
 
 ### チャートタイトルの単独描画 (analyze-spectrum と統一)
 
@@ -296,7 +298,7 @@ ffmpeg の Integrated をより忠実に再現するのは、保存済み JSON 1
 
 ### フロントエンド UI テスト
 
-`tests/frontend/test_ui.html` + `tests/frontend/test_ui.js` を `tests/test_frontend.py` (Playwright + headless Chromium) で実行。`fmt`, `_setBusy`, `_addTip`, theme/lang トグル, /analyze + /load の fetch モック経路, 辞書キー網羅性などを検証。`tests/frontend/test_ui.html` は `<script>localStorage.setItem("loudness-lang","en")</script>` を `frontend/i18n.js` 読み込み前に置いて言語決定性を確保する。
+`tests/frontend/test_ui.html` + `tests/frontend/test_ui.js` を `tests/test_frontend.py` (Playwright + headless Chromium) で実行。`fmt`, `_setBusy`, `_addTip`, theme/lang トグル, /analyze + /load の fetch モック経路, 辞書キー網羅性などを検証。`tests/frontend/test_ui.html` は `frontend/i18n.js` より前に `window.analyzeSettings` のスタブ (言語 en・テーマ light。保存は送らずに記録する) を置いて、言語を決め、保存を確かめる。`tests/conftest.py` の `_isolated_settings` は、各テストのアプリの設定ファイルを一時フォルダへ向ける。
 
 CI (GitHub Actions) では `pip install -e ".[dev]"` で Playwright Python パッケージは入るが、ブラウザバイナリは別途 `python -m playwright install --with-deps chromium` ステップが必要。`tests/test_frontend.py` は `_HAS_PLAYWRIGHT` (パッケージ import 可否) のみで `skipif` するため、バイナリ未インストールだと `BrowserType.launch` が実行時にエラーになる。analyze-spectrum 側と同形式の専用ステップを `.github/workflows/ci.yaml` に置く。
 

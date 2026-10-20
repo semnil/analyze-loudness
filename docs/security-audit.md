@@ -1,10 +1,11 @@
 # Security Audit Report
 
-**Date**: 2026-04-04 (初版は 2026-04-03、SEC-16 と Summary の件数は 2026-04-04 に追加、CI/CD 節は 2026-09-30 に確認、SEC-17〜SEC-19 は 2026-10-17 に追加、SEC-20 は 2026-10-20 に追加)
+**Date**: 2026-04-04 (初版は 2026-04-03、SEC-16 と Summary の件数は 2026-04-04 に追加、CI/CD 節は 2026-09-30 に確認、SEC-17〜SEC-19 は 2026-10-17 に追加、SEC-20 は 2026-10-20 に追加、テーマと言語の保存は 2026-10-20 に確認)
 **Scope**:
 - 2026-04-03〜04 の監査: CLI (`src/analyze_loudness/`), GUI (`src/analyze_loudness/gui.py`), Frontend SPA (`frontend/`), Build/Distribution (`build.py`, `analyze-loudness.spec`, `installer.iss`)
 - 2026-09-30 の確認: CI (`.github/workflows/`, `.github/tests/`) の action の固定と検査 (CI/CD 節)
 - 2026-10-17 の確認: ローカルファイル入力 (`/analyze` のローカルパス、`/browse`、`/upload`) と POST の Content-Type (SEC-17〜SEC-19)
+- 2026-10-20 の確認: テーマと言語の保存 (`/settings`、`/common/settings.js`)
 - 2026-10-20 の確認: 自動更新 (`/update/*`、`vendor/py-analyze-common` の `analyze_common/update.py` / `ed25519.py` / `update_manifest.py` / `installer/auto_update.iss`、`release.yaml` の署名) (SEC-20)
 
 ## Summary
@@ -262,6 +263,7 @@ Summary の件数は 2026-10-20 に SEC-20 を追加した時点のもの (2026-
 | Local file analysis via /analyze | File existence probe | 127.0.0.1 + random port + SEC-17 | Accepted (SEC-18) |
 | Repeated /upload | Temp disk usage | 500 MB per request, extension allowlist, temp dir removed on exit | Accepted (SEC-19) |
 | XSS via loaded JSON title | Code execution | `textContent` (no HTML parse) | Not vulnerable |
+| Edited settings.json | Script in /common/settings.js | Only the allowed theme / language values are written into the script | Not vulnerable |
 | Invalid base64 in /save-image | Server crash | `ValueError` caught | Resolved |
 | Cancel during subprocess | Orphaned process (~11s) | `_ClientDisconnected` + `TemporaryDirectory` cleanup | Accepted (low) |
 | Tampered installer or manifest on the release path | Code execution | Ed25519 signature checked before anything runs | Resolved (SEC-20) |
