@@ -3,7 +3,7 @@
 > 日本語版は [README.ja.md](README.ja.md) を参照してください.
 
 A tool that analyzes the audio loudness of YouTube videos in compliance with BS.1770 / EBU R128.
-It comes in two forms: a CLI version and a Windows GUI application version.
+It comes in two forms: a CLI version and a GUI application version (Windows / macOS).
 
 ![Loudness Analyzer](docs/screenshot.png)
 
@@ -23,7 +23,7 @@ It comes in two forms: a CLI version and a Windows GUI application version.
 
 ```mermaid
 graph LR
-    A["pywebview<br/>(WebView2)"] -->|"HTTP<br/>127.0.0.1:random"| B["Local HTTP Server<br/>(gui.py)"]
+    A["pywebview<br/>(WebView2 / WebKit)"] -->|"HTTP<br/>127.0.0.1:random"| B["Local HTTP Server<br/>(gui.py)"]
     B -->|"NDJSON stream"| C["Analysis Pipeline"]
     C --> D["yt_dlp.YoutubeDL<br/>(audio DL)"]
     D --> E["ffmpeg -af ebur128<br/>(loudness measurement)"]
@@ -31,7 +31,7 @@ graph LR
     F --> A
 ```
 
-The GUI consists of pywebview (WebView2) + a local HTTP server.
+The GUI consists of pywebview (Windows: WebView2 / macOS: WebKit) + a local HTTP server.
 
 ## Requirements
 
@@ -48,7 +48,7 @@ The GUI consists of pywebview (WebView2) + a local HTTP server.
 ### Setup
 
 ```bash
-git clone <repo-url>
+git clone --recurse-submodules <repo-url>
 cd analyze-loudness
 
 python -m venv .venv
@@ -123,12 +123,14 @@ The installed app checks [GitHub Releases](../../releases) at launch for a newer
 - macOS: keep the app in the "Applications" folder. If you lack permission to write to that folder, it asks for an administrator password. When two copies of the same app are running, quit one before updating
 - It does not update during an analysis. Press "Check now" after the analysis finishes
 
-### Build & distribution (Windows)
+### Build & distribution
 
 ```bash
 python build.py              # download assets + PyInstaller bundle
-python build.py --installer  # + Inno Setup installer (.exe)
+python build.py --installer  # + Inno Setup installer (.exe) / DMG (macOS)
 ```
+
+The macOS DMG needs create-dmg (`brew install create-dmg`).
 
 ## Tests
 
@@ -137,45 +139,52 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 python -m pytest tests/ -v
 ```
 
-30 tests: CLI (analysis, cli, download)
+The UI tests (`tests/test_frontend.py`) use Playwright's Chromium. Run `python -m playwright install --with-deps chromium` the first time.
 
 ## Project layout
 
 ```
 analyze-loudness/
+├── .github/                    # workflows (CI, release, ffmpeg watch, workflow checks) and their tests, issue templates
 ├── .gitignore
 ├── .venv/                      # Python virtual environment (not tracked by git)
 ├── CLAUDE.md                   # Project instructions for AI
 ├── README.md
+├── README.ja.md
 ├── pyproject.toml              # CLI tool (pip install -e ".[dev]")
 ├── src/analyze_loudness/       # Python package
-│   ├── __init__.py             # _subprocess_kwargs() helper
+│   ├── __init__.py             # sys.path injection of vendor/, SCHEMA_VERSION
 │   ├── __main__.py
 │   ├── cli.py                  # argparse + main orchestration (CLI)
 │   ├── gui.py                  # pywebview + local HTTP server (GUI)
 │   ├── download.py             # yt_dlp.YoutubeDL API, local files, ffprobe duration
 │   ├── analysis.py             # ebur128 stderr parsing, compute_stats
 │   ├── compare.py              # result / comparison JSON, truncated statistics
+│   ├── update.py               # auto-update settings (UPDATE_CONFIG)
 │   └── plot.py                 # matplotlib figure generation (CLI only)
 ├── frontend/
 │   ├── index.html
 │   ├── main.js                 # fetch + NDJSON progress + DOM rendering
+│   ├── theme.js                # chart colors (light / dark)
+│   ├── gate.js                 # BS.1770 gating for the GATE lane
+│   ├── i18n.js                 # en / ja UI strings
 │   ├── charts/
 │   │   ├── timeline.js         # uPlot wrapper
 │   │   ├── histogram.js        # Canvas histogram
 │   │   └── segments.js         # Canvas segment bars
 │   ├── style.css
 │   └── vendor/                 # uPlot (bundled)
-├── tests/
-│   ├── test_analysis.py
-│   ├── test_cli.py
-│   └── test_download.py
+├── tests/                      # pytest (tests/frontend/ holds the UI tests run with Playwright)
 ├── docs/
 │   ├── architecture.md
+│   ├── architecture.ja.md
 │   └── security-audit.md
-├── build.py                    # Build script (asset download + PyInstaller + Inno Setup)
+├── vendor/py-analyze-common/   # shared library (git submodule)
+├── build.py                    # Build script (asset download + PyInstaller + Inno Setup / DMG)
 ├── analyze-loudness.spec       # PyInstaller spec
 ├── installer.iss               # Inno Setup script
 ├── THIRD_PARTY_LICENSES.txt    # Bundled license file
+├── licenses/                   # GPL v2 / v3 full texts
+├── build_assets/ffmpeg.json    # pinned ffmpeg / ffprobe builds
 └── build_assets/bin/           # ffmpeg, ffprobe, deno (not tracked by git)
 ```

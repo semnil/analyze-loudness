@@ -5,13 +5,13 @@
 ## Overview
 
 analyze-loudness is a tool that analyzes the audio loudness of YouTube videos in compliance with BS.1770 / EBU R128.
-It can run locally as a CLI tool, and is also provided as a Windows GUI application (pywebview).
+It can run locally as a CLI tool, and is also provided as a Windows / macOS GUI application (pywebview).
 
 ## System Architecture
 
 ```mermaid
 graph LR
-    A["pywebview<br/>(WebView2)"] -->|"HTTP<br/>127.0.0.1:random"| B["Local HTTP Server<br/>(gui.py)"]
+    A["pywebview<br/>(WebView2 / WebKit)"] -->|"HTTP<br/>127.0.0.1:random"| B["Local HTTP Server<br/>(gui.py)"]
     B -->|"POST /analyze<br/>NDJSON stream"| C["Analysis Pipeline"]
     C --> D["yt_dlp.YoutubeDL API<br/>(audio download)"]
     C --> E["ffmpeg<br/>(ebur128 analysis)"]
@@ -70,7 +70,9 @@ graph LR
 
 | Function | Responsibility |
 |----------|---------------|
-| `_subprocess_kwargs()` | Hides the subprocess console window in Windows frozen mode |
+| (on import) | Adds `vendor/py-analyze-common/src` to `sys.path` |
+| `_ffmpeg_kwargs()` | py-analyze-common's `ffmpeg_kwargs()`. Adds `LC_ALL=C` to the per-OS subprocess arguments (which hide the console window in Windows frozen mode) |
+| `_json_safe()` | py-analyze-common's `json_safe()`. Recursively replaces NaN / Infinity with None |
 
 ## Data Flow
 
@@ -129,7 +131,7 @@ only the stderr text is processed, keeping memory consumption to a few MB.
 
 ### 2. Local HTTP server + pywebview
 
-pywebview uses the OS's native WebView (Windows: WebView2),
+pywebview uses the OS's native WebView (Windows: WebView2 / macOS: WebKit),
 which keeps the bundle size small.
 `HTTPServer` is started on a random port (port 0) on 127.0.0.1,
 and serves the frontend from the same origin.
@@ -185,7 +187,7 @@ The `_isBusy` flag disables the Load button, preventing double execution.
 In PyInstaller frozen mode, `subprocess.STARTUPINFO` + `STARTF_USESHOWWINDOW` hide
 the ffmpeg / ffprobe console windows. yt-dlp runs as a Python API, so it does not start a subprocess.
 
-### 11. GATE lane (option C)
+### 11. GATE lane
 
 Integrated aggregates only the 400 ms blocks that pass the BS.1770 absolute gate (-70 LUFS) and relative gate (the mean of the blocks that passed the absolute gate -10 LU),
 but the timeline did not show this selection.
@@ -204,7 +206,7 @@ showing excluded blocks in amber (at or below the relative gate) / slate (at or 
   changes (measured maximum 303 / 95,957 blocks = 0.3 points of included ratio).
 - **The plot area is unchanged**. The x-axis `gap` / `size` and the chart height are widened by the same 11 px each to make room for the band, so
   the plot bbox stays 2160x540 device px with or without the band (measured).
-- **When a single pixel column mixes included and excluded blocks, it is drawn as excluded** (the binarization of option C).
+- **When a single pixel column mixes included and excluded blocks, it is drawn as excluded**.
   Because of this rounding, on long recordings the painted area of the band exceeds the actual excluded ratio (on real files of 61-193 minutes,
   excluded 10-25% against band paint 27-80%). Drag-zooming the x axis reduces the number of blocks per column, and
   the band converges to the actual excluded ranges.
@@ -358,13 +360,13 @@ analyze-loudness "https://www.youtube.com/watch?v=XXXXX"
 
 ```bash
 python build.py              # download assets + PyInstaller bundle
-python build.py --installer  # + Inno Setup installer
+python build.py --installer  # + Inno Setup installer (Windows) / DMG (macOS)
 ```
 
 Build pipeline:
 1. `build.py --skip-download` or auto-download: ffmpeg, ffprobe, deno, uPlot (yt-dlp is a Python dependency)
 2. PyInstaller (`analyze-loudness.spec`): bundles Python + dependencies + frontend + binaries
-3. Inno Setup (`installer.iss`): Windows installer with license display. Includes `vendor/py-analyze-common/installer/auto_update.iss`, and `build.py` passes `/DMyAppMutex=`
+3. Inno Setup (`installer.iss`): Windows installer with license display. Includes `vendor/py-analyze-common/installer/auto_update.iss`, and `build.py` passes `/DMyAppMutex=`. On macOS, `build.py --installer` makes the DMG with create-dmg
 4. `release.yaml`: puts `latest.json`, which signs the SHA-256 of the installer and the DMG, on the Release (13. Auto-update)
 
 ### Bundled Assets (`build_assets/bin/`)
@@ -374,6 +376,8 @@ Build pipeline:
 | deno.exe | GitHub Releases (latest) | MIT |
 | ffmpeg.exe | BtbN/FFmpeg-Builds (the gpl build of the `build_assets/ffmpeg.json` series in latest) | GPL-3.0+ |
 | ffprobe.exe | BtbN/FFmpeg-Builds (the gpl build of the `build_assets/ffmpeg.json` series in latest) | GPL-3.0+ |
+| deno (macOS) | GitHub Releases (latest, aarch64) | MIT |
+| ffmpeg / ffprobe (macOS) | osxexperts.net (arm64, pinned by the URL and SHA256 in `build_assets/ffmpeg.json`) | GPL-2.0+ |
 
 ## Constants
 

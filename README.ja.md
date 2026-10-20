@@ -3,7 +3,7 @@
 > For the English version, see [README.md](README.md).
 
 YouTube 動画の音声ラウドネスを BS.1770 / EBU R128 準拠で分析するツール。
-CLI 版と Windows GUI アプリケーション版の 2 形態を持つ。
+CLI 版と GUI アプリケーション版 (Windows / macOS) の 2 形態を持つ。
 
 ![Loudness Analyzer](docs/screenshot.png)
 
@@ -23,7 +23,7 @@ CLI 版と Windows GUI アプリケーション版の 2 形態を持つ。
 
 ```mermaid
 graph LR
-    A["pywebview<br/>(WebView2)"] -->|"HTTP<br/>127.0.0.1:random"| B["Local HTTP Server<br/>(gui.py)"]
+    A["pywebview<br/>(WebView2 / WebKit)"] -->|"HTTP<br/>127.0.0.1:random"| B["Local HTTP Server<br/>(gui.py)"]
     B -->|"NDJSON stream"| C["Analysis Pipeline"]
     C --> D["yt_dlp.YoutubeDL<br/>(audio DL)"]
     D --> E["ffmpeg -af ebur128<br/>(loudness measurement)"]
@@ -31,7 +31,7 @@ graph LR
     F --> A
 ```
 
-GUI は pywebview (WebView2) + ローカル HTTP サーバーで構成。
+GUI は pywebview (Windows: WebView2 / macOS: WebKit) + ローカル HTTP サーバーで構成。
 
 ## 動作環境
 
@@ -48,7 +48,7 @@ GUI は pywebview (WebView2) + ローカル HTTP サーバーで構成。
 ### セットアップ
 
 ```bash
-git clone <repo-url>
+git clone --recurse-submodules <repo-url>
 cd analyze-loudness
 
 python -m venv .venv
@@ -123,12 +123,14 @@ analyze-loudness-gui
 - macOS: アプリを「アプリケーション」フォルダに入れて使う。フォルダに書き込む権限が無いときは管理者のパスワードを求める。同じアプリを 2 つ起動しているときは、片方を終了してから更新する
 - 分析中は更新しない。分析が終わってから「今すぐ確認」を押す
 
-### ビルド & 配布 (Windows)
+### ビルド & 配布
 
 ```bash
 python build.py              # download assets + PyInstaller bundle
-python build.py --installer  # + Inno Setup installer (.exe)
+python build.py --installer  # + Inno Setup installer (.exe) / DMG (macOS)
 ```
+
+macOS の DMG には create-dmg が要る (`brew install create-dmg`)。
 
 ## テスト
 
@@ -137,45 +139,52 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 python -m pytest tests/ -v
 ```
 
-30 テスト: CLI (analysis, cli, download)
+UI テスト (`tests/test_frontend.py`) は Playwright の Chromium を使う。初回は `python -m playwright install --with-deps chromium` を実行する。
 
 ## プロジェクト構成
 
 ```
 analyze-loudness/
+├── .github/                    # ワークフロー (CI・リリース・ffmpeg の監視・ワークフローの検査) とそのテスト、Issue テンプレート
 ├── .gitignore
 ├── .venv/                      # Python 仮想環境 (git 管理外)
 ├── CLAUDE.md                   # AI 向けプロジェクト指示書
 ├── README.md
+├── README.ja.md
 ├── pyproject.toml              # CLI tool (pip install -e ".[dev]")
 ├── src/analyze_loudness/       # Python package
-│   ├── __init__.py             # _subprocess_kwargs() helper
+│   ├── __init__.py             # vendor/ の sys.path 注入、SCHEMA_VERSION
 │   ├── __main__.py
 │   ├── cli.py                  # argparse + main orchestration (CLI)
 │   ├── gui.py                  # pywebview + local HTTP server (GUI)
 │   ├── download.py             # yt_dlp.YoutubeDL API, local files, ffprobe duration
 │   ├── analysis.py             # ebur128 stderr parsing, compute_stats
 │   ├── compare.py              # result / comparison JSON, truncated statistics
+│   ├── update.py               # 自動更新の設定 (UPDATE_CONFIG)
 │   └── plot.py                 # matplotlib figure generation (CLI only)
 ├── frontend/
 │   ├── index.html
 │   ├── main.js                 # fetch + NDJSON progress + DOM rendering
+│   ├── theme.js                # チャートの色 (ライト / ダーク)
+│   ├── gate.js                 # GATE レーンの BS.1770 ゲート
+│   ├── i18n.js                 # en / ja の UI の文言
 │   ├── charts/
 │   │   ├── timeline.js         # uPlot wrapper
 │   │   ├── histogram.js        # Canvas histogram
 │   │   └── segments.js         # Canvas segment bars
 │   ├── style.css
 │   └── vendor/                 # uPlot (bundled)
-├── tests/
-│   ├── test_analysis.py
-│   ├── test_cli.py
-│   └── test_download.py
+├── tests/                      # pytest (tests/frontend/ は Playwright で実行する UI テスト)
 ├── docs/
 │   ├── architecture.md
+│   ├── architecture.ja.md
 │   └── security-audit.md
-├── build.py                    # Build script (asset download + PyInstaller + Inno Setup)
+├── vendor/py-analyze-common/   # 共有ライブラリ (git submodule)
+├── build.py                    # Build script (asset download + PyInstaller + Inno Setup / DMG)
 ├── analyze-loudness.spec       # PyInstaller spec
 ├── installer.iss               # Inno Setup script
 ├── THIRD_PARTY_LICENSES.txt    # Bundled license file
+├── licenses/                   # GPL v2 / v3 の全文
+├── build_assets/ffmpeg.json    # 同梱する ffmpeg / ffprobe の固定
 └── build_assets/bin/           # ffmpeg, ffprobe, deno (git 管理外)
 ```

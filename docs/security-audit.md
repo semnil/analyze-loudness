@@ -65,8 +65,8 @@ The Summary counts are as of adding SEC-20 on 2026-10-20 (when SEC-17 to SEC-19 
 ### SEC-05: Windows subprocess console hiding -- RESOLVED
 
 - **Risk**: LOW -> RESOLVED
-- **Location**: [__init__.py](../src/analyze_loudness/__init__.py)
-- **Resolution**: `_subprocess_kwargs()` sets `STARTF_USESHOWWINDOW` in frozen mode. Suppresses the subprocess console window and improves the UX.
+- **Location**: [__init__.py](../src/analyze_loudness/__init__.py) (`_ffmpeg_kwargs()`), `vendor/py-analyze-common/src/analyze_common/platform.py` (`subprocess_kwargs()`)
+- **Resolution**: `subprocess_kwargs()`, which `_ffmpeg_kwargs()` uses, sets `STARTF_USESHOWWINDOW` in frozen mode. Suppresses the subprocess console window and improves the UX.
 
 ### SEC-06: Version management of bundled binaries -- RESOLVED
 
@@ -247,7 +247,7 @@ The Summary counts are as of adding SEC-20 on 2026-10-20 (when SEC-17 to SEC-19 
 |------------|----------|------|------------|
 | CLI args | Local | N/A | argparse + `_positive_float` |
 | GUI HTTP | 127.0.0.1 only | N/A (localhost) | Content-Type + URL / local path + duration + JSON body validation |
-| Frontend SPA | pywebview (WebView2) | N/A | Static files, no SSR |
+| Frontend SPA | pywebview (WebView2 / WebKit) | N/A | Static files, no SSR |
 | File dialogs | Native OS | User interaction required | pywebview SAVE_DIALOG / OPEN_DIALOG, `_dialog_lock` non-blocking try-lock (409 on concurrent) |
 | Update check / download | HTTPS to github.com (outbound) | N/A | Ed25519 signature over product / version / OS / SHA-256, URL prefix, https-only redirects, size and time caps (SEC-20) |
 
@@ -280,7 +280,7 @@ graph TD
     B -->|"valid"| D["yt_dlp.YoutubeDL<br/>(Python API)"]
     D --> E["ffmpeg<br/>(subprocess list args)"]
     E --> F["NDJSON response<br/>(127.0.0.1 only)"]
-    F --> G["pywebview<br/>(WebView2 sandbox)"]
+    F --> G["pywebview<br/>(WebView2 / WebKit sandbox)"]
     G -->|"Save JSON"| H["Native file dialog<br/>-> write JSON"]
     G -->|"Save Image"| I["Native file dialog<br/>-> write PNG"]
     G -->|"Load JSON"| J["Native file dialog<br/>-> read JSON -> render()"]

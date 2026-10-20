@@ -5,13 +5,13 @@
 ## Overview
 
 analyze-loudness は YouTube 動画の音声ラウドネスを BS.1770 / EBU R128 準拠で分析するツール。
-CLI ツールとしてローカル実行可能であり、Windows GUI アプリケーション (pywebview) としても提供する。
+CLI ツールとしてローカル実行可能であり、Windows / macOS の GUI アプリケーション (pywebview) としても提供する。
 
 ## System Architecture
 
 ```mermaid
 graph LR
-    A["pywebview<br/>(WebView2)"] -->|"HTTP<br/>127.0.0.1:random"| B["Local HTTP Server<br/>(gui.py)"]
+    A["pywebview<br/>(WebView2 / WebKit)"] -->|"HTTP<br/>127.0.0.1:random"| B["Local HTTP Server<br/>(gui.py)"]
     B -->|"POST /analyze<br/>NDJSON stream"| C["Analysis Pipeline"]
     C --> D["yt_dlp.YoutubeDL API<br/>(audio download)"]
     C --> E["ffmpeg<br/>(ebur128 analysis)"]
@@ -70,7 +70,9 @@ graph LR
 
 | Function | Responsibility |
 |----------|---------------|
-| `_subprocess_kwargs()` | Windows frozen mode で subprocess のコンソールウインドウを非表示にする |
+| (import 時) | `vendor/py-analyze-common/src` を `sys.path` に加える |
+| `_ffmpeg_kwargs()` | py-analyze-common の `ffmpeg_kwargs()`。OS ごとの subprocess の引数 (Windows frozen mode ではコンソールウインドウを非表示にする) に `LC_ALL=C` を加える |
+| `_json_safe()` | py-analyze-common の `json_safe()`。NaN / Infinity を再帰的に None にする |
 
 ## Data Flow
 
@@ -129,7 +131,7 @@ stderr テキストのみを処理し、メモリ消費を数MB に抑えてい�
 
 ### 2. Local HTTP server + pywebview
 
-pywebview は OS のネイティブ WebView (Windows: WebView2) を使用し、
+pywebview は OS のネイティブ WebView (Windows: WebView2 / macOS: WebKit) を使用し、
 バンドルサイズを小さく保てる。
 `HTTPServer` を 127.0.0.1 のランダムポート (port 0) で起動し、
 same-origin で frontend を配信する。
@@ -185,7 +187,7 @@ NDJSON `ReadableStream.getReader()` に渡し、キャンセル時にストリ�
 PyInstaller frozen mode では `subprocess.STARTUPINFO` + `STARTF_USESHOWWINDOW` で
 ffmpeg / ffprobe のコンソールウインドウを非表示にする。yt-dlp は Python API として動作するため subprocess 起動しない。
 
-### 11. GATE lane (案 C)
+### 11. GATE lane
 
 Integrated は BS.1770 の絶対ゲート (-70 LUFS) と相対ゲート (絶対ゲート通過ブロックの平均 -10 LU) を
 越えた 400 ms ブロックだけを集計するが、タイムラインはこの取捨を表示していなかった。
@@ -204,7 +206,7 @@ Timeline の x 軸ガター (プロット領域とメモリラベルの間) に�
   ブロックの判定だけが変わる (実測最大 303 / 95,957 ブロック = 算入率で 0.3 ポイント)。
 - **プロット領域は不変**。x 軸の `gap` / `size` とチャート高さを同じ 11 px ずつ広げて帯の場所を作るため、
   帯の有無でプロット bbox は 2160x540 device px のまま変わらない (実測)。
-- **1 画素列に算入・除外が混在する場合は除外として描く** (案 C の 2 値化)。
+- **1 画素列に算入・除外が混在する場合は除外として描く**。
   この丸めのため、長尺では帯の塗り面積が実際の除外率を上回る (61-193 分の実ファイルで
   除外 10-25% に対し帯の塗り 27-80%)。x 軸をドラッグズームすると 1 列あたりのブロック数が減り、
   帯は実際の除外区間に収束する。
@@ -358,13 +360,13 @@ analyze-loudness "https://www.youtube.com/watch?v=XXXXX"
 
 ```bash
 python build.py              # download assets + PyInstaller bundle
-python build.py --installer  # + Inno Setup installer
+python build.py --installer  # + Inno Setup installer (Windows) / DMG (macOS)
 ```
 
 Build pipeline:
 1. `build.py --skip-download` or auto-download: ffmpeg, ffprobe, deno, uPlot (yt-dlp は Python 依存)
 2. PyInstaller (`analyze-loudness.spec`): bundles Python + dependencies + frontend + binaries
-3. Inno Setup (`installer.iss`): Windows installer with license display. `vendor/py-analyze-common/installer/auto_update.iss` を include し、`build.py` が `/DMyAppMutex=` を渡す
+3. Inno Setup (`installer.iss`): Windows installer with license display. `vendor/py-analyze-common/installer/auto_update.iss` を include し、`build.py` が `/DMyAppMutex=` を渡す。macOS は `build.py --installer` が create-dmg で DMG を作る
 4. `release.yaml`: インストーラーと DMG の SHA-256 に署名した `latest.json` を Release に載せる (13. Auto-update)
 
 ### Bundled Assets (`build_assets/bin/`)
@@ -374,6 +376,8 @@ Build pipeline:
 | deno.exe | GitHub Releases (latest) | MIT |
 | ffmpeg.exe | BtbN/FFmpeg-Builds (latest の、`build_assets/ffmpeg.json` の系列の gpl ビルド) | GPL-3.0+ |
 | ffprobe.exe | BtbN/FFmpeg-Builds (latest の、`build_assets/ffmpeg.json` の系列の gpl ビルド) | GPL-3.0+ |
+| deno (macOS) | GitHub Releases (latest、aarch64) | MIT |
+| ffmpeg / ffprobe (macOS) | osxexperts.net (arm64、`build_assets/ffmpeg.json` の URL と SHA256 で固定) | GPL-2.0+ |
 
 ## Constants
 
