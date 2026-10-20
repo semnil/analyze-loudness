@@ -143,6 +143,7 @@ window.i18n.onChange(function () {
   _applyLangButton();
   _applyDropText();
   _applyTheme();
+  _applySubmitButton();
   _renderQueue();
   if (lastRenderedData) rerender();
 });
@@ -179,42 +180,56 @@ function safeName(title) {
 }
 
 let _isBusy = false;
+let _busyCancelable = true;
 
 function _submitLabel() {
   return window.i18n.t(compareQueue.length > 0 ? "btn.compare" : "btn.analyze");
 }
 
+// The submit button's text and accessible name for the current state.  main.js
+// is their only writer: the button carries no data-i18n attribute, so the
+// language switch does not reset them.
+function _applySubmitButton() {
+  if (_isBusy && _busyCancelable) {
+    submitBtn.textContent = window.i18n.t("btn.cancel");
+    submitBtn.setAttribute("aria-label", window.i18n.t("btn.cancel.aria"));
+  } else if (_isBusy) {
+    submitBtn.textContent = window.i18n.t("btn.loading");
+    submitBtn.removeAttribute("aria-label");
+  } else {
+    submitBtn.textContent = _submitLabel();
+    submitBtn.removeAttribute("aria-label");
+  }
+}
+
 function _setBusy(busy, cancelable = true) {
   _isBusy = busy;
+  _busyCancelable = cancelable;
   loadBtn.disabled = busy;
   browseBtn.disabled = busy;
   addBtn.disabled = busy;
   clearBtn.disabled = busy;
+  _applySubmitButton();
   if (busy) {
     if (cancelable) {
-      submitBtn.textContent = window.i18n.t("btn.cancel");
       submitBtn.classList.add("cancelling");
       submitBtn.disabled = false;
-      submitBtn.setAttribute("aria-label", window.i18n.t("btn.cancel.aria"));
     } else {
-      submitBtn.textContent = window.i18n.t("btn.loading");
       submitBtn.classList.remove("cancelling");
       submitBtn.disabled = true;
-      submitBtn.removeAttribute("aria-label");
     }
     form.setAttribute("aria-busy", "true");
     statusEl.classList.add("loading");
   } else {
-    submitBtn.textContent = _submitLabel();
     submitBtn.classList.remove("cancelling");
     submitBtn.disabled = false;
-    submitBtn.removeAttribute("aria-label");
     form.removeAttribute("aria-busy");
     statusEl.classList.remove("loading");
     activeAbort = null;
   }
   _renderQueue();
 }
+_applySubmitButton();
 
 function _cancelActive() {
   if (activeAbort) activeAbort.abort();
