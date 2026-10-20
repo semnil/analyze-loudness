@@ -1,12 +1,12 @@
 # Security Audit Report
 
-**Date**: 2026-04-04 (初版は 2026-04-03、SEC-16 と Summary の件数は 2026-04-04 に追加、CI/CD 節は 2026-09-30 に確認、SEC-17〜SEC-19 は 2026-10-17 に追加、SEC-20 は 2026-10-20 に追加、テーマと言語の保存は 2026-10-20 に確認)
+**Date**: 2026-04-04 (the first edition is from 2026-04-03, SEC-16 and the Summary counts were added on 2026-04-04, the CI/CD section was checked on 2026-09-30, SEC-17 to SEC-19 were added on 2026-10-17, SEC-20 was added on 2026-10-20, saving the theme and language was checked on 2026-10-20)
 **Scope**:
-- 2026-04-03〜04 の監査: CLI (`src/analyze_loudness/`), GUI (`src/analyze_loudness/gui.py`), Frontend SPA (`frontend/`), Build/Distribution (`build.py`, `analyze-loudness.spec`, `installer.iss`)
-- 2026-09-30 の確認: CI (`.github/workflows/`, `.github/tests/`) の action の固定と検査 (CI/CD 節)
-- 2026-10-17 の確認: ローカルファイル入力 (`/analyze` のローカルパス、`/browse`、`/upload`) と POST の Content-Type (SEC-17〜SEC-19)
-- 2026-10-20 の確認: テーマと言語の保存 (`/settings`、`/common/settings.js`)
-- 2026-10-20 の確認: 自動更新 (`/update/*`、`vendor/py-analyze-common` の `analyze_common/update.py` / `ed25519.py` / `update_manifest.py` / `installer/auto_update.iss`、`release.yaml` の署名) (SEC-20)
+- Audit of 2026-04-03 to 04: CLI (`src/analyze_loudness/`), GUI (`src/analyze_loudness/gui.py`), Frontend SPA (`frontend/`), Build/Distribution (`build.py`, `analyze-loudness.spec`, `installer.iss`)
+- Check of 2026-09-30: action pinning and its check in CI (`.github/workflows/`, `.github/tests/`) (CI/CD section)
+- Check of 2026-10-17: local file input (local paths in `/analyze`, `/browse`, `/upload`) and the POST Content-Type (SEC-17 to SEC-19)
+- Check of 2026-10-20: saving the theme and language (`/settings`, `/common/settings.js`)
+- Check of 2026-10-20: auto-update (`/update/*`, `analyze_common/update.py` / `ed25519.py` / `update_manifest.py` / `installer/auto_update.iss` in `vendor/py-analyze-common`, the signing in `release.yaml`) (SEC-20)
 
 ## Summary
 
@@ -26,216 +26,216 @@
 
 **Open: 0** / Resolved: 9 / Accepted (risk acknowledged): 11
 
-Summary の件数は 2026-10-20 に SEC-20 を追加した時点のもの (2026-10-17 に SEC-17〜SEC-19 を追加した時点では 19 件、Resolved 8) (2026-04-04 に SEC-16 を追加した時点では 16 件、Resolved 7、Accepted 9) (2026-04-03 の初版は SEC-01〜SEC-15 の 15 件、Accepted 8)。個々の指摘の本文は、その後のコード変更に合わせて更新されている (履歴は `git log -- docs/security-audit.md`)。2026-09-30 の CI/CD 節の確認はこの表に含まない。
+The Summary counts are as of adding SEC-20 on 2026-10-20 (when SEC-17 to SEC-19 were added on 2026-10-17 it was 19 findings, Resolved 8) (when SEC-16 was added on 2026-04-04 it was 16 findings, Resolved 7, Accepted 9) (the first edition of 2026-04-03 had the 15 findings SEC-01 to SEC-15, Accepted 8). The body of each finding has been updated to match later code changes (the history is in `git log -- docs/security-audit.md`). The 2026-09-30 check of the CI/CD section is not included in this table.
 
 ---
 
 ## Resolved Findings
 
-### SEC-01: バンドルバイナリの整合性検証 -- RESOLVED
+### SEC-01: Integrity verification of bundled binaries -- RESOLVED
 
 - **Risk**: LOW -> RESOLVED
 - **Location**: [build.py](../build.py), [build_assets/checksums.json](../build_assets/checksums.json), [build_assets/ffmpeg.json](../build_assets/ffmpeg.json)
-- **Resolution**: 取得元ごとに照合の仕方が違う。いずれも git 管理対象のファイルが値を持つ。
-  - uPlot (jsDelivr CDN、版を固定): `build_assets/checksums.json` の SHA256 と照合し、不一致でビルドを止める。`python build.py --update-checksums` がダウンロードして値を書き直す
-  - macOS の ffmpeg / ffprobe (osxexperts.net): `build_assets/ffmpeg.json` の SHA256 と、zip の中のバイナリを照合し、不一致でビルドを止める (`analyze_common.ffmpeg_release.fetch_macos_binary()`)。値は osxexperts.net のページが載せるもの
-  - Windows の ffmpeg / ffprobe (BtbN/FFmpeg-Builds の系列の latest) と deno (GitHub Releases の latest): 取得するたびに中身が変わりうるので SHA256 を固定せず、HTTPS の取得元を信頼する
-  - 配布物の ffmpeg / ffprobe: リリースのビルド (`release.yaml`) が、インストーラー・DMG に入るコピーを `tests/test_ffmpeg_binary.py` に通し、失敗すると成果物のアップロードと Draft Release の作成へ進まない。Windows のビルドは SHA256 を固定しないので、配布するファイル自身はこの検査で確かめる
-  - JSON 構造は analyze-spectrum と統一
+- **Resolution**: The way of checking differs by source. In every case, a git-tracked file holds the values.
+  - uPlot (jsDelivr CDN, version pinned): checked against the SHA256 in `build_assets/checksums.json`, and the build stops on a mismatch. `python build.py --update-checksums` downloads it and rewrites the value
+  - macOS ffmpeg / ffprobe (osxexperts.net): the binaries inside the zip are checked against the SHA256 in `build_assets/ffmpeg.json`, and the build stops on a mismatch (`analyze_common.ffmpeg_release.fetch_macos_binary()`). The values are the ones the osxexperts.net page lists
+  - Windows ffmpeg / ffprobe (the latest of the series in BtbN/FFmpeg-Builds) and deno (the latest in GitHub Releases): the contents can change on every fetch, so the SHA256 is not pinned, and the HTTPS source is trusted
+  - Distributed ffmpeg / ffprobe: the release build (`release.yaml`) runs the copies that go into the installer and the DMG through `tests/test_ffmpeg_binary.py`, and when it fails, does not proceed to uploading the artifacts and creating the Draft Release. The Windows build does not pin the SHA256, so the distributed files themselves are confirmed by this check
+  - The JSON structure is unified with analyze-spectrum
 
-### SEC-02: ローカル HTTP サーバーがループバック以外からアクセス可能 -- RESOLVED
+### SEC-02: Local HTTP server accessible from other than loopback -- RESOLVED
 
 - **Risk**: LOW -> RESOLVED
 - **Location**: [gui.py:293](../src/analyze_loudness/gui.py)
-- **Resolution**: `HTTPServer(("127.0.0.1", 0), ...)` で 127.0.0.1 にバインド。外部ネットワークからのアクセス不可。ポートは OS が自動割当 (port 0) するため、他アプリとの競合も回避。
+- **Resolution**: Binds to 127.0.0.1 with `HTTPServer(("127.0.0.1", 0), ...)`. Not accessible from external networks. The port is assigned automatically by the OS (port 0), which also avoids conflicts with other apps.
 
-### SEC-03: URL 入力のバリデーション (GUI) -- RESOLVED
+### SEC-03: URL input validation (GUI) -- RESOLVED
 
 - **Risk**: LOW -> RESOLVED
 - **Location**: [gui.py:73-75](../src/analyze_loudness/gui.py)
-- **Resolution**: `url` フィールドの存在と `str` 型をチェック。空文字列は 400 エラーで拒否。
-- **Note**: ユーザー自身が URL かローカルファイルのパスを入力し、ローカルマシンから YouTube にアクセスするか、そのファイルを読む (ローカルパスは SEC-18)。
+- **Resolution**: Checks that the `url` field exists and is of type `str`. An empty string is refused with a 400 error.
+- **Note**: The user enters a URL or a local file path themselves, and the local machine accesses YouTube or reads that file (local paths are SEC-18).
 
-### SEC-04: duration パラメータのバリデーション -- RESOLVED
+### SEC-04: Validation of the duration parameter -- RESOLVED
 
 - **Risk**: LOW -> RESOLVED
 - **Location**: [gui.py:77-85](../src/analyze_loudness/gui.py)
-- **Resolution**: `float()` 変換 + 正数チェック。不正値は 400 エラーで拒否。
+- **Resolution**: `float()` conversion + positive-number check. Invalid values are refused with a 400 error.
 
-### SEC-05: Windows subprocess コンソール非表示 -- RESOLVED
+### SEC-05: Windows subprocess console hiding -- RESOLVED
 
 - **Risk**: LOW -> RESOLVED
-- **Location**: [__init__.py](../src/analyze_loudness/__init__.py)
-- **Resolution**: `_subprocess_kwargs()` で frozen mode 時に `STARTF_USESHOWWINDOW` を設定。subprocess のコンソールウインドウを抑制し、UX を改善。
+- **Location**: [__init__.py](../src/analyze_loudness/__init__.py) (`_ffmpeg_kwargs()`), `vendor/py-analyze-common/src/analyze_common/platform.py` (`subprocess_kwargs()`)
+- **Resolution**: `subprocess_kwargs()`, which `_ffmpeg_kwargs()` uses, sets `STARTF_USESHOWWINDOW` in frozen mode. Suppresses the subprocess console window and improves the UX.
 
-### SEC-06: バンドルバイナリのバージョン管理 -- RESOLVED
+### SEC-06: Version management of bundled binaries -- RESOLVED
 
 - **Risk**: MEDIUM -> RESOLVED
 - **Location**: [build.py](../build.py)
-- **Resolution**: `build.py` が GitHub API から最新安定版を取得。`--skip-download` フラグで既存バイナリの再利用も可能。HTTPS 経由でダウンロード。
+- **Resolution**: `build.py` fetches the latest stable version from the GitHub API. The `--skip-download` flag also allows reusing existing binaries. Downloads over HTTPS.
 
-### SEC-15: 不正 JSON リクエストボディの処理 -- RESOLVED
+### SEC-15: Handling of malformed JSON request bodies -- RESOLVED
 
 - **Risk**: LOW -> RESOLVED
 - **Location**: [gui.py:44-49](../src/analyze_loudness/gui.py)
-- **Resolution**: `_read_json_body()` で `JSONDecodeError` / `ValueError` を catch し、空 dict を返す。不正なリクエストボディで 500 エラーが発生しない。
+- **Resolution**: `_read_json_body()` catches `JSONDecodeError` / `ValueError` and returns an empty dict. A malformed request body does not cause a 500 error.
 
-### SEC-17: POST の Content-Type を検査していなかった -- RESOLVED
+### SEC-17: The POST Content-Type was not checked -- RESOLVED
 
 - **Added**: 2026-10-17
 - **Risk**: LOW -> RESOLVED
 - **Location**: [gui.py](../src/analyze_loudness/gui.py) (`_check_content_type`)
-- **Finding**: サーバーは Content-Type を見ずに本文を JSON として処理していた。`text/plain` や `application/x-www-form-urlencoded` は preflight の要らない単純リクエストなので、ポート番号を当てた外部サイトが `/analyze` を実行させられた (2026-10-17 に `text/plain` の POST が処理されることを確認)。
-- **Resolution**: JSON のエンドポイントは `application/json`、`/upload` は `application/octet-stream` 以外を 415 で拒否する。ブラウザはこれらの型の cross-origin POST の前に preflight (OPTIONS) を送り、サーバーは応答しないため、本体の POST は送られない。
+- **Finding**: The server processed the body as JSON without looking at the Content-Type. `text/plain` and `application/x-www-form-urlencoded` are simple requests that need no preflight, so an external site that guessed the port number could make it run `/analyze` (confirmed on 2026-10-17 that a `text/plain` POST is processed).
+- **Resolution**: Anything other than `application/json` for the JSON endpoints and `application/octet-stream` for `/upload` is refused with 415. The browser sends a preflight (OPTIONS) before a cross-origin POST of these types, and the server does not respond to it, so the actual POST is not sent.
 
-### SEC-20: 自動更新で取得するインストーラーの真正性 -- RESOLVED
+### SEC-20: Authenticity of the installer fetched by auto-update -- RESOLVED
 
 - **Added**: 2026-10-20
-- **Risk**: HIGH (対策がなければ) -> RESOLVED
-- **Location**: [update.py](../src/analyze_loudness/update.py) (`UPDATE_CONFIG`)、[gui.py](../src/analyze_loudness/gui.py) (`/update/*`)、`vendor/py-analyze-common/src/analyze_common/update.py` / `ed25519.py` / `update_manifest.py`、[release.yaml](../.github/workflows/release.yaml) (Sign Update Manifest)
-- **Finding**: 自動更新はネットワークから取得した実行ファイルを、ユーザーの確認の後に実行・インストールする。取得物が正規のビルドであることを確かめなければ、配布経路 (GitHub の Release、その手前の通信) を書き換えられる者がユーザーの計算機でコードを実行できる。macOS では、ネットワークから取得した DMG に quarantine 属性が付かないため、Gatekeeper の検査も働かない。
+- **Risk**: HIGH (without countermeasures) -> RESOLVED
+- **Location**: [update.py](../src/analyze_loudness/update.py) (`UPDATE_CONFIG`), [gui.py](../src/analyze_loudness/gui.py) (`/update/*`), `vendor/py-analyze-common/src/analyze_common/update.py` / `ed25519.py` / `update_manifest.py`, [release.yaml](../.github/workflows/release.yaml) (Sign Update Manifest)
+- **Finding**: Auto-update runs and installs an executable fetched from the network after the user's confirmation. Without confirming that what was fetched is a genuine build, anyone who can rewrite the distribution path (GitHub's Release, and the communication before it) can run code on the user's computer. On macOS, a DMG fetched from the network gets no quarantine attribute, so the Gatekeeper check does not work either.
 - **Resolution**:
-  - 各 Release の `latest.json` が OS ごとのインストーラーの URL と Ed25519 署名を持つ。署名の対象は `analyze-update-v1` / 製品名 / 版 / OS / インストーラーの SHA-256 を改行でつないだ文で、アプリに組み込んだ公開鍵 (`PUBLIC_KEY`) で検証する。検証に通らないファイルは削除し、実行もインストールもしない。秘密鍵はリポジトリの secret `UPDATE_SIGNING_KEY` にだけ置き、`release.yaml` が署名の直後に `PUBLIC_KEY` で検証し直す (食い違えばリリースが失敗する)
-  - 版を署名に含めるので、古い正規のインストーラーに新しい版番号を付けた差し替え (ダウングレード) は検証で落ちる。OS と製品名も含めるので、別 OS 向けや別アプリのファイルの流用も落ちる。マニフェストの版が実行中の版より新しいときだけ更新を出す
-  - 取得は HTTPS (CA は certifi)。URL は `https://github.com/semnil/analyze-loudness/releases/download/<tag>/<name>` の形だけを受け付け、リダイレクトは https のままのものだけを辿る。マニフェストは 64 KiB、インストーラーは 1 GiB と 600 秒の締め切りを上限にする
-  - macOS は、DMG の中の `.app` の識別子と版が一致すること、現在の版が Team ID 付きで署名されているときは同じ Team ID で `codesign --verify --deep --strict` が通ることも確かめてから入れ替える
-  - `/update/install` は直前の `/update/check` が示した版だけを受け付ける。ローカルのページから呼ばれても、署名を検証できる更新しか適用されない (外部サイトからの呼び出しは SEC-17 の Content-Type の検査で preflight が要る)
-  - 検証: `vendor/py-analyze-common/tests/` の Ed25519 (RFC 8032 の検証ベクトル)、改ざん・版の付け替え・別 OS の署名・別の鍵・サイズ上限・締め切り・URL の範囲外・scheme の変わるリダイレクトのテストと、OpenSSL で作った署名をアプリ側の検証が受け付けるテスト。2026-10-20 に macOS の実機 (ローカルでビルドした未署名の 1.4.1 / 1.4.2) で、1 バイトを反転した DMG が "The downloaded update does not match its signature" で拒否され、旧版がそのまま動き続けることを確認した
+  - Each Release's `latest.json` holds the URL and the Ed25519 signature of the installer for each OS. The signed statement is the text that joins `analyze-update-v1` / product name / version / OS / installer SHA-256 with newlines, and it is verified with the public key built into the app (`PUBLIC_KEY`). A file that fails verification is deleted, and is neither run nor installed. The private key is kept only in the repository secret `UPDATE_SIGNING_KEY`, and `release.yaml` re-verifies with `PUBLIC_KEY` right after signing (if they disagree, the release fails)
+  - Since the version is included in the signature, a replacement with an older genuine installer labeled with a new version number (downgrade) fails verification. Since the OS and the product name are also included, reusing a file for another OS or another app also fails. The update is offered only when the manifest's version is newer than the running version
+  - Fetching is over HTTPS (the CA is certifi). Only URLs of the form `https://github.com/semnil/analyze-loudness/releases/download/<tag>/<name>` are accepted, and only redirects that stay https are followed. The limits are 64 KiB for the manifest, and 1 GiB and a 600-second deadline for the installer
+  - On macOS, before the swap, it also confirms that the identifier and version of the `.app` inside the DMG match, and, when the current version is signed with a Team ID, that `codesign --verify --deep --strict` passes with the same Team ID
+  - `/update/install` accepts only the version that the preceding `/update/check` reported. Even when it is called from the local page, only updates whose signature can be verified are applied (calls from external sites need a preflight because of the Content-Type check of SEC-17)
+  - Verification: tests in `vendor/py-analyze-common/tests/` for Ed25519 (RFC 8032 test vectors), tampering, version relabeling, another OS's signature, another key, size limits, deadlines, URLs out of range and redirects that change the scheme, and a test that the app-side verification accepts a signature made with OpenSSL. On 2026-10-20, on a real macOS machine (locally built unsigned 1.4.1 / 1.4.2), it was confirmed that a DMG with 1 byte flipped is rejected with "The downloaded update does not match its signature", and that the old version keeps running as is
 
 ---
 
 ## Accepted Findings (risk acknowledged)
 
-### SEC-07: ローカル HTTP サーバーの同一ホスト攻撃面 -- ACCEPTED
+### SEC-07: Same-host attack surface of the local HTTP server -- ACCEPTED
 
 - **Risk**: VERY LOW
 - **Location**: [gui.py:293](../src/analyze_loudness/gui.py)
-- **Analysis**: 127.0.0.1 バインドのため、同一マシン上の他プロセスからは `/analyze` エンドポイントにアクセス可能。ただし:
-  - ポートはランダム (port 0) のため予測困難
-  - 外部サイトからの CSRF は、サーバーが Content-Type を `application/json` (`/upload` は `application/octet-stream`) に限るため preflight が必須になり、サーバーが preflight に応答しないので阻止される (SEC-17)
-  - ローカルアプリの標準的な設計パターン
-  - 最悪でも YouTube 音声の分析が実行されるのみ（データ破壊なし）
+- **Analysis**: Because of the 127.0.0.1 binding, other processes on the same machine can access the `/analyze` endpoint. However:
+  - The port is random (port 0), so it is hard to predict
+  - CSRF from external sites is blocked, because the server limits the Content-Type to `application/json` (`application/octet-stream` for `/upload`), which makes a preflight mandatory, and the server does not respond to the preflight (SEC-17)
+  - A standard design pattern for local apps
+  - At worst, an analysis of YouTube audio is run (no data destruction)
 
-### SEC-08: subprocess への URL 直接渡し -- SAFE
+### SEC-08: Passing the URL directly to subprocess -- SAFE
 
 - **Risk**: NOT VULNERABLE
 - **Location**: [download.py:57-63](../src/analyze_loudness/download.py)
 - **Analysis**:
-  - `subprocess.run(cmd, ...)` リスト引数 (`shell=False`) -> shell injection 不可
-  - ユーザーが自分で入力した URL をローカルで実行するため、攻撃ベクトルが成立しない
+  - `subprocess.run(cmd, ...)` list arguments (`shell=False`) -> shell injection is impossible
+  - The URL the user entered themselves is run locally, so no attack vector holds
 
-### SEC-09: フロントエンド XSS -- SAFE
+### SEC-09: Frontend XSS -- SAFE
 
 - **Risk**: NOT VULNERABLE
 - **Location**: [main.js](../frontend/main.js)
 - **Analysis**:
-  - `title` -> `textContent` (HTML パース不可)
-  - `innerHTML` テーブル -> `fmt()` の `.toFixed()` 出力のみ (数値 -> 文字列)
-  - ユーザー由来文字列は `innerHTML` パスに含まれない
-  - GATE レーンの caption (`_buildGateCaption`) も `textContent` / `createTextNode` のみ。
-    値は `computeGate()` が `series.M` から算出した数値を `fmt()` で整形したもので、
-    読み込んだ JSON の文字列は経由しない
+  - `title` -> `textContent` (no HTML parsing)
+  - `innerHTML` table -> only the `.toFixed()` output of `fmt()` (number -> string)
+  - User-derived strings are not in the `innerHTML` path
+  - The GATE lane caption (`_buildGateCaption`) also uses only `textContent` / `createTextNode`.
+    The values are numbers that `computeGate()` computes from `series.M`, formatted with `fmt()`, and
+    no string from the loaded JSON goes through it
 
-### SEC-10: エラーメッセージによる内部情報 -- ACCEPTED
+### SEC-10: Internal information in error messages -- ACCEPTED
 
 - **Risk**: VERY LOW
 - **Location**: [gui.py:97](../src/analyze_loudness/gui.py)
-- **Analysis**: エラーメッセージは NDJSON で 127.0.0.1 にのみ送信される。ローカルアプリのためデバッグ情報の露出リスクは実質ゼロ。
+- **Analysis**: Error messages are sent as NDJSON only to 127.0.0.1. Since this is a local app, the risk of exposing debug information is effectively zero.
 
-### SEC-11: 一時ファイルのクリーンアップ -- SAFE
+### SEC-11: Temporary file cleanup -- SAFE
 
 - **Risk**: NOT VULNERABLE
 - **Location**: [gui.py:100](../src/analyze_loudness/gui.py), [cli.py](../src/analyze_loudness/cli.py)
-- **Analysis**: `tempfile.TemporaryDirectory` + `with` ブロック。分析完了後に自動削除。
+- **Analysis**: `tempfile.TemporaryDirectory` + `with` block. Deleted automatically after the analysis completes.
 
-### SEC-12: `/save` エンドポイントによるファイル書き込み -- ACCEPTED
+### SEC-12: File writes through the `/save` endpoint -- ACCEPTED
 
 - **Risk**: VERY LOW
 - **Location**: [gui.py:175-205](../src/analyze_loudness/gui.py)
-- **Analysis**: `/save` POST で JSON データをユーザー選択パスに書き込み可能。ただし:
-  - 保存先パスは pywebview のネイティブファイルダイアログでユーザーが選択
-  - 127.0.0.1 + ランダムポートのため外部からのアクセス不可
-  - 書き込みエラーは OSError でキャッチし、エラーレスポンスを返却
-  - 書き込む内容は分析結果 JSON のみ (実行可能コードではない)
+- **Analysis**: A `/save` POST can write JSON data to a path the user chooses. However:
+  - The destination path is chosen by the user in pywebview's native file dialog
+  - 127.0.0.1 + random port, so no access from outside
+  - Write errors are caught as OSError, and an error response is returned
+  - The written content is only the analysis result JSON (not executable code)
 
-### SEC-13: `/save-image` エンドポイントによる PNG 書き込み -- ACCEPTED
+### SEC-13: PNG writes through the `/save-image` endpoint -- ACCEPTED
 
 - **Risk**: VERY LOW
 - **Location**: [gui.py:207-235](../src/analyze_loudness/gui.py)
-- **Analysis**: `/save-image` POST で base64 エンコード PNG をユーザー選択パスに書き込み。
-  - `data:image/png;base64,` prefix を検証し、不正な形式は 400 で拒否
-  - `base64.b64decode` が不正な base64 を `ValueError` として拒否（catch 済み）
-  - 保存先は SEC-12 と同様にネイティブダイアログでユーザーが選択
-  - 127.0.0.1 + ランダムポートのため外部からの呼び出し不可
+- **Analysis**: A `/save-image` POST writes a base64-encoded PNG to a path the user chooses.
+  - Validates the `data:image/png;base64,` prefix, and refuses an invalid format with 400
+  - `base64.b64decode` rejects invalid base64 as `ValueError` (caught)
+  - As in SEC-12, the destination is chosen by the user in a native dialog
+  - 127.0.0.1 + random port, so it cannot be called from outside
 
-### SEC-14: `/load` エンドポイントによるファイル読み込み -- ACCEPTED
+### SEC-14: File reads through the `/load` endpoint -- ACCEPTED
 
 - **Risk**: VERY LOW
 - **Location**: [gui.py:237-261](../src/analyze_loudness/gui.py)
-- **Analysis**: `/load` POST でユーザー選択パスから JSON を読み込み、フロントエンドに返却。
-  - 読み込みパスは pywebview のネイティブファイルダイアログでユーザーが選択
-  - `summary` と `series` フィールドの存在を検証し、不正な JSON は 400 で拒否
-  - `OSError` / `JSONDecodeError` を catch しエラーレスポンスを返却
-  - 読み込んだデータはフロントエンドの `render()` に渡されるが、ユーザー由来文字列は `textContent` 経由で安全に表示（SEC-09 参照）
-  - 127.0.0.1 + ランダムポートのため外部からの呼び出し不可
+- **Analysis**: A `/load` POST reads JSON from a path the user chooses and returns it to the frontend.
+  - The read path is chosen by the user in pywebview's native file dialog
+  - Validates that the `summary` and `series` fields exist, and refuses invalid JSON with 400
+  - Catches `OSError` / `JSONDecodeError` and returns an error response
+  - The loaded data is passed to the frontend's `render()`, but user-derived strings are displayed safely through `textContent` (see SEC-09)
+  - 127.0.0.1 + random port, so it cannot be called from outside
 
-### SEC-18: `/analyze` によるローカルファイルの読み取り -- ACCEPTED
+### SEC-18: Local file reads through `/analyze` -- ACCEPTED
 
 - **Added**: 2026-10-17
 - **Risk**: VERY LOW
 - **Location**: [gui.py](../src/analyze_loudness/gui.py) (`/analyze`), [download.py](../src/analyze_loudness/download.py) (`resolve_source`)
-- **Analysis**: `/analyze` は http(s) 以外の入力をローカルパスとして扱い、ffmpeg (list 引数) で読み取る。`://` を含む http(s) 以外のスキームと `javascript:` は 400。
-  - 返すのはラウドネスの系列と統計だけで、ファイルの中身は返さない
-  - 存在しないパスは `File not found` の 400 になるため、同じマシンのプロセスはファイルの有無を知りうる
-  - UNC パス・デバイスパス (先頭が `\\` か `//`) は、パスの解決や `os.path.isfile` の前に 400 で拒否する (`download.is_network_path`)。受け取った保存済み JSON の `meta.source_url` が入力欄へ戻り、そのまま Analyze された場合も、パスの解決や存在確認に進まない (Windows での接続の有無は未計測)
-  - 外部サイトからは SEC-17 により呼べない。呼べるのは 127.0.0.1 のランダムポートに届く同じマシンのプロセスだけ (SEC-07)
-- **Accepted**: 同じマシンのプロセスはユーザー権限でファイルを直接読めるため、新たに得るものは無い
+- **Analysis**: `/analyze` treats input other than http(s) as a local path, and reads it with ffmpeg (list arguments). Schemes other than http(s) that contain `://`, and `javascript:`, are 400.
+  - It returns only the loudness series and statistics, not the contents of the file
+  - A path that does not exist gives a 400 with `File not found`, so a process on the same machine can learn whether a file exists
+  - UNC paths and device paths (starting with `\\` or `//`) are refused with 400 before path resolution and `os.path.isfile` (`download.is_network_path`). Even when the `meta.source_url` of a received saved JSON goes back into the input field and is Analyzed as is, it does not proceed to path resolution or the existence check (whether a connection is made on Windows is not measured)
+  - It cannot be called from external sites because of SEC-17. Only processes on the same machine that reach the random port on 127.0.0.1 can call it (SEC-07)
+- **Accepted**: Processes on the same machine can read files directly with the user's privileges, so they gain nothing new
 
-### SEC-19: `/upload` による一時ディレクトリへの書き込み -- ACCEPTED
+### SEC-19: Writes to the temporary directory through `/upload` -- ACCEPTED
 
 - **Added**: 2026-10-17
 - **Risk**: LOW
 - **Location**: [gui.py](../src/analyze_loudness/gui.py) (`_handle_upload`)
-- **Analysis**: ドロップされたファイルを `_upload_dir` (`tempfile.mkdtemp`、終了時に削除) に書く。
-  - 1 リクエスト 500 MB まで (`_MAX_UPLOAD`)、拡張子は `AUDIO_EXTENSIONS` のみ
-  - ファイル名は `sanitize_filename` が区切り文字・予約文字・制御文字を `_` に置き換え、`os.path.commonpath` で `_upload_dir` の外を拒否。同名は `_1`, `_2` … を付けて上書きしない
-  - `X-Filename` は独自ヘッダーなので、外部サイトからは preflight が必須 (SEC-17 と合わせて阻止)
-  - 回数の上限は無いため、同じマシンのプロセスは繰り返しの送信で一時ディレクトリを大きくできる
-- **Accepted**: 書き込み先は一時ディレクトリに限られ、終了時に削除される
+- **Analysis**: Writes the dropped file to `_upload_dir` (`tempfile.mkdtemp`, deleted on exit).
+  - Up to 500 MB per request (`_MAX_UPLOAD`), and only the extensions in `AUDIO_EXTENSIONS`
+  - For the file name, `sanitize_filename` replaces separators, reserved characters and control characters with `_`, and `os.path.commonpath` refuses anything outside `_upload_dir`. A duplicate name gets `_1`, `_2` ... appended and is not overwritten
+  - `X-Filename` is a custom header, so a preflight is mandatory from external sites (blocked together with SEC-17)
+  - There is no limit on the number of requests, so a process on the same machine can grow the temporary directory by sending repeatedly
+- **Accepted**: The write destination is limited to the temporary directory, which is deleted on exit
 
-### SEC-16: クライアント切断時の subprocess orphaning -- ACCEPTED
+### SEC-16: subprocess orphaning on client disconnect -- ACCEPTED
 
-- **Added**: 2026-04-04 (2026-04-03 の初版の後に追加。Summary の件数もこの時点で更新)
+- **Added**: 2026-04-04 (added after the first edition of 2026-04-03. The Summary counts were also updated at this point)
 - **Risk**: LOW
 - **Location**: [gui.py:116-148](../src/analyze_loudness/gui.py), [download.py](../src/analyze_loudness/download.py)
-- **Analysis**: フロントエンドの Cancel (AbortController) でストリーム読み取りを中断すると、サーバー側の `_send_event()` が `_ClientDisconnected` を発生させて分析を中断する。ただし `yt_dlp.YoutubeDL.extract_info()` や `subprocess.run()` (ffmpeg) がブロッキング中の場合、該当処理は完了まで実行が継続する。
-  - `_ClientDisconnected` は次の `_send_event()` 呼び出し時にのみ検出される
-  - yt_dlp ダウンロード中 (3-8秒) や ffmpeg 分析中 (~11秒) にキャンセルしても、該当処理は完了まで実行
-  - 完了後に `_send_event()` が `_ClientDisconnected` を送出し、以降の処理を中断
-  - `TemporaryDirectory` は `with` ブロック終了時にクリーンアップされるため、一時ファイルのリークは発生しない
-  - 修正には `subprocess.Popen` ベースに変更し、キャンセル時に `process.kill()` する必要があるが、単一ユーザーのローカルアプリでは実害が小さく、複雑性増加に見合わない
-- **Accepted**: 最大でも十数秒の不要な subprocess 実行のみ。DoS やリソース枯渇のリスクなし
+- **Analysis**: When the frontend's Cancel (AbortController) interrupts the stream reading, the server-side `_send_event()` raises `_ClientDisconnected` and interrupts the analysis. However, if `yt_dlp.YoutubeDL.extract_info()` or `subprocess.run()` (ffmpeg) is blocking, that processing keeps running until it completes.
+  - `_ClientDisconnected` is detected only at the next `_send_event()` call
+  - Even when canceled during the yt_dlp download (3-8 seconds) or the ffmpeg analysis (~11 seconds), that processing runs until it completes
+  - After it completes, `_send_event()` raises `_ClientDisconnected`, and the rest of the processing is interrupted
+  - `TemporaryDirectory` is cleaned up when the `with` block ends, so no temporary files leak
+  - A fix requires changing to a `subprocess.Popen` base and calling `process.kill()` on cancel, but in a single-user local app the actual harm is small and does not justify the added complexity
+- **Accepted**: At most a dozen or so seconds of unneeded subprocess execution. No risk of DoS or resource exhaustion
 
 ---
 
 ## CI/CD (GitHub Actions)
 
-**確認日**: 2026-09-30。各ワークフローの実物と、master のルールセット・Actions の許可ポリシーの現在値を確認した。2026-04-03〜04 の監査には含まれない。「Dependabot の自動マージ」の行と、「外部 action のピン留め」「必須チェック」の行のうち `dependabot-auto-merge.yml`・`Test 🧪`・`auto-merge` の記述は 2026-10-20 に追加した。
+**Checked on**: 2026-09-30. Checked the actual file of each workflow and the current values of the master ruleset and the Actions permissions policy. Not included in the 2026-04-03 to 04 audit. The "Dependabot auto-merge" row, and, in the "External action pinning" and "Required checks" rows, the descriptions of `dependabot-auto-merge.yml`, `Test 🧪` and `auto-merge` were added on 2026-10-20.
 
-| 項目 | 対策 |
+| Item | Countermeasure |
 |------|------|
-| 外部 action のピン留め | `ci.yaml` / `release.yaml` / `tag-release.yml` / `ffmpeg-watch.yml` / `workflow-checks-test.yml` / `dependabot-auto-merge.yml` の `uses:` はコミット SHA (40 桁) と同じ行のバージョンコメント (`@<sha> # vX.Y.Z`) で固定する。タグ参照ではないため、タグの付け替えで実行内容が変わらない |
-| 固定の検査 (`workflow-checks.yml`) | PR ごとに `pull_request_target` で既定ブランチの定義を実行し、PR の head のワークフロー・action ファイルを GitHub API (git trees / blobs) でデータとして取得して yq で読む。PR のコードは checkout も実行もせず、トークンは `contents: read`。対象は `jobs.<id>.uses` / `jobs.<id>.steps[*].uses` / `action.yml` の `runs.steps[*].uses` |
-| 同一リポジトリの参照 | ステップの `./` は runner の作業領域に対して解決される (前のステップが置いた内容を実行しうる) ため拒否し、`$/` (実行中のコミットに解決) を使わせる。ジョブ単位の再利用ワークフローは `./` / `$/` とも呼び出し元と同じコミットから読まれるため許可する。ローカル参照のパスは `A-Z a-z 0-9 . _ -` と `/` に限り、空・`.`・`..`・末尾が `.` の要素と、参照先までの経路上の git tree のシンボリックリンク・サブモジュール (ASCII の大文字小文字を区別せず照合) を拒否する |
-| 取得対象の健全性 | ワークフロー・action ファイルが通常ファイルでない (シンボリックリンク等) とき、action ファイル名が小文字の `action.yml` / `action.yaml` でないときは失敗する |
-| dispatch での検査 (`workflow-checks.yml`、2026-10-20 追加) | `workflow_dispatch` に PR 番号を渡すと、`pull_request_target` が走らない PR (GITHUB_TOKEN が作ったもの) にも同じ検査を行う。既定ブランチ以外の ref で起動したとき、PR が open でないとき、PR のベースが既定ブランチでないとき、head が 40 桁の SHA でないときは失敗する。検査の `action-pins` ジョブのトークンは `contents: read` のまま。結果は `checks: write` だけを持つ `report` ジョブが、PR の head commit に `action-pins` という名前の check run として載せる (検査が失敗・中断したときは `failure`) |
-| 検査の自己改変の防止 | `workflow-checks.yml` のパス・mode・blob SHA が既定ブランチと一致しない PR は失敗する。検査を変更するときは必須チェックを一時的に外してからマージする |
-| 必須チェック | master のルールセットで `action-pins`・`Test 🧪` (`ci.yaml`)・`auto-merge` (`dependabot-auto-merge.yml`) を必須とし、ベースブランチへの追随を求める (`strict_required_status_checks_policy: true`)。バイパスは設定していない |
-| 検査の回帰テスト | `.github/tests/workflow-checks-test.sh` を `workflow-checks-test.yml` が実行する (検査ファイル・テストを変更する PR と master への push)。偽の `gh` がフィクスチャの git tree を返し、拒否すべき参照と通すべき参照の判定と失敗理由を検査する。dispatch の入口 (PR の解決の判定、`report` が載せる check run の中身、ジョブの権限とつなぎ) も検査する |
-| 版上げからのタグ作成 (`tag-release.yml`、2026-10-17 追加) | `workflow_run` では CI の完了後に走り、master の `push` で成功した run だけを処理して、CI が検査した `head_sha` を checkout する。`workflow_dispatch` (2026-10-20 追加。`ffmpeg-watch.yml` が GITHUB_TOKEN でマージした版上げは push の CI を起動しないため) は入力 `sha` のコミットを扱い、40 桁の SHA であることを checkout の前に、master 上にあることと、そのコミットか tree が同じ親コミットで `ci.yaml` が成功していることを checkout の後に確かめる。権限は `contents: write` (タグの push) と `actions: write` (`release.yaml` の dispatch)。既存のタグは動かさない |
-| Dependabot の自動マージ (`dependabot-auto-merge.yml`、2026-10-20 追加) | PR ごとに `pull_request` で走り、PR の作成者が `dependabot[bot]` のときだけ `dependabot/fetch-metadata` と `gh` のステップを実行する (他の PR ではステップを skip し、ジョブは成功を報告する)。PR のコードは checkout も実行もせず、PR 由来の値 (URL・head SHA・更新種別) は環境変数で渡す。更新種別が semver の patch のときだけ、読んだ head SHA を条件 (`--match-head-commit`) に自動マージ (merge commit) を予約し、それ以外の種別では予約を解除し、予約の有無を読めないときはジョブを失敗させる。ジョブ `auto-merge` は master の必須チェックで、その head についての判定が出る前にはマージされない。権限はジョブ単位の `contents: write` と `pull-requests: write` で、使うトークンは `GITHUB_TOKEN` (secret は使わない)。自動マージによるマージは `GITHUB_TOKEN` によるもので、master への push はワークフローを起動しない。`workflow_dispatch` (2026-10-20 追加) では両ステップを skip し、起動したブランチの head commit に `auto-merge` を報告する。`pull_request` の run が承認待ちになる、GITHUB_TOKEN が作った PR (`ffmpeg-watch.yml`) のため。`dependabot/` のブランチでの dispatch と、`dependabot[bot]` が作った PR に含まれるコミットに対する dispatch は失敗し (check run はコミットに付くため、ブランチ名だけでは断れない)、判定はその PR の `pull_request` の run だけが行う (`.github/tests/dependabot-auto-merge-test.sh` が確かめる) |
-| ffmpeg の更新による patch リリース (`ffmpeg-watch.yml`、2026-10-20 追加) | schedule と `workflow_dispatch` で、master の上でだけ走る (他の ref では失敗する)。detect と smoke のトークンは `contents: read`。land だけが `contents: write` (bot のブランチの push)・`pull-requests: write` (PR の作成とマージ)・`actions: write` (CI・`dependabot-auto-merge.yml`・`workflow-checks.yml`・`tag-release.yml` の dispatch) を持ち、固定値の PR と版上げの PR をレビューなしでマージする。マージの前に、各 PR で dispatch した CI・`auto-merge`・`action-pins` の成功と、`gh pr checks --required` を待つ。版上げのマージ後は、そのマージコミットを渡して `tag-release.yml` を起動し、タグを打つ前の検査は `tag-release.yml` が行う。新しい固定値は osxexperts.net のページから作り、系列は `MAJOR.MINOR`・URL は `https://www.osxexperts.net/` の zip に限り、両ファイルをページの SHA256 と照合したものだけを使う (`analyze_common.ffmpeg_release`)。ジョブ間の値は `env:` で渡し、`run:` に式を埋め込まない。Release の publish は人が行う |
-| `pull_request_target` の許可 | public リポジトリの `pull_request_target` は 2026-11-02 から明示的な許可が必要なため、`workflow-checks.yml` を対象とした Actions の許可ポリシーを設定している |
+| External action pinning | The `uses:` in `ci.yaml` / `release.yaml` / `tag-release.yml` / `ffmpeg-watch.yml` / `workflow-checks-test.yml` / `dependabot-auto-merge.yml` are pinned with a commit SHA (40 characters) and a version comment on the same line (`@<sha> # vX.Y.Z`). They are not tag references, so moving a tag does not change what runs |
+| Pin check (`workflow-checks.yml`) | For each PR, runs the default branch's definition with `pull_request_target`, fetches the workflow and action files of the PR head as data through the GitHub API (git trees / blobs), and reads them with yq. It neither checks out nor runs the PR's code, and the token is `contents: read`. The targets are `jobs.<id>.uses` / `jobs.<id>.steps[*].uses` / `runs.steps[*].uses` of `action.yml` |
+| Same-repository references | A `./` in a step is resolved against the runner's workspace (it can run content placed by an earlier step), so it is refused, and `$/` (resolved to the running commit) is required instead. For job-level reusable workflows, both `./` / `$/` are read from the same commit as the caller, so they are allowed. Local reference paths are limited to `A-Z a-z 0-9 . _ -` and `/`, and empty, `.`, `..` and trailing-`.` elements, and symbolic links and submodules in the git tree along the path to the target (matched ASCII case-insensitively), are refused |
+| Soundness of the fetched targets | Fails when a workflow or action file is not a regular file (a symbolic link etc.), or when an action file name is not lowercase `action.yml` / `action.yaml` |
+| Check on dispatch (`workflow-checks.yml`, added 2026-10-20) | Passing a PR number to `workflow_dispatch` runs the same check also on PRs where `pull_request_target` does not run (ones created by GITHUB_TOKEN). Fails when started on a ref other than the default branch, when the PR is not open, when the PR's base is not the default branch, or when the head is not a 40-character SHA. The token of the check's `action-pins` job stays `contents: read`. The `report` job, which has only `checks: write`, puts the result on the PR's head commit as a check run named `action-pins` (`failure` when the check failed or was interrupted) |
+| Preventing the check from modifying itself | A PR whose `workflow-checks.yml` path, mode or blob SHA does not match the default branch fails. To change the check, temporarily remove the required check, then merge |
+| Required checks | The master ruleset requires `action-pins`, `Test 🧪` (`ci.yaml`) and `auto-merge` (`dependabot-auto-merge.yml`), and requires being up to date with the base branch (`strict_required_status_checks_policy: true`). No bypass is configured |
+| Regression tests of the check | `workflow-checks-test.yml` runs `.github/tests/workflow-checks-test.sh` (on PRs that change the check file or the tests, and on pushes to master). A fake `gh` returns fixture git trees, and the tests check the decisions for references that must be refused and references that must pass, and the failure reasons. They also check the dispatch entry point (the decisions in resolving the PR, the contents of the check run that `report` puts, and the job permissions and wiring) |
+| Tag creation from version bumps (`tag-release.yml`, added 2026-10-17) | With `workflow_run`, it runs after CI completes, processes only runs that succeeded on a `push` to master, and checks out the `head_sha` that CI checked. `workflow_dispatch` (added 2026-10-20, because a version bump that `ffmpeg-watch.yml` merged with GITHUB_TOKEN does not start CI on push) handles the commit of the input `sha`, and confirms before checkout that it is a 40-character SHA, and after checkout that it is on master and that `ci.yaml` succeeded on that commit or on a parent commit with the same tree. The permissions are `contents: write` (pushing the tag) and `actions: write` (dispatching `release.yaml`). Existing tags are not moved |
+| Dependabot auto-merge (`dependabot-auto-merge.yml`, added 2026-10-20) | Runs with `pull_request` for each PR, and runs the `dependabot/fetch-metadata` and `gh` steps only when the PR's author is `dependabot[bot]` (on other PRs the steps are skipped and the job reports success). It neither checks out nor runs the PR's code, and passes the PR-derived values (URL, head SHA, update type) through environment variables. Only when the update type is a semver patch does it schedule an auto-merge (merge commit) conditioned on the head SHA it read (`--match-head-commit`); for other types it cancels the schedule, and when it cannot read whether a schedule exists, it fails the job. The job `auto-merge` is a required check on master, so the PR is not merged before the decision for that head comes out. The permissions are job-level `contents: write` and `pull-requests: write`, and the token used is `GITHUB_TOKEN` (no secret is used). A merge by auto-merge is made by `GITHUB_TOKEN`, so the push to master does not start workflows. On `workflow_dispatch` (added 2026-10-20), both steps are skipped, and `auto-merge` is reported on the head commit of the branch it was started on. This is for PRs created by GITHUB_TOKEN (`ffmpeg-watch.yml`), whose `pull_request` runs wait for approval. A dispatch on a `dependabot/` branch and a dispatch for a commit contained in a PR created by `dependabot[bot]` fail (the check run attaches to the commit, so the branch name alone cannot refuse it), and the decision is made only by that PR's `pull_request` run (`.github/tests/dependabot-auto-merge-test.sh` confirms this) |
+| Patch release from an ffmpeg update (`ffmpeg-watch.yml`, added 2026-10-20) | Runs on schedule and `workflow_dispatch`, only on master (it fails on other refs). The tokens of detect and smoke are `contents: read`. Only land has `contents: write` (pushing the bot's branches), `pull-requests: write` (creating and merging PRs) and `actions: write` (dispatching CI, `dependabot-auto-merge.yml`, `workflow-checks.yml` and `tag-release.yml`), and it merges the pin PR and the version-bump PR without review. Before merging, it waits for the success of the CI, `auto-merge` and `action-pins` dispatched on each PR, and for `gh pr checks --required`. After the version bump is merged, it passes that merge commit to start `tag-release.yml`, and the check before tagging is done by `tag-release.yml`. The new pinned values are built from the osxexperts.net page, with the series limited to `MAJOR.MINOR` and the URL limited to a zip on `https://www.osxexperts.net/`, and only values whose two files match the page's SHA256 are used (`analyze_common.ffmpeg_release`). Values between jobs are passed through `env:`, and expressions are not embedded in `run:`. Publishing the Release is done by a person |
+| Allowing `pull_request_target` | `pull_request_target` in public repositories needs explicit permission from 2026-11-02, so an Actions permissions policy that targets `workflow-checks.yml` is configured |
 
 ---
 
@@ -247,7 +247,7 @@ Summary の件数は 2026-10-20 に SEC-20 を追加した時点のもの (2026-
 |------------|----------|------|------------|
 | CLI args | Local | N/A | argparse + `_positive_float` |
 | GUI HTTP | 127.0.0.1 only | N/A (localhost) | Content-Type + URL / local path + duration + JSON body validation |
-| Frontend SPA | pywebview (WebView2) | N/A | Static files, no SSR |
+| Frontend SPA | pywebview (WebView2 / WebKit) | N/A | Static files, no SSR |
 | File dialogs | Native OS | User interaction required | pywebview SAVE_DIALOG / OPEN_DIALOG, `_dialog_lock` non-blocking try-lock (409 on concurrent) |
 | Update check / download | HTTPS to github.com (outbound) | N/A | Ed25519 signature over product / version / OS / SHA-256, URL prefix, https-only redirects, size and time caps (SEC-20) |
 
@@ -280,7 +280,7 @@ graph TD
     B -->|"valid"| D["yt_dlp.YoutubeDL<br/>(Python API)"]
     D --> E["ffmpeg<br/>(subprocess list args)"]
     E --> F["NDJSON response<br/>(127.0.0.1 only)"]
-    F --> G["pywebview<br/>(WebView2 sandbox)"]
+    F --> G["pywebview<br/>(WebView2 / WebKit sandbox)"]
     G -->|"Save JSON"| H["Native file dialog<br/>-> write JSON"]
     G -->|"Save Image"| I["Native file dialog<br/>-> write PNG"]
     G -->|"Load JSON"| J["Native file dialog<br/>-> read JSON -> render()"]
