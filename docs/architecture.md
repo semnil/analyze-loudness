@@ -370,8 +370,8 @@ Build pipeline:
 | Binary | Source | License |
 |--------|--------|---------|
 | deno.exe | GitHub Releases (latest) | MIT |
-| ffmpeg.exe | BtbN/FFmpeg-Builds (latest の、`build_assets/ffmpeg.json` の系列の lgpl ビルド) | LGPL-3.0+ |
-| ffprobe.exe | BtbN/FFmpeg-Builds (latest の、`build_assets/ffmpeg.json` の系列の lgpl ビルド) | LGPL-3.0+ |
+| ffmpeg.exe | BtbN/FFmpeg-Builds (latest の、`build_assets/ffmpeg.json` の系列の gpl ビルド) | GPL-3.0+ |
+| ffprobe.exe | BtbN/FFmpeg-Builds (latest の、`build_assets/ffmpeg.json` の系列の gpl ビルド) | GPL-3.0+ |
 
 ## Constants
 

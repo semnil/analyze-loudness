@@ -294,5 +294,5 @@ graph TD
 - No network listeners on external interfaces
 - Outbound: the update check reads `latest.json` from github.com at launch (turned off by "Check at launch" in Settings). The request carries the app name and version (User-Agent) and nothing about the user or the analysed media
 - YouTube content analyzed locally, deleted after display
-- ffmpeg bundled under LGPL-3.0+ (Windows, BtbN lgpl build) and GPL-2.0+ (macOS, osxexperts.net build with libx264 / libx265); source availability required for redistribution
+- ffmpeg bundled under GPL-3.0+ (Windows, BtbN gpl build) and GPL-2.0+ (macOS, osxexperts.net build), both with libx264 / libx265; source availability required for redistribution
 - THIRD_PARTY_LICENSES.txt included in installer
