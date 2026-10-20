@@ -232,6 +232,7 @@ CSS 変数名は analyze-spectrum と共通 (`--text` / `--bg-card` / `--text-se
 
 `frontend/i18n.js` で en / ja の 2 言語を管理。ただし表・グラフの表示項目 (table.*, chart.*, summary.frames/min 等) は analyze-spectrum と統一して英語のみとする。ja 辞書にもこれらのキーには英語値を入れる。ボタン・ステータス・エラーメッセージ等の UI クロムは日本語訳を維持。
 選んだ言語はテーマと同じ設定ファイルの `lang` に `/settings` で保存し、`window.analyzeSettings.lang` で次のページへ渡す。保存が無いときは `navigator.language` に従う (`ja*` は ja、それ以外は en)。
+`main.js` が状態に合わせて書く文字 (テーマボタンの `aria-label`、送信ボタンの文字と `aria-label`) を持つ要素には `data-i18n*` を付けず、`main.js` が読み込み時と `window.i18n.onChange` で書く (付けると DOMContentLoaded と言語の切り替えのたびに固定の文に戻る)。
 
 ### チャートタイトルの単独描画 (analyze-spectrum と統一)
 
