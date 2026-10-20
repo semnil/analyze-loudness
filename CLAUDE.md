@@ -243,7 +243,7 @@ POST は Content-Type が `application/json` (`/upload` は `application/octet-s
 
 CSS 変数 + `[data-theme="dark"]` でライト/ダーク/auto の 3 ステートテーマ切替。
 CSS 変数名は analyze-spectrum と共通 (`--text` / `--bg-card` / `--text-secondary` / `--text-muted` 等)。両アプリで同じ CSS 変数と規則は py-analyze-common の `analyze_common/web/common.css` に置き、`src/analyze_loudness/gui.py` が `/common/common.css` として配信する (PyInstaller の spec が `analyze_common/web` に同梱)。`frontend/index.html` はこれを `frontend/style.css` より先に読み込み、`frontend/style.css` は残りの変数 (アクセントカラー等) と固有の規則を持つ。狭い画面向けの `@media (max-width: 480px)` の `h1` は各 `style.css` の `h1` より後に置く必要があるため、`style.css` に残す。
-デフォルトは `auto` (OS の `prefers-color-scheme` に追従)。選択はアプリの設定ファイル (「自動更新」節の「設定」と同じ `settings.json`) の `theme` に `/settings` で保存する。ページは `/common/settings.js` (py-analyze-common の `UiSettings.script()`。`Cache-Control: no-store`) が渡す `window.analyzeSettings.theme` で描き始め、ウィンドウの背景色は `main()` が `UiSettings.background_color()` で決める。保存に失敗したときは、選んだテーマのまま、ステータス欄にエラーを出す。
+デフォルトは `auto` (OS の `prefers-color-scheme` に追従)。選択はアプリの設定ファイル (「自動更新」節の「設定」と同じ `settings.json`) の `theme` に `/settings` で保存する。ページは `/common/settings.js` (py-analyze-common の `UiSettings.script()`。`Cache-Control: no-store`) が渡す `window.analyzeSettings.theme` で描き始め、ウィンドウの背景色は `main()` が `UiSettings.background_color()` で決め、`create_window()` の直後の `analyze_common.ui_settings.show_window_color_until_paint()` が、macOS でページが描かれるまでその色を見せる (pywebview は最初の読み込みが終わってから WKWebView をウィンドウに付け、WKWebView は最初の描画まで白を描くため、その背景を切る。仕組みは `vendor/py-analyze-common/CLAUDE.md` の「テーマと言語の設定」節)。保存に失敗したときは、選んだテーマのまま、ステータス欄にエラーを出す。
 テーマ切替 UI は右上に固定した pill ボタン (太陽 / 三日月 / 半分を塗った円の SVG。`_createThemeIcon()` が生成)。analyze-spectrum と統一。
 チャート色は `frontend/theme.js` の `getTheme()` で一元管理し、テーマ切替時にチャートを再描画。
 
