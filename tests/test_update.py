@@ -62,3 +62,12 @@ def test_certifi_is_a_gui_dependency():
     assert '"certifi"' in gui
     assert Path(certifi.where()).is_file()
 
+
+def test_release_signs_the_assets_it_publishes():
+    workflow = (ROOT / ".github/workflows/release.yaml").read_text(encoding="utf-8")
+    build = (ROOT / "build.py").read_text(encoding="utf-8")
+    assert "--config analyze_loudness.update:UPDATE_CONFIG" in workflow
+    assert "secrets.UPDATE_SIGNING_KEY" in workflow
+    assert "darwin-aarch64=artifacts/Loudness-Analyzer.dmg" in workflow
+    assert '"Loudness-Analyzer.dmg"' in build
+    assert "artifacts/latest.json" in workflow.split("files: |", 1)[1]
