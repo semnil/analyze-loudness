@@ -1605,3 +1605,16 @@ function showError(message) {
     statusEl.appendChild(btn);
   }
 }
+
+// Settings button, update check at launch, and the update install
+// (vendor/py-analyze-common/src/analyze_common/web/update.js).
+window.analyzeUpdate.init({
+  appName: "Loudness Analyzer",
+  isBusy: function () { return _isBusy; },
+  setBusy: function (busy) { _setBusy(busy, false); },
+  setStatus: function (text) {
+    _setStatusNormal();
+    statusEl.textContent = text;
+  },
+  showError: showError,
+});

@@ -879,7 +879,155 @@ class TestCommonCss:
         assert resp.getheader("Content-Type").startswith("text/css")
         assert body == COMMON_CSS.read_bytes()
 
+    def test_update_js_served_from_analyze_common(self, handler_class):
+        from analyze_common.web import UPDATE_JS
+        resp, body = self._get(handler_class, "/common/update.js")
+        assert resp.status == 200
+        assert resp.getheader("Content-Type").startswith("text/javascript")
+        assert body == UPDATE_JS.read_bytes()
+
+    def test_index_loads_update_js_before_main_js(self, handler_class):
+        from pathlib import Path
+        html = (Path(__import__('analyze_loudness.gui', fromlist=['FRONTEND_DIR']).FRONTEND_DIR) / "index.html").read_text(encoding="utf-8")
+        assert 0 <= html.index('src="common/update.js"') < html.index('src="main.js"')
+
     def test_index_loads_common_css_before_style_css(self, handler_class):
         from pathlib import Path
         html = (Path(__import__('analyze_loudness.gui', fromlist=['FRONTEND_DIR']).FRONTEND_DIR) / "index.html").read_text(encoding="utf-8")
         assert 0 <= html.index('href="common/common.css"') < html.index('href="style.css"')
+
+
+@pytest.fixture
+def update_settings(tmp_path, monkeypatch):
+    """Point the app's update settings at a temporary file."""
+    import analyze_loudness.gui as gui_mod
+    from analyze_common.settings import SettingsStore
+    store = SettingsStore(tmp_path / "settings.json")
+    monkeypatch.setattr(gui_mod._updater, "settings", store)
+    return store
+
+
+class TestUpdateEndpoints:
+    def test_status_outside_the_packaged_app(self, server, update_settings):
+        from analyze_loudness import __version__
+        status, body = _serve_post(server, "/update/status", {})
+        assert status == 200
+        assert body == {"current": __version__, "supported": False, "launch_check": True}
+
+    def test_launch_check_is_saved_to_the_settings_file(self, server, update_settings):
+        status, body = _serve_post(server, "/update/settings", {"launch_check": False})
+        assert (status, body) == (200, {"launch_check": False})
+        assert json.loads(update_settings.path.read_text(encoding="utf-8")) == {"update_check_at_launch": False}
+        status, body = _serve_post(server, "/update/status", {})
+        assert body["launch_check"] is False
+
+    def test_launch_check_can_be_turned_back_on(self, server, update_settings):
+        update_settings.set("update_check_at_launch", False)
+        status, body = _serve_post(server, "/update/settings", {"launch_check": True})
+        assert (status, body) == (200, {"launch_check": True})
+        assert update_settings.get("update_check_at_launch", None) is True
+
+    @pytest.mark.parametrize("payload", [{}, {"launch_check": "false"}, {"launch_check": 0}, {"launch_check": None}])
+    def test_settings_need_a_boolean(self, server, update_settings, payload):
+        status, body = _serve_post(server, "/update/settings", payload)
+        assert status == 400
+        assert not update_settings.path.exists()
+
+    def test_settings_write_failure(self, server, update_settings):
+        with patch.object(update_settings, "set", side_effect=OSError(13, "Permission denied")):
+            status, body = _serve_post(server, "/update/settings", {"launch_check": False})
+        assert status == 500
+        assert "could not be saved" in body["error"]
+
+    def test_check_offers_a_newer_version(self, server):
+        with patch("analyze_loudness.gui._updater.check", return_value="9.0.0"):
+            status, body = _serve_post(server, "/update/check", {})
+        assert (status, body) == (200, {"available": True, "version": "9.0.0"})
+
+    def test_check_up_to_date(self, server):
+        with patch("analyze_loudness.gui._updater.check", return_value=None):
+            status, body = _serve_post(server, "/update/check", {})
+        assert (status, body) == (200, {"available": False})
+
+    def test_check_failure(self, server):
+        from analyze_common.update import UpdateError
+        with patch("analyze_loudness.gui._updater.check", side_effect=UpdateError("HTTP 404 from x")):
+            status, body = _serve_post(server, "/update/check", {})
+        assert status == 502
+        assert body["error"] == "HTTP 404 from x"
+
+    @pytest.mark.parametrize("payload", [{}, {"version": 5}, {"version": ""}])
+    def test_install_needs_a_version(self, server, payload):
+        with patch("analyze_loudness.gui._updater.install") as install:
+            status, body = _serve_post(server, "/update/install", payload)
+        assert status == 400
+        install.assert_not_called()
+
+    def test_install_failure(self, server, mock_window):
+        from analyze_common.update import UpdateError
+        with patch("analyze_loudness.gui._updater.install",
+                   side_effect=UpdateError("The downloaded update does not match its signature")), \
+             patch("analyze_loudness.gui._exit_now") as exit_now:
+            status, body = _serve_post(server, "/update/install", {"version": "9.0.0"})
+        assert status == 500
+        assert "signature" in body["error"]
+        mock_window.destroy.assert_not_called()
+        exit_now.assert_not_called()
+
+    def test_windows_handoff_closes_the_window(self, server, mock_window):
+        from analyze_common.update import Handoff
+        with patch("analyze_loudness.gui._updater.install", return_value=Handoff("close")) as install, \
+             patch("analyze_loudness.gui._exit_now") as exit_now:
+            status, body = _serve_post(server, "/update/install", {"version": "9.0.0"})
+        assert (status, body) == (200, {"restarting": True})
+        install.assert_called_once_with("9.0.0")
+        mock_window.destroy.assert_called_once()
+        exit_now.assert_not_called()
+
+    def test_mac_handoff_exits_at_once(self, server, mock_window):
+        from analyze_common.update import Handoff
+        with patch("analyze_loudness.gui._updater.install", return_value=Handoff("immediate")), \
+             patch("analyze_loudness.gui._exit_now") as exit_now:
+            status, body = _serve_post(server, "/update/install", {"version": "9.0.0"})
+        assert (status, body) == (200, {"restarting": True})
+        exit_now.assert_called_once()
+        mock_window.destroy.assert_not_called()
+
+    def test_relaunch_failure_keeps_running(self, server, mock_window):
+        from analyze_common.update import Handoff
+        with patch("analyze_loudness.gui._updater.install",
+                   return_value=Handoff(None, restart_error="Resource busy")), \
+             patch("analyze_loudness.gui._exit_now") as exit_now:
+            status, body = _serve_post(server, "/update/install", {"version": "9.0.0"})
+        assert (status, body) == (200, {"installed": True, "restart_error": "Resource busy"})
+        exit_now.assert_not_called()
+        mock_window.destroy.assert_not_called()
+
+    def test_install_refuses_other_content_types(self, server):
+        import http.client
+        t = threading.Thread(target=server.handle_request)
+        t.start()
+        conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1])
+        with patch("analyze_loudness.gui._updater.install") as install:
+            conn.request("POST", "/update/install", body=b'{"version": "9.0.0"}',
+                         headers={"Content-Type": "text/plain"})
+            resp = conn.getresponse()
+            resp.read()
+        conn.close()
+        t.join(timeout=5)
+        assert resp.status == 415
+        install.assert_not_called()
+
+    def test_exit_now_does_the_atexit_cleanup(self, tmp_path):
+        import analyze_loudness.gui as gui_mod
+        cache, upload = tmp_path / "cache", tmp_path / "upload"
+        cache.mkdir()
+        upload.mkdir()
+        with patch.object(gui_mod, "_cache_dir", str(cache)), \
+             patch.object(gui_mod, "_upload_dir", str(upload)), \
+             patch.object(gui_mod, "_cleanup_orphan_tempdirs") as sweep, \
+             patch.object(gui_mod.os, "_exit") as exit_:
+            gui_mod._exit_now()
+        assert not cache.exists() and not upload.exists()
+        sweep.assert_called_once()
+        exit_.assert_called_once_with(0)

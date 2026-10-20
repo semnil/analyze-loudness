@@ -29,7 +29,9 @@ from analyze_loudness.download import (
     AUDIO_EXTENSIONS, compute_middle, is_network_path, is_url, local_path, probe_duration,
     resolve_source, sanitize_filename,
 )
-from analyze_common.web import COMMON_CSS
+from analyze_loudness.update import UPDATE_CONFIG
+from analyze_common.update import UpdateError, Updater, hold_instance_mutex
+from analyze_common.web import COMMON_CSS, UPDATE_JS
 
 
 def _get_base_dir() -> Path:
@@ -92,6 +94,20 @@ def _cleanup_orphan_tempdirs() -> None:
 
 
 atexit.register(_cleanup_orphan_tempdirs)
+
+_updater = Updater(UPDATE_CONFIG)
+
+
+def _exit_now() -> None:
+    """End the process at once, without the interpreter's shutdown, after
+    doing the atexit work here.  Called once a macOS update has replaced the
+    bundle on disk, from which nothing more is imported."""
+    shutil.rmtree(_cache_dir, True)
+    shutil.rmtree(_upload_dir, True)
+    _cleanup_orphan_tempdirs()
+    os._exit(0)
+
+
 _CACHE_MAX_ENTRIES = 10
 _result_cache: "OrderedDict[tuple, str]" = OrderedDict()  # (url, duration) -> json path
 # In-memory map for externally loaded JSON.  Kept separate from _result_cache
@@ -230,13 +246,18 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             return None
         return result if isinstance(result, str) else result[0]
 
-    _COMMON_CSS_URL = "/common/common.css"
+    # analyze_common's shared assets, which live outside FRONTEND_DIR.
+    _COMMON_FILES = {
+        "/common/common.css": (COMMON_CSS, "text/css; charset=utf-8"),
+        "/common/update.js": (UPDATE_JS, "text/javascript; charset=utf-8"),
+    }
 
     def do_GET(self):
         if not self._check_host():
             return
-        if self.path.split("?", 1)[0] == self._COMMON_CSS_URL:
-            self._send_common_css()
+        common = self._COMMON_FILES.get(self.path.split("?", 1)[0])
+        if common:
+            self._send_common(*common)
             return
         super().do_GET()
 
@@ -251,15 +272,14 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             return False
         return True
 
-    def _send_common_css(self):
-        """Serve analyze_common's shared stylesheet, which lives outside FRONTEND_DIR."""
+    def _send_common(self, path, content_type):
         try:
-            body = COMMON_CSS.read_bytes()
+            body = path.read_bytes()
         except OSError:
             self.send_error(404)
             return
         self.send_response(200)
-        self.send_header("Content-Type", "text/css; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -276,6 +296,10 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             "/compare": self._handle_compare,
             "/browse": self._handle_browse,
             "/upload": self._handle_upload,
+            "/update/status": self._handle_update_status,
+            "/update/settings": self._handle_update_settings,
+            "/update/check": self._handle_update_check,
+            "/update/install": self._handle_update_install,
         }
         if self.path in handlers:
             try:
@@ -531,6 +555,53 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             os.unlink(path)
         except OSError:
             pass
+
+    def _handle_update_status(self):
+        self._json_response(200, _updater.status())
+
+    def _handle_update_settings(self):
+        """Store the "Check at launch" setting in the app's settings file."""
+        launch_check = self._read_json_body().get("launch_check")
+        if not isinstance(launch_check, bool):
+            self._json_error(400, "Missing or invalid 'launch_check' field")
+            return
+        try:
+            _updater.set_launch_check(launch_check)
+        except UpdateError as e:
+            self._json_error(500, str(e))
+            return
+        self._json_response(200, {"launch_check": _updater.launch_check()})
+
+    def _handle_update_check(self):
+        try:
+            version = _updater.check()
+        except UpdateError as e:
+            self._json_error(502, str(e))
+            return
+        if version is None:
+            self._json_response(200, {"available": False})
+        else:
+            self._json_response(200, {"available": True, "version": version})
+
+    def _handle_update_install(self):
+        """Download, verify and hand off the update; the app then exits."""
+        version = self._read_json_body().get("version")
+        if not isinstance(version, str) or not version:
+            self._json_error(400, "Missing or invalid 'version' field")
+            return
+        try:
+            handoff = _updater.install(version)
+        except UpdateError as e:
+            self._json_error(500, str(e))
+            return
+        if handoff.exit_mode is None:
+            self._json_response(200, {"installed": True, "restart_error": handoff.restart_error})
+            return
+        self._json_response(200, {"restarting": True})
+        if handoff.exit_mode == "immediate":
+            _exit_now()
+        elif _window is not None:
+            _window.destroy()
 
     def _handle_save(self):
         body = self._read_json_body()
@@ -796,6 +867,7 @@ class _HTTPServer(ThreadingHTTPServer):
 
 def main():
     _set_application_user_model_id()
+    hold_instance_mutex(UPDATE_CONFIG.mutex_name)
     # When frozen, add bundled binaries (ffmpeg, ffprobe, deno) to PATH
     if getattr(sys, "frozen", False):
         bin_dir = str(Path(sys._MEIPASS) / "bin")

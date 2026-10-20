@@ -70,9 +70,25 @@
     try { localStorage.setItem("loudness-theme", "light"); } catch (_) {}
   </script>
 
+  <!-- update.js asks /update/status while main.js loads, before test_ui.js
+       installs its fetch mock: answer as the packaged app does, with the
+       launch check off so loading the page checks nothing. -->
+  <script>
+    (function () {
+      var pageFetch = window.fetch;
+      window.fetch = function(url, opts) {
+        if (url === "/update/status") {
+          return Promise.resolve(new Response(JSON.stringify({ current: "1.4.1", supported: true, launch_check: false }), { status: 200 }));
+        }
+        return pageFetch.call(window, url, opts);
+      };
+    })();
+  </script>
+
   <!-- Load the actual frontend code -->
   <script src="../../frontend/i18n.js"></script>
   <script src="../../frontend/gate.js"></script>
+  <script src="../../vendor/py-analyze-common/src/analyze_common/web/update.js"></script>
   <script src="../../frontend/main.js"></script>
 
   <!-- Test runner -->

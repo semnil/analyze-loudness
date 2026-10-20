@@ -5,6 +5,9 @@
   #define MyAppVersion "dev"
 #endif
 #define MyAppExeName "analyze-loudness.exe"
+#ifndef MyAppMutex
+  #error MyAppMutex is passed by build.py (/DMyAppMutex=, the mutex_name in src/analyze_loudness/update.py)
+#endif
 
 [Setup]
 AppId={{A7B3C4D5-E6F7-8901-2345-6789ABCDEF01}
@@ -42,3 +45,5 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+#include "vendor\py-analyze-common\installer\auto_update.iss"
