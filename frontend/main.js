@@ -834,6 +834,8 @@ async function readNdjsonStream(resp, signal, prefix = "") {
     if (countdownTimer) clearInterval(countdownTimer);
   }
 
+  // A cancel can also end the read as done; the abort is still reported as one.
+  if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
   if (!result) throw new Error(window.i18n.t("err.no_result"));
   return result;
 }
