@@ -31,7 +31,7 @@ from analyze_loudness.download import (
 )
 from analyze_loudness.update import UPDATE_CONFIG
 from analyze_common.settings import SETTINGS_NAME, SettingsStore, settings_dir
-from analyze_common.ui_settings import UiSettings
+from analyze_common.ui_settings import UiSettings, show_window_color_until_paint
 from analyze_common.update import UpdateError, Updater, hold_instance_mutex
 from analyze_common.web import COMMON_CSS, UPDATE_JS
 
@@ -876,6 +876,7 @@ def main():
         height=800,
         background_color=bg,
     )
+    show_window_color_until_paint(_window)
     webview.start(icon=icon)
     server.shutdown()
 
