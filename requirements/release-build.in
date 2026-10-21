@@ -1,0 +1,6 @@
+# The pip that installs requirements/release.txt, and the build backends of its source distributions and of this
+# project (release.yaml installs them with --no-build-isolation). hatchling builds the editable install with editables.
+pip
+setuptools
+hatchling
+editables
