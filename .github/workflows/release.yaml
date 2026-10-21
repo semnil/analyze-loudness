@@ -143,6 +143,12 @@ jobs:
             echo "::warning::MACOS_SIGNING_CERT not set — building unsigned DMG"
           fi
 
+      - name: Build .app Bundle 🧱
+        run: python build.py
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      # Runs right before Codesign .app, which deletes the keychain when it ends. Only codesign may use the key.
       - name: Import Apple Developer ID Certificate 🔑
         if: steps.check-signing.outputs.signed == 'true'
         env:
@@ -151,6 +157,7 @@ jobs:
         run: |
           KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
           KEYCHAIN_PASSWORD=$(openssl rand -hex 32)
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
 
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
@@ -158,7 +165,7 @@ jobs:
 
           echo -n "$CERT_B64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
           security import "$RUNNER_TEMP/cert.p12" -P "$CERT_PASSWORD" \
-            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+            -T /usr/bin/codesign -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: \
             -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" > /dev/null
 
@@ -173,16 +180,12 @@ jobs:
           echo '--- Signing identities ---'
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
-      - name: Build .app Bundle 🧱
-        run: python build.py
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-
       - name: Codesign .app 🔏
         if: steps.check-signing.outputs.signed == 'true'
         env:
           TEAM_ID: ${{ secrets.MACOS_NOTARIZATION_TEAM_ID }}
         run: |
+          trap 'security delete-keychain "$KEYCHAIN_PATH"' EXIT
           APP="dist/Loudness Analyzer.app"
           IDENTITY=$(security find-identity -v -p codesigning | \
             grep "Developer ID Application" | head -1 | \
