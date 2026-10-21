@@ -177,8 +177,7 @@ analyze-loudness/
 ├── tests/                      # pytest (tests/frontend/ holds the UI tests run with Playwright)
 ├── docs/
 │   ├── architecture.md
-│   ├── architecture.ja.md
-│   └── security-audit.md
+│   └── architecture.ja.md
 ├── vendor/py-analyze-common/   # shared library (git submodule)
 ├── build.py                    # Build script (asset download + PyInstaller + Inno Setup / DMG)
 ├── analyze-loudness.spec       # PyInstaller spec

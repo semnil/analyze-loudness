@@ -118,6 +118,17 @@ class TestNetworkPaths:
     @patch("analyze_loudness.download.local_path", side_effect=AssertionError("resolved a network path"))
     def test_resolve_source_refuses_before_touching_the_path(self, _resolve, tmp_path):
         from analyze_loudness.download import resolve_source
-        for p in self.UNC:
+        for p in self.UNC + self.NT_NAMESPACE:
             with pytest.raises(ValueError, match="(?i)network"):
                 resolve_source(p, str(tmp_path))
+
+    # NT namespace paths, including the ones "." / ".." segments normalize to it.
+    NT_NAMESPACE = [r"\??\UNC\host\share\a.wav", "/??/UNC/host/share/a.wav", r"\??\C:\a.wav",
+                    r"\.\??\UNC\host\share\a.wav", r"\dir\..\??\UNC\host\share\a.wav", "\\??\\"]
+
+    def test_nt_namespace_detected(self):
+        from analyze_loudness.download import is_network_path
+        for p in self.NT_NAMESPACE:
+            assert is_network_path(p), p
+        for p in [r"\Users\me\a.wav", r"C:\dir\..\??\a.wav", r"..\??\a.wav", "/Users/me/??/a.wav"]:
+            assert not is_network_path(p), p

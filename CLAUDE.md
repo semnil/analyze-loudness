@@ -5,7 +5,7 @@ It comes in two forms: a CLI version and a GUI application version (Windows / ma
 
 ## Documentation languages
 
-- **Override of the global CLAUDE.md's 「ドキュメント」 language rule**: this file is written entirely in English, and the documents are maintained in both English and Japanese — English at `README.md` and `docs/architecture.md`, Japanese at `README.ja.md` and `docs/architecture.ja.md`. `docs/security-audit.md` is English only
+- **Override of the global CLAUDE.md's 「ドキュメント」 language rule**: this file is written entirely in English, and the documents are maintained in both English and Japanese — English at `README.md` and `docs/architecture.md`, Japanese at `README.ja.md` and `docs/architecture.ja.md`.
 
 ## Architecture overview
 
@@ -58,7 +58,7 @@ analyze-loudness/
 │   ├── test_plot.py
 │   ├── test_update.py          # UPDATE_CONFIG and the installer.iss / spec / release.yaml that match it
 │   ├── test_ffmpeg_binary.py   # reads the ffmpeg / ffprobe on PATH with the app's parsers (EXPECT_FFMPEG_DIR points at the bundled binaries)
-│   ├── test_release_workflow.py # release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe inside the distributables
+│   ├── test_release_workflow.py # release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe inside the distributables, and keeps UPDATE_SIGNING_KEY in a job with a read-only token
 │   ├── test_third_party_licenses.py # the GPL full texts THIRD_PARTY_LICENSES.txt points at, and the spec / installer.iss that bundle them
 │   ├── test_frontend.py        # Playwright headless Chromium runner
 │   └── frontend/
@@ -67,8 +67,7 @@ analyze-loudness/
 ├── docs/
 │   ├── architecture.md
 │   ├── architecture.ja.md
-│   ├── screenshot.png
-│   └── security-audit.md
+│   └── screenshot.png
 ├── vendor/py-analyze-common/   # git submodule (used through sys.path injection)
 ├── build.py                    # Build script (asset download + PyInstaller + Inno Setup)
 ├── analyze-loudness.spec       # PyInstaller spec
@@ -171,7 +170,8 @@ This feature is exposed through the CLI's `--duration` option (single analysis o
 
 The input field accepts a URL or a local path. Input that contains `://` or starts with `javascript:` is a URL only when it is http(s);
 anything else is treated as a local path (`/analyze` in `src/analyze_loudness/gui.py` on the server, and `_sourceKind` in `frontend/main.js` on the frontend, mirror
-the same rule). UNC paths and device paths starting with `\\` or `//` are refused before resolving or checking existence
+the same rule). UNC paths and device paths starting with `\\` or `//`, and NT namespace paths that start with `\??\` once `.` / `..` segments are applied
+(`\??\UNC\host\share\...`, `\.\??\...`), are refused before resolving or checking existence
 (`is_network_path` in `src/analyze_loudness/download.py`; on the frontend, `"network"` of `_sourceKind`). A local file is made absolute and kept as is in `meta.source_url`, and its title is the
 file name without the extension. The file's modification time is added to the cache key, and of the results read by `/load`, those with a local source
 are not put in the cache. A dropped file is placed by `/upload` in a temporary directory (deleted on exit), so
@@ -354,7 +354,7 @@ PYTHONPATH=vendor/py-analyze-common/src python -m analyze_common.update_manifest
 gh secret set UPDATE_SIGNING_KEY < analyze-loudness.pem
 ```
 
-The create-release job of `.github/workflows/release.yaml` makes `latest.json` with `python -m analyze_common.update_manifest sign` and puts it on the Release together with the installers. The job fails when the secret is missing, when the created signature cannot be verified with `PUBLIC_KEY` (the secret and the public key disagree), or when the tag is not `v` + `__version__`.
+The sign-manifest job of `.github/workflows/release.yaml` makes `latest.json` with `python -m analyze_common.update_manifest sign`, and the create-release job puts it on the Release together with the installers. `UPDATE_SIGNING_KEY` is referenced only by sign-manifest, which runs with a read-only token, a checkout without stored credentials and no pip cache, and installs only the `yt-dlp` wheel pinned in `pyproject.toml` (`--no-deps --only-binary :all:`; `analyze_common` imports `yt_dlp`). create-release is the only job with `contents: write`, and it runs no Python (`tests/test_release_workflow.py` checks both). The sign-manifest job fails when the secret is missing, when the created signature cannot be verified with `PUBLIC_KEY` (the secret and the public key disagree), or when the tag is not `v` + `__version__`.
 
 ### Window icon
 
