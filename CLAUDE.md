@@ -5,7 +5,7 @@ It comes in two forms: a CLI version and a GUI application version (Windows / ma
 
 ## Documentation languages
 
-- **Override of the global CLAUDE.md's 「ドキュメント」 language rule**: this file is written entirely in English, and the documents are maintained in both English and Japanese — English at `README.md` and `docs/architecture.md`, Japanese at `README.ja.md` and `docs/architecture.ja.md`. `docs/security-audit.md` is English only
+- **Override of the global CLAUDE.md's 「ドキュメント」 language rule**: this file is written entirely in English, and the documents are maintained in both English and Japanese — English at `README.md` and `docs/architecture.md`, Japanese at `README.ja.md` and `docs/architecture.ja.md`.
 
 ## Architecture overview
 
@@ -67,8 +67,7 @@ analyze-loudness/
 ├── docs/
 │   ├── architecture.md
 │   ├── architecture.ja.md
-│   ├── screenshot.png
-│   └── security-audit.md
+│   └── screenshot.png
 ├── vendor/py-analyze-common/   # git submodule (used through sys.path injection)
 ├── build.py                    # Build script (asset download + PyInstaller + Inno Setup)
 ├── analyze-loudness.spec       # PyInstaller spec
