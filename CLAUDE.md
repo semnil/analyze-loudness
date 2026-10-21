@@ -58,7 +58,7 @@ analyze-loudness/
 │   ├── test_plot.py
 │   ├── test_update.py          # UPDATE_CONFIG and the installer.iss / spec / release.yaml that match it
 │   ├── test_ffmpeg_binary.py   # reads the ffmpeg / ffprobe on PATH with the app's parsers (EXPECT_FFMPEG_DIR points at the bundled binaries)
-│   ├── test_release_workflow.py # release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe inside the distributables
+│   ├── test_release_workflow.py # release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe inside the distributables, and keeps UPDATE_SIGNING_KEY in a job with a read-only token
 │   ├── test_third_party_licenses.py # the GPL full texts THIRD_PARTY_LICENSES.txt points at, and the spec / installer.iss that bundle them
 │   ├── test_frontend.py        # Playwright headless Chromium runner
 │   └── frontend/
@@ -354,7 +354,7 @@ PYTHONPATH=vendor/py-analyze-common/src python -m analyze_common.update_manifest
 gh secret set UPDATE_SIGNING_KEY < analyze-loudness.pem
 ```
 
-The create-release job of `.github/workflows/release.yaml` makes `latest.json` with `python -m analyze_common.update_manifest sign` and puts it on the Release together with the installers. The job fails when the secret is missing, when the created signature cannot be verified with `PUBLIC_KEY` (the secret and the public key disagree), or when the tag is not `v` + `__version__`.
+The sign-manifest job of `.github/workflows/release.yaml` makes `latest.json` with `python -m analyze_common.update_manifest sign`, and the create-release job puts it on the Release together with the installers. `UPDATE_SIGNING_KEY` is referenced only by sign-manifest, which runs with a read-only token, a checkout without stored credentials and no pip cache, and installs only the `yt-dlp` wheel pinned in `pyproject.toml` (`--no-deps --only-binary :all:`; `analyze_common` imports `yt_dlp`). create-release is the only job with `contents: write`, and it runs no Python (`tests/test_release_workflow.py` checks both). The sign-manifest job fails when the secret is missing, when the created signature cannot be verified with `PUBLIC_KEY` (the secret and the public key disagree), or when the tag is not `v` + `__version__`.
 
 ### Window icon
 
