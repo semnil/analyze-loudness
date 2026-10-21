@@ -1,0 +1,34 @@
+name: Probe dispatch shape
+run-name: "${{ inputs.pr && format('Workflow checks for #{0}', inputs.pr) || github.event.pull_request.title }}"
+
+# Probe: the workflow_dispatch input, run-name and job shape of workflow-checks.yml (a number input, a job that
+# needs another with if: always(), checks: write) without pull_request_target. Both jobs only echo.
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number
+        required: true
+        type: number
+
+permissions:
+  contents: read
+
+jobs:
+  first:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      value: ${{ steps.out.outputs.value }}
+    steps:
+      - id: out
+        run: echo "value=ok" >> "$GITHUB_OUTPUT"
+  second:
+    needs: first
+    if: always() && github.event_name == 'workflow_dispatch' && needs.first.outputs.value != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      checks: write
+    steps:
+      - run: echo ok
