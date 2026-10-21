@@ -12,13 +12,13 @@ missing one fails the module instead of skipping it.
 
 import math
 import os
-import shutil
 import wave
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from analyze_loudness import _find_executable as find_executable
 from analyze_loudness.analysis import run_ebur128
 from analyze_loudness.download import probe_duration
 
@@ -34,7 +34,7 @@ TOLERANCE = 0.1
 def _binaries():
     expected = os.environ.get("EXPECT_FFMPEG_DIR")
     if not expected:
-        if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        if find_executable("ffmpeg") is None or find_executable("ffprobe") is None:
             pytest.skip("ffmpeg / ffprobe not on PATH")
         yield
         return
@@ -43,7 +43,7 @@ def _binaries():
     patch.setenv("PATH", str(directory) + os.pathsep + os.environ.get("PATH", ""))
     try:
         for tool in ("ffmpeg", "ffprobe"):
-            found = shutil.which(tool)
+            found = find_executable(tool)
             assert found is not None and Path(found).parent.resolve() == directory, (
                 f"{tool} resolves to {found}, not to a file in {directory}")
         yield

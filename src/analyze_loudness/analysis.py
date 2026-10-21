@@ -5,7 +5,7 @@ import subprocess
 
 import numpy as np
 
-from analyze_loudness import _ffmpeg_kwargs
+from analyze_loudness import _ffmpeg_kwargs, _find_executable
 
 SILENCE_THRESHOLD = -60
 SILENCE_PCT_THRESHOLD = -40
@@ -45,9 +45,13 @@ def run_ebur128(
     """Run ffmpeg ebur128 and return (time, momentary, short_term, summary).
 
     Parses per-frame lines emitted by the ebur128 filter and the final
-    summary block.  All loudness values are in LUFS.
+    summary block.  All loudness values are in LUFS.  ffmpeg runs from the
+    path find_executable() gives; FileNotFoundError when it is not on PATH.
     """
-    cmd = ["ffmpeg"]
+    ffmpeg = _find_executable("ffmpeg")
+    if ffmpeg is None:
+        raise FileNotFoundError("ffmpeg was not found on PATH")
+    cmd = [ffmpeg]
     if ss is not None:
         cmd += ["-ss", str(ss)]
     cmd += ["-i", path]
