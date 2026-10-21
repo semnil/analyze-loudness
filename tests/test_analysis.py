@@ -95,6 +95,21 @@ class TestRunEbur128Parsing:
     """Test ebur128 stderr parsing with mocked subprocess."""
 
     @patch("analyze_loudness.analysis.subprocess.run")
+    @patch("analyze_loudness.analysis._find_executable", return_value="/opt/tools/ffmpeg")
+    def test_runs_ffmpeg_from_find_executable(self, mock_find, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stderr=MOCK_EBUR128_STDERR)
+        run_ebur128("/fake/audio.opus")
+        mock_find.assert_called_once_with("ffmpeg")
+        assert mock_run.call_args[0][0][0] == "/opt/tools/ffmpeg"
+
+    @patch("analyze_loudness.analysis.subprocess.run")
+    @patch("analyze_loudness.analysis._find_executable", return_value=None)
+    def test_no_ffmpeg_on_path_raises_before_running(self, _find, mock_run):
+        with pytest.raises(FileNotFoundError, match="ffmpeg"):
+            run_ebur128("/fake/audio.opus")
+        mock_run.assert_not_called()
+
+    @patch("analyze_loudness.analysis.subprocess.run")
     def test_parses_per_frame_data(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stderr=MOCK_EBUR128_STDERR)
         t, M, S, summary = run_ebur128("/fake/audio.opus")

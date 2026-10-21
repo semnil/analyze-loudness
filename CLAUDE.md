@@ -93,7 +93,7 @@ analyze-loudness "https://..." ./loudness_saved.json   # comparison (2-6 sources
 ### CLI dependencies (installed with pip)
 
 - `yt-dlp` -- dependency in pyproject.toml (used through the Python API)
-- `ffmpeg` / `ffprobe` -- the `static-ffmpeg` package. Imported only when ffmpeg is not on PATH (decided with `shutil.which`)
+- `ffmpeg` / `ffprobe` -- the `static-ffmpeg` package. Imported only when ffmpeg is not on PATH (decided with py-analyze-common's `find_executable()`, [Starting ffmpeg / ffprobe by absolute path](#starting-ffmpeg--ffprobe-by-absolute-path))
 - `numpy`, `matplotlib` -- CLI only
 - `pytest` -- development dependency (`pip install -e ".[dev]"`)
 
@@ -218,6 +218,10 @@ ffmpeg / ffprobe are fetched as osxexperts.net's arm64 native builds. evermeet.c
   ```
 
 - Verification: `tests/test_ffmpeg_binary.py` reads a 1 kHz sine wave written with numpy through the ffmpeg / ffprobe on PATH and the app's parsers (`run_ebur128()` / `probe_duration()`), and compares Integrated, the relative gate and True Peak with the BS.1770 calculation. Given the directory of the bundled binaries in `EXPECT_FFMPEG_DIR`, it confirms the ffmpeg / ffprobe there are found first, and fails instead of skipping when they are not (the last line of [Tests](#tests)). The release build (`.github/workflows/release.yaml`) runs this test on the copies inside the distributables (on Windows `dist/analyze-loudness/_internal/bin` collected by PyInstaller, on macOS `Contents/Frameworks/bin` of the `.app` after signing), and on failure it does not proceed to uploading the artifacts and creating the Draft Release (`tests/test_release_workflow.py` checks the position of that step and the directory it passes against the spec and `installer.iss`)
+
+### Starting ffmpeg / ffprobe by absolute path
+
+`run_ebur128()` in `src/analyze_loudness/analysis.py`, and py-analyze-common's `probe_info()` / `download_audio()`, start ffmpeg / ffprobe (and yt-dlp's deno) by the absolute path that py-analyze-common's `find_executable()` returns. It searches only the absolute entries of PATH, in order; the frozen app puts the bundled `bin` folder at the front of PATH (`main()` in `src/analyze_loudness/gui.py`). The reason is in the "Programs start by absolute path" section of `vendor/py-analyze-common/CLAUDE.md`. When the program they run is not on PATH (ffmpeg for `run_ebur128()` / `download_audio()`, ffprobe for `probe_info()`), they raise `FileNotFoundError` without starting a process. `tests/test_ffmpeg_binary.py` checks `EXPECT_FFMPEG_DIR` with the same `find_executable()`.
 
 ### deno (yt-dlp dependency)
 
@@ -364,7 +368,7 @@ The Windows taskbar groups processes by AppUserModelID. When it is not set, the 
 
 ### Windows subprocess console hiding
 
-In PyInstaller frozen mode, `STARTF_USESHOWWINDOW` hides the console window of ffmpeg / ffprobe. yt-dlp runs as a Python API and starts no subprocess.
+In PyInstaller frozen mode, `STARTF_USESHOWWINDOW` hides the console window of the ffmpeg / ffprobe the app starts. yt-dlp runs as a Python API, and its own `Popen` (`yt_dlp/utils/_utils.py`) sets `STARTF_USESHOWWINDOW` on Windows for the ffmpeg / ffprobe / deno it starts.
 
 ## Response format (GUI NDJSON)
 

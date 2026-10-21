@@ -157,7 +157,7 @@ Only the CLI exposes this feature, through the `--duration` option. The GUI does
 ### 6. Conditional static-ffmpeg (CLI only)
 
 In the CLI, `static-ffmpeg` is not used if ffmpeg is installed on the system.
-It is detected with `shutil.which("ffmpeg")`, and `static_ffmpeg.add_paths()` is called only when it is absent.
+It is detected with py-analyze-common's `find_executable("ffmpeg")` (the absolute entries of PATH only; the same lookup that starts ffmpeg), and `static_ffmpeg.add_paths()` is called only when it is absent.
 
 ### 7. uPlot dark mode and CSS `!important`
 

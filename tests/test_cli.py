@@ -174,3 +174,26 @@ class TestLocalSources:
         first = doc["compare"]["tracks"][0]
         assert first["title"] == "tone"
         assert first["meta"]["source_url"] == str(wav.resolve())
+
+
+class TestStaticFfmpegFallback:
+    """main() puts static-ffmpeg's binaries on PATH only when find_executable() finds no ffmpeg."""
+
+    def test_added_when_ffmpeg_is_not_found(self):
+        from unittest.mock import patch
+        from analyze_loudness.cli import main
+        with patch("analyze_loudness.cli._find_executable", return_value=None) as find, \
+             patch("static_ffmpeg.add_paths") as add_paths:
+            with pytest.raises(SystemExit):
+                main(["--help"])
+        find.assert_called_once_with("ffmpeg")
+        add_paths.assert_called_once_with()
+
+    def test_not_added_when_ffmpeg_is_found(self):
+        from unittest.mock import patch
+        from analyze_loudness.cli import main
+        with patch("analyze_loudness.cli._find_executable", return_value="/opt/tools/ffmpeg"), \
+             patch("static_ffmpeg.add_paths") as add_paths:
+            with pytest.raises(SystemExit):
+                main(["--help"])
+        add_paths.assert_not_called()

@@ -157,7 +157,7 @@ CLI のみが `--duration` オプションでこの機能を公開する。GUI �
 ### 6. Conditional static-ffmpeg (CLI only)
 
 CLI ではシステムに ffmpeg がインストールされていれば `static-ffmpeg` を使わない。
-`shutil.which("ffmpeg")` で検出し、不在時のみ `static_ffmpeg.add_paths()` を呼ぶ。
+py-analyze-common の `find_executable("ffmpeg")` (PATH のうち絶対パスの項目だけを探す。ffmpeg を起動するときと同じ探し方) で検出し、不在時のみ `static_ffmpeg.add_paths()` を呼ぶ。
 
 ### 7. uPlot ダークモードと CSS `!important`
 

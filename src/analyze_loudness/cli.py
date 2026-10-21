@@ -3,12 +3,11 @@
 import argparse
 import json
 import math
-import shutil
 import tempfile
 from pathlib import Path
 
 
-from analyze_loudness import _json_safe
+from analyze_loudness import _find_executable, _json_safe
 from analyze_loudness.download import (
     compute_middle, is_url, probe_duration, resolve_source, sanitize_filename,
 )
@@ -62,7 +61,7 @@ def _is_json_source(source: str) -> bool:
 
 
 def main(argv: list[str] | None = None) -> None:
-    if not shutil.which("ffmpeg"):
+    if _find_executable("ffmpeg") is None:
         import static_ffmpeg
         static_ffmpeg.add_paths()
     args = parse_args(argv)
