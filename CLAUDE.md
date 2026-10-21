@@ -368,7 +368,7 @@ The Windows taskbar groups processes by AppUserModelID. When it is not set, the 
 
 ### Windows subprocess console hiding
 
-In PyInstaller frozen mode, `STARTF_USESHOWWINDOW` hides the console window of ffmpeg / ffprobe. yt-dlp runs as a Python API and starts no subprocess.
+In PyInstaller frozen mode, `STARTF_USESHOWWINDOW` hides the console window of the ffmpeg / ffprobe the app starts. yt-dlp runs as a Python API, and its own `Popen` (`yt_dlp/utils/_utils.py`) sets `STARTF_USESHOWWINDOW` on Windows for the ffmpeg / ffprobe / deno it starts.
 
 ## Response format (GUI NDJSON)
 
