@@ -367,7 +367,7 @@ Build pipeline:
 1. `build.py --skip-download` or auto-download: ffmpeg, ffprobe, deno, uPlot (yt-dlp is a Python dependency)
 2. PyInstaller (`analyze-loudness.spec`): bundles Python + dependencies + frontend + binaries
 3. Inno Setup (`installer.iss`): Windows installer with license display. Includes `vendor/py-analyze-common/installer/auto_update.iss`, and `build.py` passes `/DMyAppMutex=`. On macOS, `build.py --installer` makes the DMG with create-dmg
-4. `release.yaml`: puts `latest.json`, which signs the SHA-256 of the installer and the DMG, on the Release (13. Auto-update)
+4. `release.yaml`: puts `latest.json`, which signs the SHA-256 of the installer and the DMG, on the Release (13. Auto-update). Its jobs install Python packages only from the hash-pinned `requirements/*.txt`, and Inno Setup / create-dmg only after a SHA256 check ("Pinned release dependencies" in CLAUDE.md)
 
 ### Bundled Assets (`build_assets/bin/`)
 
