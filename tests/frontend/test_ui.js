@@ -756,6 +756,12 @@ function fakeStats() {
   assertEqual(_sourceKind("javascript:alert(1)"), null, "javascript: is refused");
   assertEqual(_sourceKind("\\\\host\\share\\a.wav"), "network", "UNC path is a network path");
   assertEqual(_sourceKind("//host/share/a.wav"), "network", "//host path is a network path");
+  assertEqual(_sourceKind("\\??\\UNC\\host\\share\\a.wav"), "network", "NT namespace path is a network path");
+  assertEqual(_sourceKind("/??/UNC/host/share/a.wav"), "network", "NT namespace path with slashes is a network path");
+  assertEqual(_sourceKind("\\.\\??\\UNC\\host\\share\\a.wav"), "network", "NT namespace path after a . segment is a network path");
+  assertEqual(_sourceKind("\\dir\\..\\??\\UNC\\host\\share\\a.wav"), "network", "NT namespace path after a .. segment is a network path");
+  assertEqual(_sourceKind("\\Users\\me\\a.wav"), "file", "Rooted Windows path is a file");
+  assertEqual(_sourceKind("C:\\dir\\..\\??\\a.wav"), "file", "?? under a drive is a file");
 
   resetState();
   urlInput.value = "/Users/me/a.wav";

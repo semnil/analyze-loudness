@@ -170,7 +170,8 @@ This feature is exposed through the CLI's `--duration` option (single analysis o
 
 The input field accepts a URL or a local path. Input that contains `://` or starts with `javascript:` is a URL only when it is http(s);
 anything else is treated as a local path (`/analyze` in `src/analyze_loudness/gui.py` on the server, and `_sourceKind` in `frontend/main.js` on the frontend, mirror
-the same rule). UNC paths and device paths starting with `\\` or `//` are refused before resolving or checking existence
+the same rule). UNC paths and device paths starting with `\\` or `//`, and NT namespace paths that start with `\??\` once `.` / `..` segments are applied
+(`\??\UNC\host\share\...`, `\.\??\...`), are refused before resolving or checking existence
 (`is_network_path` in `src/analyze_loudness/download.py`; on the frontend, `"network"` of `_sourceKind`). A local file is made absolute and kept as is in `meta.source_url`, and its title is the
 file name without the extension. The file's modification time is added to the cache key, and of the results read by `/load`, those with a local source
 are not put in the cache. A dropped file is placed by `/upload` in a temporary directory (deleted on exit), so

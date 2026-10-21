@@ -1,5 +1,6 @@
 """Download audio via yt-dlp Python API and probe media info via ffprobe."""
 
+import ntpath
 from pathlib import Path
 
 from analyze_common.download import (  # noqa: F401
@@ -20,10 +21,15 @@ AUDIO_EXTENSIONS = (
 
 def is_network_path(source: str) -> bool:
     r"""True for UNC and device paths (two leading slashes or backslashes, as in
-    \\host\share, //host/share, \\?\ and \\.\).  These are refused before
-    the path is resolved or opened: on Windows, resolving or opening one
-    connects to the named host."""
-    return source[:2].replace("/", "\\") == "\\\\"
+    \\host\share, //host/share, \\?\ and \\.\) and for NT namespace paths
+    (\??\, as in \??\UNC\host\share, also when "." / ".." segments lead to
+    it, as in \.\??\UNC\host\share).  These are refused before the path is
+    resolved or opened: on Windows, resolving or opening one connects to the
+    named host."""
+    if source[:2].replace("/", "\\") == "\\\\":
+        return True
+    normalized = ntpath.normpath(source)
+    return normalized == "\\??" or normalized.startswith("\\??\\")
 
 
 def local_path(source: str) -> str:
