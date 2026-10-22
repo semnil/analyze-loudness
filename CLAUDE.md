@@ -18,6 +18,7 @@ The GUI consists of pywebview (Windows: WebView2 / macOS: WebKit) + a local HTTP
 ```
 analyze-loudness/
 ├── .github/workflows/          # ci.yaml (PR/push), release.yaml (v* tags / workflow_dispatch on a tag), tag-release.yml (after a successful CI run of a push to master, or by a workflow_dispatch given a commit: when it is a version bump, tags that commit and starts release.yaml), ffmpeg-watch.yml (daily, detects a new ffmpeg on osxexperts.net, opens the pin update and version bump PRs with a GitHub App's token and merges them without review), workflow-checks.yml (on every PR, checks the rules for SHA pinning of uses: and for same-repository references), workflow-checks-test.yml (runs the check's fixture tests, the tests of dependabot-auto-merge.yml's trigger and conditions, the tests of tag-release.yml's tagging step and the tests of ffmpeg-watch.yml's land step), dependabot-auto-merge.yml (on a Dependabot PR whose update is a semver patch, schedules an auto-merge. Required check auto-merge)
+├── .github/dependabot.yml      # weekly version updates of the GitHub Actions, the py-analyze-common submodule and the Python dependencies (uv)
 ├── .github/tests/              # workflow-checks-test.sh (test that runs workflow-checks.yml with a fake gh and a fixture git tree), dependabot-auto-merge-test.sh (test that dependabot-auto-merge.yml runs on every PR, with only its steps limited to Dependabot PRs), tag-release-test.sh (test that runs tag-release.yml's checks and tagging step with a fake gh and a fixture repository), ffmpeg-watch-land-test.sh (test that runs ffmpeg-watch.yml's land step with a fake gh that answers by the token of each call and a fixture repository)
 ├── .gitignore
 ├── .venv/                      # Python venv (not tracked by git)
@@ -59,7 +60,7 @@ analyze-loudness/
 │   ├── test_plot.py
 │   ├── test_update.py          # UPDATE_CONFIG and the installer.iss / spec / release.yaml that match it
 │   ├── test_ffmpeg_binary.py   # reads the ffmpeg / ffprobe on PATH with the app's parsers (EXPECT_FFMPEG_DIR points at the bundled binaries)
-│   ├── test_release_workflow.py # release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe inside the distributables; only create-release can write and it runs no Python; the job holding UPDATE_SIGNING_KEY has a read-only token and installs only the hash-pinned yt-dlp; the Developer ID identity is imported right before codesign and deleted when codesign ends; the release jobs install packages only from requirements/*.txt and build tools only after a SHA256 check; requirements/release.txt satisfies pyproject.toml (a mirror of analyze-spectrum's)
+│   ├── test_release_workflow.py # release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe inside the distributables; only create-release can write and it runs no Python; the job holding UPDATE_SIGNING_KEY has a read-only token and installs only the hash-pinned yt-dlp; the Developer ID identity is imported right before codesign and deleted when codesign ends; the release jobs install packages only from requirements/*.txt and build tools only after a SHA256 check; requirements/release.txt satisfies pyproject.toml and every requirements/*.txt resolves with its own pins (a mirror of analyze-spectrum's)
 │   ├── test_third_party_licenses.py # the GPL full texts THIRD_PARTY_LICENSES.txt points at, and the spec / installer.iss that bundle them
 │   ├── test_frontend.py        # Playwright headless Chromium runner
 │   └── frontend/
@@ -188,7 +189,7 @@ Bundling a PyInstaller onefile binary such as `yt-dlp_macos` causes a Team ID mi
 
 ### yt-dlp version pin
 
-`pyproject.toml` has an exact pin `yt-dlp==<version>`. The three `pyproject.toml` files of analyze-loudness / analyze-spectrum / py-analyze-common have the same pin, and a manual version change updates all three at the same time. When a Dependabot update is a semver patch, it is merged automatically per repository once its required checks pass (`.github/workflows/dependabot-auto-merge.yml`), so the three values can differ. In analyze-loudness and analyze-spectrum the checks pass only when the update also keeps `requirements/release.txt` in step with `pyproject.toml` ([Pinned release dependencies](#pinned-release-dependencies)). What goes into the shipped app is the pin in this repository's `pyproject.toml`; py-analyze-common's `pyproject.toml` is not used to build the shipped app (the submodule is read through `sys.path` injection).
+`pyproject.toml` has an exact pin `yt-dlp==<version>`. The three `pyproject.toml` files of analyze-loudness / analyze-spectrum / py-analyze-common have the same pin, and a manual version change updates all three at the same time. When a Dependabot update is a semver patch, it is merged automatically per repository once its required checks pass (`.github/workflows/dependabot-auto-merge.yml`), so the three values can differ. In analyze-loudness and analyze-spectrum, Dependabot (`.github/dependabot.yml`, the `uv` ecosystem) opens an update of the pin and of `requirements/*.txt` once a week, for a version released at least three days before; py-analyze-common's Dependabot does not watch its Python dependencies, so its pin is changed by hand. In analyze-loudness and analyze-spectrum the checks pass only when the update also keeps `requirements/release.txt` in step with `pyproject.toml` ([Pinned release dependencies](#pinned-release-dependencies)). What goes into the shipped app is the pin in this repository's `pyproject.toml`; py-analyze-common's `pyproject.toml` is not used to build the shipped app (the submodule is read through `sys.path` injection).
 
 Why pin: the shipped app has yt-dlp baked into the PYZ by PyInstaller, so it cannot be updated after installation. Leaving it unpinned makes the version depend on the resolution at build time, and the version inside a shipped app cannot be identified afterwards.
 
@@ -437,7 +438,7 @@ The release jobs install nothing that is resolved at build time:
 - Build tools: Inno Setup (Windows) and create-dmg (macOS) are downloaded from their GitHub releases and checked against the SHA256 in `release.yaml` (`INNOSETUP_SHA256`, `CREATE_DMG_SHA256`)
 - Not pinned: deno and the Windows ffmpeg / ffprobe, which `build.py` downloads ([Bundled ffmpeg pin](#bundled-ffmpeg-pin))
 
-`requirements/*.txt` are generated by uv from `pyproject.toml` and `requirements/*.in` (uv is needed only to generate them, e.g. `pip install uv` in a separate venv). Run the following from the repository root after changing the dependencies of `pyproject.toml` (the yt-dlp pin included); add `--upgrade` to the first command to take newer versions:
+`requirements/*.txt` are generated by uv from `pyproject.toml` and `requirements/*.in` (uv is in the `dev` extra of `pyproject.toml`). Run the following from the repository root after changing the dependencies of `pyproject.toml` (the yt-dlp pin included); add `--upgrade` to the first command to take newer versions:
 
 ```bash
 uv pip compile pyproject.toml --extra gui --extra dev --universal --python-version 3.12 --generate-hashes -o requirements/release.txt
@@ -445,7 +446,7 @@ uv pip compile requirements/release-build.in -c requirements/release.txt --unive
 uv pip compile requirements/sign-manifest.in -c requirements/release.txt --universal --python-version 3.12 --generate-hashes -o requirements/sign-manifest.txt
 ```
 
-`--python-version` is the `python-version` of `release.yaml`. `tests/test_release_workflow.py` fails when `requirements/release.txt` does not satisfy `pyproject.toml` or a file was generated with other options, so a branch that changes `pyproject.toml` without regenerating these files does not pass CI, whoever opened it.
+`--python-version` is the `python-version` of `release.yaml`. `tests/test_release_workflow.py` fails when `requirements/release.txt` does not satisfy `pyproject.toml`, when a file was generated with other options, or when uv finds no resolution for the command in a file's header with that file's own pins as constraints (a pin that breaks the requirement of another package in the file), so a branch that changes `pyproject.toml` without regenerating these files does not pass CI, whoever opened it.
 
 This section is a mirror with the same content as the one in analyze-spectrum's CLAUDE.md.
 

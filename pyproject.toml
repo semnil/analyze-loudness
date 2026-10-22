@@ -16,7 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 gui = ["pywebview", "certifi"]
-dev = ["pytest", "playwright>=1.40", "pyinstaller>=6.0"]
+dev = ["pytest", "playwright>=1.40", "pyinstaller>=6.0", "uv"]
 
 [project.scripts]
 analyze-loudness = "analyze_loudness.cli:main"
