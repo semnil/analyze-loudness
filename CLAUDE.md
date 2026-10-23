@@ -96,7 +96,7 @@ analyze-loudness "https://..." ./loudness_saved.json   # comparison (2-6 sources
 
 - `yt-dlp` -- dependency in pyproject.toml (used through the Python API)
 - `ffmpeg` / `ffprobe` -- the `static-ffmpeg` package. Imported only when ffmpeg is not on PATH (decided with py-analyze-common's `find_executable()`, [Starting ffmpeg / ffprobe by absolute path](#starting-ffmpeg--ffprobe-by-absolute-path))
-- `numpy`, `matplotlib` -- CLI only
+- `numpy` -- statistics (used by both the CLI and the GUI); `matplotlib` -- CLI only (the plot)
 - `pytest` -- development dependency (`pip install -e ".[dev]"`)
 
 ## GUI usage
