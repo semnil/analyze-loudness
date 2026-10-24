@@ -11,7 +11,7 @@ from analyze_common.ffmpeg import ffmpeg_kwargs as _ffmpeg_kwargs  # noqa: E402,
 from analyze_common.json_util import json_safe as _json_safe  # noqa: E402,F401
 from analyze_common.platform import find_executable as _find_executable  # noqa: E402,F401
 
-__version__ = "1.5.1"
+__version__ = "1.5.2"
 
 # 2: summary.gate_threshold (ffmpeg's own gating threshold).  Results without
 # it -- schema 1 files -- stay loadable; the frontend recomputes from series.M.
