@@ -30,11 +30,11 @@
 }
 
 [data-theme="dark"] {
-  --text-secondary: #aaa;
-  --text-muted: #8f8f8f;
+  --text-secondary: #c8c8c8;
+  --text-muted: #b6b6b6;
   --accent: #CE93D8;
   --accent-dark: #BA68C8;
-  --accent-deeper: #AB47BC;
+  --accent-deeper: #C27BCB;
   --accent-deepest: #E1BEE7;
   --accent-light: #6A1B9A;
   --accent-bg: #3a2a5e;
@@ -167,7 +167,7 @@ body.drag-over::after {
   background: none;
   border: none;
   border-radius: 4px;
-  color: var(--fg);
+  color: var(--text);
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
@@ -185,7 +185,7 @@ body.drag-over::after {
   border: 1px solid var(--copy-border);
   border-radius: 6px;
   background: var(--copy-bg);
-  color: var(--fg);
+  color: var(--text);
   font-size: 13px;
   cursor: pointer;
 }
@@ -255,7 +255,7 @@ body.drag-over::after {
 .compare-seg-title {
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--fg);
+  color: var(--text);
   margin-bottom: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -371,7 +371,7 @@ body.drag-over::after {
   padding: 6px 16px;
   min-height: 36px;
   background: var(--accent-dark);
-  color: #fff;
+  color: var(--on-accent);
   border: none;
   border-radius: 4px;
   font-size: 12px;
