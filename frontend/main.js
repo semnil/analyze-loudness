@@ -231,6 +231,82 @@ function _setBusy(busy, cancelable = true) {
 }
 _applySubmitButton();
 
+// Reserve each variable-label button's width for the widest label it can show,
+// across both languages and every submit state, so a language switch or a state
+// change never resizes the button and shifts the row.  Measured in place so the
+// real font and padding apply; flex:none keeps a narrow-viewport stretch out of
+// the reading, and the border-box width is read back fractional.
+function _reserveButtonWidth(btn, keys, textSel) {
+  if (!btn || !window.i18n || !window.i18n.tr) return;
+  const target = textSel ? btn.querySelector(textSel) : btn;
+  if (!target) return;
+  const savedText = target.textContent;
+  const savedFlex = btn.style.flex;
+  btn.style.flex = "none";
+  btn.style.width = "auto";
+  btn.style.minWidth = "0";
+  let max = 0;
+  for (const lang of ["en", "ja"]) {
+    for (const key of keys) {
+      target.textContent = window.i18n.tr(key, lang);
+      const w = btn.getBoundingClientRect().width;
+      if (w > max) max = w;
+    }
+  }
+  target.textContent = savedText;
+  btn.style.flex = savedFlex;
+  // Pin both the floor and the flex-basis: at a narrow viewport the input bar
+  // switches to flex:1 1 auto, where a bare min-width still lets the width
+  // follow the current label through the auto basis.
+  btn.style.minWidth = max + "px";
+  btn.style.width = max + "px";
+}
+
+// Border-box width a fresh button of `className` needs for the widest of `keys`
+// across both languages.  Measured once from an offscreen template so the
+// result buttons (created on every render) reserve it without a per-instance
+// pass.  The classes carry their own box, so a template under body matches.
+function _classButtonWidth(className, keys) {
+  if (!window.i18n || !window.i18n.tr) return 0;
+  const btn = document.createElement("button");
+  btn.className = className;
+  btn.style.position = "absolute";
+  btn.style.left = "-9999px";
+  btn.style.visibility = "hidden";
+  document.body.appendChild(btn);
+  let max = 0;
+  for (const lang of ["en", "ja"]) {
+    for (const key of keys) {
+      btn.textContent = window.i18n.tr(key, lang);
+      const w = btn.getBoundingClientRect().width;
+      if (w > max) max = w;
+    }
+  }
+  document.body.removeChild(btn);
+  return max;
+}
+
+function _reserveButtonWidths() {
+  _reserveButtonWidth(submitBtn, ["btn.analyze", "btn.compare", "btn.cancel", "btn.loading"]);
+  _reserveButtonWidth(browseBtn, ["btn.browse"]);
+  _reserveButtonWidth(addBtn, ["btn.add"]);
+  _reserveButtonWidth(loadBtn, ["btn.load_json"], "span");
+  // The compare bar starts hidden; reveal it only long enough to measure.
+  const wasHidden = compareBar.hidden;
+  compareBar.hidden = false;
+  _reserveButtonWidth(clearBtn, ["btn.clear"]);
+  compareBar.hidden = wasHidden;
+}
+_reserveButtonWidths();
+
+// Widths reserved for the result-area buttons, which are created on each render.
+// The copy button also cycles its label (copy / copied / failed) in place.
+const _copyBtnWidth = _classButtonWidth("copy-btn", ["btn.copy", "btn.copied", "btn.copy_failed"]);
+const _saveBtnWidths = {
+  "btn.save_json": _classButtonWidth("save-btn", ["btn.save_json"]),
+  "btn.save_image": _classButtonWidth("save-btn", ["btn.save_image"]),
+};
+
 function _cancelActive() {
   if (activeAbort) activeAbort.abort();
 }
@@ -890,6 +966,7 @@ function _appendSaveButtons(row, data) {
     const btn = document.createElement("button");
     btn.className = "save-btn";
     btn.textContent = window.i18n.t(key);
+    btn.style.minWidth = _saveBtnWidths[key] + "px";
     btn.addEventListener("click", async () => {
       btn.disabled = true;
       try {
@@ -1635,6 +1712,7 @@ function showError(message) {
     const btn = document.createElement("button");
     btn.className = "copy-btn";
     btn.textContent = window.i18n.t("btn.copy");
+    btn.style.minWidth = _copyBtnWidth + "px";
     btn.addEventListener("click", () => {
       navigator.clipboard.writeText(message).then(() => {
         btn.textContent = window.i18n.t("btn.copied");

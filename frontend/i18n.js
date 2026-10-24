@@ -312,6 +312,15 @@
     return s;
   }
 
+  // The raw string for an explicit language (no interpolation), used to reserve
+  // button widths across both languages.  Falls back to en, then the key.
+  function tr(key, lang) {
+    const d = DICT[lang] || DICT.en;
+    if (Object.prototype.hasOwnProperty.call(d, key)) return d[key];
+    if (Object.prototype.hasOwnProperty.call(DICT.en, key)) return DICT.en[key];
+    return key;
+  }
+
   function applyStatic() {
     document.documentElement.setAttribute("lang", current);
     document.querySelectorAll("[data-i18n]").forEach((n) => {
@@ -336,6 +345,7 @@
 
   window.i18n = {
     t: t,
+    tr: tr,
     lang: function () { return current; },
     setLang: function (lang) {
       if (lang !== "ja" && lang !== "en") return;
