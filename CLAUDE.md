@@ -366,6 +366,8 @@ The sign-manifest job of `.github/workflows/release.yaml` makes `latest.json` wi
 
 PyInstaller's `EXE(icon=...)` is only the icon of the EXE file itself (shown in Explorer). The pywebview window icon (title bar and taskbar) needs an explicit `webview.start(icon=...)` (moved from `create_window` to `start` in pywebview 6.x). `build_assets/icon.ico` is bundled through PyInstaller's `datas` and resolved through `_ICON_PATH`.
 
+The `icon=` argument is passed only on Windows (`sys.platform == "win32"`). On macOS the Dock/app icon comes from the `.app` bundle (`CFBundleIconFile` = `icon.icns`); passing `icon=` there makes pywebview's Cocoa backend call `NSApplication.setApplicationIconImage_`, which overrides the bundle icon with the raw `icon.ico` bitmap. That bitmap carries no icon-grid inset, so on macOS 26 the Dock renders it edge-to-edge (oversized) instead of at the system-masked size the bundle icon gets.
+
 The Windows taskbar groups processes by AppUserModelID. When it is not set, the Python runtime's default ID is used and the icon embedded in the EXE does not show on the taskbar. `_set_application_user_model_id()` sets `com.semnil.loudness-analyzer` so the taskbar icon shows correctly.
 
 ### Windows subprocess console hiding
