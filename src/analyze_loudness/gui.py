@@ -868,7 +868,9 @@ def main():
 
     global _window
     bg = _ui_settings.background_color()
-    icon = str(_ICON_PATH) if _ICON_PATH.exists() else None
+    # The window icon is Windows-only; on macOS the Dock icon comes from the
+    # .app bundle, so passing it here would override the bundle icon.
+    icon = str(_ICON_PATH) if (sys.platform == "win32" and _ICON_PATH.exists()) else None
     _window = webview.create_window(
         "Loudness Analyzer (BS.1770 / EBU R128)",
         url=f"http://127.0.0.1:{port}/index.html",
