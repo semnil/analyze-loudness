@@ -129,6 +129,7 @@ Flags: `--skip-download` (skip fetching external assets) / `--skip-build` (skip 
 - `pywebview` -- optional dependency (`pip install -e ".[gui]"`)
 - `numpy` -- statistics
 - `yt-dlp` -- bundled as a Python library (PyInstaller includes it automatically)
+- `yt-dlp-ejs` -- the YouTube challenge solver scripts yt-dlp runs on deno, pinned to the version of yt-dlp's `pin` extra. yt-dlp's own PyInstaller hook (`yt_dlp/__pyinstaller/hook-yt_dlp.py`) bundles their `.js` files; without them yt-dlp warns `n challenge solving failed: Some formats may be missing`
 - ffmpeg, ffprobe, deno -- placed in `build_assets/bin/` and bundled (PyInstaller frozen mode)
 - `certifi` -- CA used by the auto-update HTTPS (`pip install -e ".[gui]"`). PyInstaller builds the bundle with only a warning when certifi is missing, so `check_prerequisites()` in `build.py` stops the build when it is missing
 - `py-analyze-common` -- git submodule (`vendor/py-analyze-common`). Provides OS detection, subprocess kwargs, dark mode detection, the ffmpeg/ffprobe wrapper, the yt-dlp download, JSON sanitizing and auto-update. Not listed in pyproject.toml; used through `sys.path` injection
@@ -227,7 +228,7 @@ ffmpeg / ffprobe are fetched as osxexperts.net's arm64 native builds. evermeet.c
 
 ### deno (yt-dlp dependency)
 
-yt-dlp needs the deno runtime for YouTube's JavaScript extraction. `build.py` downloads the latest version and bundles it.
+yt-dlp needs the deno runtime for YouTube's JavaScript extraction. `build.py` downloads the latest version and bundles it. The challenge solver scripts yt-dlp runs on it come from `yt-dlp-ejs` (GUI dependencies).
 
 ### Local HTTP server + pywebview
 
