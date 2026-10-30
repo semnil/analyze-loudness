@@ -1,5 +1,7 @@
 # analyze-loudness
 
+[![テストカバレッジ](https://codecov.io/gh/semnil/analyze-loudness/branch/master/graph/badge.svg)](https://codecov.io/gh/semnil/analyze-loudness)
+
 > For the English version, see [README.md](README.md).
 
 YouTube 動画の音声ラウドネスを BS.1770 / EBU R128 準拠で分析するツール。

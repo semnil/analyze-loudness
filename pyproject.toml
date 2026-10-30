@@ -17,7 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 gui = ["pywebview", "certifi"]
-dev = ["pytest", "playwright>=1.40", "pyinstaller>=6.0", "uv"]
+dev = ["pytest", "pytest-cov", "playwright>=1.40", "pyinstaller>=6.0", "uv"]
 
 [project.scripts]
 analyze-loudness = "analyze_loudness.cli:main"
@@ -25,3 +25,9 @@ analyze-loudness-gui = "analyze_loudness.gui:main"
 
 [tool.hatch.version]
 path = "src/analyze_loudness/__init__.py"
+
+# Measures this package only; vendor/py-analyze-common is measured by its own repository's CI.
+[tool.coverage.run]
+source_pkgs = ["analyze_loudness"]
+branch = true
+relative_files = true

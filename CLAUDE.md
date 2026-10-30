@@ -17,7 +17,7 @@ The GUI consists of pywebview (Windows: WebView2 / macOS: WebKit) + a local HTTP
 
 ```
 analyze-loudness/
-├── .github/workflows/          # ci.yaml (PR/push; caches the apt package files and the Playwright browsers, saved only by the runs that are not PRs), release.yaml (v* tags / workflow_dispatch on a tag), tag-release.yml (after a successful CI run of a push to master, or by a workflow_dispatch given a commit: when it is a version bump, tags that commit and starts release.yaml), ffmpeg-watch.yml (daily, detects a new ffmpeg on osxexperts.net, opens the pin update and version bump PRs with a GitHub App's token and merges them without review), workflow-checks.yml (on every PR, checks the rules for SHA pinning of uses: and for same-repository references), workflow-checks-test.yml (runs the check's fixture tests, the tests of dependabot-auto-merge.yml's trigger, conditions and auto-merge decision, the tests of tag-release.yml's tagging step and the tests of ffmpeg-watch.yml's land step), dependabot-auto-merge.yml (on a Dependabot PR that is one commit at the head, written by Dependabot alone, committed by GitHub (web-flow) and with a verified signature, schedules an auto-merge for an update of the Python dependencies (uv) or of the submodule, and for a semver patch or minor update of a GitHub Action. Required check auto-merge)
+├── .github/workflows/          # ci.yaml (PR/push; runs pytest with coverage and uploads coverage.xml to Codecov; caches the apt package files and the Playwright browsers, saved only by the runs that are not PRs), release.yaml (v* tags / workflow_dispatch on a tag), tag-release.yml (after a successful CI run of a push to master, or by a workflow_dispatch given a commit: when it is a version bump, tags that commit and starts release.yaml), ffmpeg-watch.yml (daily, detects a new ffmpeg on osxexperts.net, opens the pin update and version bump PRs with a GitHub App's token and merges them without review), workflow-checks.yml (on every PR, checks the rules for SHA pinning of uses: and for same-repository references), workflow-checks-test.yml (runs the check's fixture tests, the tests of dependabot-auto-merge.yml's trigger, conditions and auto-merge decision, the tests of tag-release.yml's tagging step and the tests of ffmpeg-watch.yml's land step), dependabot-auto-merge.yml (on a Dependabot PR that is one commit at the head, written by Dependabot alone, committed by GitHub (web-flow) and with a verified signature, schedules an auto-merge for an update of the Python dependencies (uv) or of the submodule, and for a semver patch or minor update of a GitHub Action. Required check auto-merge)
 ├── .github/dependabot.yml      # version updates every day at 00:00 JST of the GitHub Actions, the py-analyze-common submodule (without Dependabot's default three-day cooldown) and the Python dependencies (uv; yt-dlp and yt-dlp-ejs in one pull request)
 ├── .github/tests/              # workflow-checks-test.sh (test that runs workflow-checks.yml with a fake gh and a fixture git tree), dependabot-auto-merge-test.sh (test that dependabot-auto-merge.yml runs on every PR, with only its steps limited to Dependabot PRs, and of which updates and commits (their authors, how many, whether the last is the head, who committed it, whether its signature is verified) its step schedules or turns off an auto-merge for, with a fake gh), tag-release-test.sh (test that runs tag-release.yml's checks and tagging step with a fake gh and a fixture repository), ffmpeg-watch-land-test.sh (test that runs ffmpeg-watch.yml's land step with a fake gh that answers by the token of each call and a fixture repository)
 ├── .gitignore
@@ -99,7 +99,7 @@ analyze-loudness "https://..." ./loudness_saved.json   # comparison (2-6 sources
 - `yt-dlp` -- dependency in pyproject.toml (used through the Python API)
 - `ffmpeg` / `ffprobe` -- the `static-ffmpeg` package. Imported only when ffmpeg is not on PATH (decided with py-analyze-common's `find_executable()`, [Starting ffmpeg / ffprobe by absolute path](#starting-ffmpeg--ffprobe-by-absolute-path))
 - `numpy` -- statistics (used by both the CLI and the GUI); `matplotlib` -- CLI only (the plot)
-- `pytest` -- development dependency (`pip install -e ".[dev]"`)
+- `pytest`, `pytest-cov` -- development dependencies (`pip install -e ".[dev]"`)
 
 ## GUI usage
 
@@ -140,11 +140,14 @@ Flags: `--skip-download` (skip fetching external assets) / `--skip-build` (skip 
 
 ```bash
 pytest -q                                          # all tests
+pytest -q --cov --cov-report=term-missing          # with line and branch coverage of src/analyze_loudness ([tool.coverage.run] in pyproject.toml)
 python -m playwright install --with-deps chromium  # first time only (used by tests/test_frontend.py)
 python build.py --ffmpeg-only && EXPECT_FFMPEG_DIR=build_assets/bin pytest -q tests/test_ffmpeg_binary.py  # with the bundled ffmpeg / ffprobe
 ```
 
 For how the browser binary is handled, see [Frontend UI tests](#frontend-ui-tests).
+
+CI (`.github/workflows/ci.yaml`) runs `pytest -q --cov --cov-report=xml` and uploads `coverage.xml` to Codecov with `codecov/codecov-action`. The job's `id-token: write` lets the upload authenticate with GitHub's OIDC token (`use_oidc: true`), so the repository holds no Codecov token. The upload has `fail_ci_if_error: false`, so a failed upload does not fail `Test 🧪`, and Codecov's statuses (`codecov/project`, `codecov/patch`) are not required checks of master. `vendor/py-analyze-common` is not measured here (`source_pkgs` names this package only); py-analyze-common's own CI uploads its coverage.
 
 ## Design decisions
 
