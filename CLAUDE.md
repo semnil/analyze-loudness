@@ -62,6 +62,7 @@ analyze-loudness/
 │   ├── test_ffmpeg_binary.py   # reads the ffmpeg / ffprobe on PATH with the app's parsers (EXPECT_FFMPEG_DIR points at the bundled binaries)
 │   ├── test_release_workflow.py # release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe inside the distributables; only create-release can write and it runs no Python; the job holding UPDATE_SIGNING_KEY has a read-only token and installs only the hash-pinned yt-dlp; the Developer ID identity is imported right before codesign and deleted when codesign ends; the release jobs install packages only from requirements/*.txt and build tools only after a SHA256 check; requirements/release.txt satisfies pyproject.toml and every requirements/*.txt resolves with its own pins (a mirror of analyze-spectrum's)
 │   ├── test_yt_dlp_ejs.py      # the installed yt-dlp-ejs has the version (major.minor) and script hashes the installed yt-dlp accepts (the same file as analyze-spectrum's)
+│   ├── test_build_network.py   # build.py fetches over HTTPS through py-analyze-common's network, whose failed connection names every address it tried (the same file as analyze-spectrum's)
 │   ├── test_third_party_licenses.py # the GPL full texts THIRD_PARTY_LICENSES.txt points at, and the spec / installer.iss that bundle them
 │   ├── test_frontend.py        # Playwright headless Chromium runner
 │   └── frontend/
