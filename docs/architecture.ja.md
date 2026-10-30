@@ -45,8 +45,7 @@ graph LR
 | `_handle_load()` | JSON 読み込み + バリデーション (ネイティブファイルダイアログ)。比較 JSON は統計を添えて返し、キャッシュには入れない |
 | `_exit_now()` | macOS の更新で bundle を入れ替えた後の終了。atexit の後始末を行ってから `os._exit(0)` |
 | `_speed_factor` | runtime-calibrated 速度係数。分析時間から次回の推定時間を算出 |
-| `_set_application_user_model_id()` | Windows AppUserModelID 設定 (タスクバーアイコン反映) |
-| `main()` | Windows の mutex の保持 (`hold_instance_mutex`) + HTTPServer (127.0.0.1:0) 起動 + pywebview ウインドウ表示 |
+| `main()` | Windows AppUserModelID 設定 (`set_app_user_model_id`、タスクバーアイコン反映) + Windows の mutex の保持 (`hold_instance_mutex`) + HTTPServer (127.0.0.1:0) 起動 + pywebview ウインドウ表示 |
 
 ### Frontend (`frontend/`)
 

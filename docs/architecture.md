@@ -45,8 +45,7 @@ graph LR
 | `_handle_load()` | JSON loading + validation (native file dialog). Returns comparison JSON with the statistics attached, and does not put it in the cache |
 | `_exit_now()` | Exit after a macOS update has swapped the bundle. Runs the atexit cleanup, then `os._exit(0)` |
 | `_speed_factor` | runtime-calibrated speed factor. Computes the next estimated time from the analysis time |
-| `_set_application_user_model_id()` | Sets the Windows AppUserModelID (reflected in the taskbar icon) |
-| `main()` | Holds the Windows mutex (`hold_instance_mutex`) + starts the HTTPServer (127.0.0.1:0) + shows the pywebview window |
+| `main()` | Sets the Windows AppUserModelID (`set_app_user_model_id`, reflected in the taskbar icon) + holds the Windows mutex (`hold_instance_mutex`) + starts the HTTPServer (127.0.0.1:0) + shows the pywebview window |
 
 ### Frontend (`frontend/`)
 

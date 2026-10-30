@@ -34,6 +34,7 @@ from analyze_common.server import GuiHandler
 from analyze_common.settings import SETTINGS_NAME, SettingsStore, settings_dir
 from analyze_common.ui_settings import UiSettings, show_window_color_until_paint
 from analyze_common.update import Updater, hold_instance_mutex
+from analyze_common.window import set_app_user_model_id
 
 
 def _get_base_dir() -> Path:
@@ -616,17 +617,8 @@ class _HTTPServer(ThreadingHTTPServer):
     request_queue_size = 64
 
 
-def _set_application_user_model_id():
-    """Set Windows AppUserModelID so the taskbar shows the application icon."""
-    if sys.platform == "win32":
-        import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-            "com.semnil.loudness-analyzer"
-        )
-
-
 def main():
-    _set_application_user_model_id()
+    set_app_user_model_id("com.semnil.loudness-analyzer")
     hold_instance_mutex(UPDATE_CONFIG.mutex_name)
     # When frozen, add bundled binaries (ffmpeg, ffprobe, deno) to PATH
     if getattr(sys, "frozen", False):

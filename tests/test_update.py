@@ -54,7 +54,7 @@ def test_bundle_carries_the_update_code_and_assets():
     for path in [SETTINGS_JS] + [path for path, _ in GuiHandler._SHARED_ASSETS.values()]:
         assert f"vendor/py-analyze-common/src/analyze_common/web/{path.name}" in spec
     for module in ("analyze_loudness.update", "analyze_common.update", "analyze_common.ed25519",
-                   "analyze_common.settings", "analyze_common.server", "certifi"):
+                   "analyze_common.settings", "analyze_common.server", "analyze_common.window", "certifi"):
         assert f'"{module}"' in spec
 
 
