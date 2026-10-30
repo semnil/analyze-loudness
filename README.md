@@ -1,5 +1,7 @@
 # analyze-loudness
 
+[![Test coverage](https://codecov.io/gh/semnil/analyze-loudness/branch/master/graph/badge.svg)](https://codecov.io/gh/semnil/analyze-loudness)
+
 > 日本語版は [README.ja.md](README.ja.md) を参照してください.
 
 A tool that analyzes the audio loudness of YouTube videos in compliance with BS.1770 / EBU R128.
