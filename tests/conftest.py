@@ -4,11 +4,17 @@ This lets the test suite run on hosts that do not have ffmpeg / ffprobe
 installed system-wide (the ``static-ffmpeg`` package bundles binaries as
 a pip dependency).  If ``static_ffmpeg`` is unavailable the fixture is a
 no-op -- tests that require the binary will fall back to system PATH.
+It also tells analyze_common.testing which repository and package the shared tests check.
 """
 
 from pathlib import Path
 
 import pytest
+
+import analyze_loudness  # noqa: F401  (puts vendor/py-analyze-common on sys.path)
+from analyze_common import testing
+
+testing.configure(Path(__file__).resolve().parent.parent, "analyze_loudness")
 
 
 def pytest_addoption(parser):

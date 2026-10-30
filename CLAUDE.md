@@ -51,7 +51,7 @@ analyze-loudness/
 │   └── vendor/                 # uPlot (bundled)
 ├── tests/                      # pytest
 │   ├── __init__.py
-│   ├── conftest.py
+│   ├── conftest.py             # also points py-analyze-common's analyze_common.testing at this repository and package
 │   ├── test_analysis.py
 │   ├── test_compare.py
 │   ├── test_cli.py
@@ -60,9 +60,9 @@ analyze-loudness/
 │   ├── test_plot.py
 │   ├── test_update.py          # UPDATE_CONFIG and the installer.iss / spec / release.yaml that match it
 │   ├── test_ffmpeg_binary.py   # reads the ffmpeg / ffprobe on PATH with the app's parsers (EXPECT_FFMPEG_DIR points at the bundled binaries)
-│   ├── test_release_workflow.py # release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe inside the distributables; only create-release can write and it runs no Python; the job holding UPDATE_SIGNING_KEY has a read-only token and installs only the hash-pinned yt-dlp; the Developer ID identity is imported right before codesign and deleted when codesign ends; the release jobs install packages only from requirements/*.txt and build tools only after a SHA256 check; requirements/release.txt satisfies pyproject.toml and every requirements/*.txt resolves, with its own pins as constraints, to exactly the packages it pins under the same environment markers (a mirror of analyze-spectrum's)
-│   ├── test_yt_dlp_ejs.py      # the installed yt-dlp-ejs has the version (major.minor) and script hashes the installed yt-dlp accepts (the same file as analyze-spectrum's)
-│   ├── test_third_party_licenses.py # the GPL full texts THIRD_PARTY_LICENSES.txt points at, and the spec / installer.iss that bundle them
+│   ├── test_release_workflow.py # release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe inside the distributables; only create-release can write and it runs no Python; the job holding UPDATE_SIGNING_KEY has a read-only token and installs only the hash-pinned yt-dlp; the Developer ID identity is imported right before codesign and deleted when codesign ends; the release jobs install packages only from requirements/*.txt and build tools only after a SHA256 check; requirements/release.txt satisfies pyproject.toml and every requirements/*.txt resolves, with its own pins as constraints, to exactly the packages it pins under the same environment markers (runs py-analyze-common's analyze_common.testing.release_workflow)
+│   ├── test_yt_dlp_ejs.py      # the installed yt-dlp-ejs has the version (major.minor) and script hashes the installed yt-dlp accepts (runs analyze_common.testing.yt_dlp_ejs)
+│   ├── test_third_party_licenses.py # the GPL full texts THIRD_PARTY_LICENSES.txt points at, and the spec / installer.iss that bundle them (runs analyze_common.testing.third_party_licenses)
 │   ├── test_frontend.py        # Playwright headless Chromium runner
 │   ├── js_coverage.py          # with --js-coverage, the V8 coverage of frontend/*.js that the Playwright tests run, written as LCOV (the same file as analyze-spectrum's)
 │   ├── test_js_coverage.py     # js_coverage.py: matching V8 ranges to lines, and the LCOV it writes (the same file as analyze-spectrum's)
