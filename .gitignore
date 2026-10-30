@@ -25,6 +25,7 @@ build_assets/icon.icns
 htmlcov/
 .coverage
 coverage.xml
+coverage-js.lcov
 
 # Local review and verification records
 work/
