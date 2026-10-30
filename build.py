@@ -40,7 +40,7 @@ VENDOR_DIR = ROOT / "frontend" / "vendor"
 CHECKSUMS_FILE = ROOT / "build_assets" / "checksums.json"
 
 sys.path.insert(0, str(ROOT / "vendor" / "py-analyze-common" / "src"))
-from analyze_common import ffmpeg_release  # noqa: E402
+from analyze_common import ffmpeg_release, network  # noqa: E402
 
 UPLOT_VERSION = "1.6.31"
 
@@ -158,7 +158,7 @@ def _github_api_open(url: str):
     if token:
         req.add_header("Authorization", f"Bearer {token}")
     req.add_header("Accept", "application/vnd.github+json")
-    return urllib.request.urlopen(req)
+    return network.urlopen(req)
 
 
 def _download_deno():
@@ -184,7 +184,7 @@ def _download_deno():
         asset = "deno-x86_64-unknown-linux-gnu.zip"
 
     url = f"https://github.com/denoland/deno/releases/download/{tag}/{asset}"
-    with urllib.request.urlopen(url) as r:
+    with network.urlopen(url) as r:
         data = io.BytesIO(r.read())
 
     member = "deno.exe" if IS_WINDOWS else "deno"
@@ -216,7 +216,7 @@ def _download_ffmpeg():
 def _download_ffmpeg_windows():
     url = _get_ffmpeg_win_url()
     print("Downloading ffmpeg (win64)...")
-    with urllib.request.urlopen(url) as r:
+    with network.urlopen(url) as r:
         data = io.BytesIO(r.read())
 
     with zipfile.ZipFile(data) as zf:
@@ -246,7 +246,8 @@ def _download_uplot():
     for filename in ("uPlot.iife.min.js", "uPlot.min.css"):
         dest = VENDOR_DIR / filename
         print(f"Downloading {filename}...")
-        urllib.request.urlretrieve(f"{base}/{filename}", dest)
+        with network.urlopen(f"{base}/{filename}") as r:
+            dest.write_bytes(r.read())
         print(f"  -> {dest}")
 
 
