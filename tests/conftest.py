@@ -6,7 +6,27 @@ a pip dependency).  If ``static_ffmpeg`` is unavailable the fixture is a
 no-op -- tests that require the binary will fall back to system PATH.
 """
 
+from pathlib import Path
+
 import pytest
+
+
+def pytest_addoption(parser):
+    parser.addoption("--js-coverage", metavar="PATH",
+                     help="write the V8 coverage of frontend/*.js that the Playwright tests ran to PATH as LCOV")
+
+
+def pytest_configure(config):
+    if config.getoption("--js-coverage"):
+        from tests.js_coverage import Collector
+        config.js_coverage = Collector(Path(__file__).resolve().parent.parent)
+        config.js_coverage.install()
+
+
+def pytest_sessionfinish(session):
+    collector = getattr(session.config, "js_coverage", None)
+    if collector is not None:
+        collector.write(session.config.getoption("--js-coverage"))
 
 
 @pytest.fixture(scope="session", autouse=True)
