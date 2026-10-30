@@ -237,7 +237,7 @@ showing excluded blocks in amber (at or below the relative gate) / slate (at or 
   Each track's `summary` holds the full-length values, and its `series` the truncated range. There is no `summary` / `series` at the top level, so
   versions up to schema 2 refuse to load it with "missing summary or series". Loading branches on the presence of `compare`.
   Loading a comparison JSON while the queue is not empty is refused.
-- **Size limits**: the `/compare` request body is up to 64 MiB (`_MAX_BODY_BYTES`). Writing out the 9 saved single JSON files
+- **Size limits**: the `/compare` request body is up to 64 MiB (`_MAX_BODY`). Writing out the 9 saved single JSON files
   (43,092-116,299 frames) without separators gives 18.2-18.5 bytes per frame, so up to 6 tracks × 1010 minutes each
   can be sent. The GUI and the CLI save comparison JSON with indentation, and a comparison JSON of 3 tracks and 12,123 frames is
   56.4 bytes per frame. So that a 6 × 1010-minute comparison saved at that size can still be opened, the `/load` limit
