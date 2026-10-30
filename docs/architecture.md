@@ -54,7 +54,7 @@ graph LR
 | `index.html` | SPA entry point, local vendor files |
 | `main.js` | Fetch orchestration, NDJSON progress parsing, DOM rendering, save/load/image capture, theme toggle, language toggle, cancel (AbortController), `_addTip` tooltips, the comparison queue (`compareQueue`) and comparison display (`renderCompare`) |
 | `theme.js` | `isDark()`, `getTheme()` — theme detection + chart color provider (includes the 6 comparison track colors `trackColors`) |
-| `i18n.js` | en / ja DICT + `window.i18n.t / setLang / onChange / applyStatic` |
+| `i18n.js` | en / ja DICT, which py-analyze-common's `/common/i18n.js` turns into `window.i18n.t / setLang / onChange / applyStatic`. `/common/boot.js` then sets the theme and the language on `<html>` before the CSS paints, and `/common/ui.js` (icons, tooltips, button widths, the error line) loads before `main.js` |
 | `gate.js` | `computeGate()` — rebuilds the BS.1770 absolute / relative gates from `series.M` |
 | `charts/timeline.js` | uPlot time series (60-frame moving average, GATE lane, theme-aware). `renderCompareTimeline` for comparison (a line and GATE band per track, the track number at the right end of the line) |
 | `charts/histogram.js` | Canvas density histogram (theme-aware, the title is on the HTML side). `renderHistogramCompare` for comparison (an outline per track, the track number at the mode bin) |
@@ -321,7 +321,7 @@ sequenceDiagram
 
 ### prefers-reduced-motion
 
-CSS animation / transition are disabled all at once with `@media (prefers-reduced-motion: reduce)`.
+CSS animation / transition are disabled all at once with `@media (prefers-reduced-motion: reduce)` (in py-analyze-common's `analyze_common/web/common.css`).
 
 Chart drawing (uPlot, Canvas histogram, Canvas segments) has no animation processing,
 and everything is drawn immediately, so no individual handling is needed. uPlot's cursor tracking is a real-time response to user operation, and

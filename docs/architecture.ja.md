@@ -54,7 +54,7 @@ graph LR
 | `index.html` | SPA entry point, local vendor files |
 | `main.js` | Fetch orchestration, NDJSON progress parsing, DOM rendering, save/load/image capture, theme toggle, language toggle, cancel (AbortController), `_addTip` ツールチップ, 比較の待ち行列 (`compareQueue`) と比較表示 (`renderCompare`) |
 | `theme.js` | `isDark()`, `getTheme()` — theme detection + chart color provider (比較トラックの 6 色 `trackColors` を含む) |
-| `i18n.js` | en / ja DICT + `window.i18n.t / setLang / onChange / applyStatic` |
+| `i18n.js` | en / ja DICT。py-analyze-common の `/common/i18n.js` がこれを `window.i18n.t / setLang / onChange / applyStatic` にする。続く `/common/boot.js` が CSS の描画前にテーマと言語を `<html>` に付け、`/common/ui.js` (アイコン、ツールチップ、ボタン幅、エラー行) は `main.js` の前に読む |
 | `gate.js` | `computeGate()` — BS.1770 の絶対 / 相対ゲートを `series.M` から再構成 |
 | `charts/timeline.js` | uPlot time series (60-frame moving average, GATE lane, theme-aware)。比較用 `renderCompareTimeline` (トラックごとの線と GATE 帯、線の右端にトラック番号) |
 | `charts/histogram.js` | Canvas density histogram (theme-aware, タイトルは HTML 側)。比較用 `renderHistogramCompare` (トラックごとの輪郭線、最頻ビンにトラック番号) |
@@ -321,7 +321,7 @@ sequenceDiagram
 
 ### prefers-reduced-motion
 
-`@media (prefers-reduced-motion: reduce)` で CSS animation / transition を一括無効化している。
+`@media (prefers-reduced-motion: reduce)` (py-analyze-common の `analyze_common/web/common.css`) で CSS animation / transition を一括無効化している。
 
 チャート描画 (uPlot, Canvas histogram, Canvas segments) についてはアニメーション処理を持たず、
 全て即時描画のため個別対応は不要。uPlot のカーソル追従はユーザー操作に対するリアルタイム応答であり、
