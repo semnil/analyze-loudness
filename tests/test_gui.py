@@ -667,7 +667,7 @@ class TestCompareEndpoint:
         assert "no frames" in body["error"]
 
     def test_oversized_request_rejected(self, server, handler_class, monkeypatch):
-        monkeypatch.setattr(handler_class, "_MAX_BODY_BYTES", 100)
+        monkeypatch.setattr(handler_class, "_MAX_BODY", 100)
         status, body = _serve_post(server, "/compare", {"tracks": [_single(10), _single(10)]})
         assert status == 413
 

@@ -36,16 +36,13 @@ graph LR
 
 | Component | Responsibility |
 |-----------|---------------|
-| `AnalyzeHandler` | Inherits `SimpleHTTPRequestHandler`. Serves the frontend + handles the POST endpoints |
-| `do_POST()` | Routing of `/analyze`, `/compare`, `/save`, `/save-image`, `/load`, `/browse`, `/upload`, `/settings`, `/update/status`, `/update/settings`, `/update/check`, `/update/install`. Content-Type check (`_check_content_type`) |
-| `_handle_browse()` | Native dialog for choosing a local audio file |
+| `AnalyzeHandler` | Extends py-analyze-common's `GuiHandler` (`analyze_common/server.py`), which serves the frontend and the `/common/*` files, checks the Host and the Content-Type, and handles `/browse`, `/save-image`, `/settings` and `/update/*`. Gives it this app's state (`updater()`, `ui_settings()`, `window()`, `dialog_lock()`, `exit_for_update()`) |
+| `do_POST()` | Routing of `/analyze`, `/compare`, `/save`, `/load`, `/upload` and `GuiHandler`'s endpoints (`_shared_handlers()`). Content-Type check (`_check_content_type`) |
 | `_handle_upload()` | Saves a dropped file to the temporary directory `_upload_dir` |
 | `_run_analysis()` | NDJSON stream of download -> probe -> ebur128 (timed) -> stats -> result |
 | `_handle_save()` | JSON save (native file dialog) |
-| `_handle_save_image()` | base64 PNG → binary save (native file dialog) |
 | `_handle_compare()` | Receives 2-6 single results and returns the comparison JSON and the statistics over the truncated range |
 | `_handle_load()` | JSON loading + validation (native file dialog). Returns comparison JSON with the statistics attached, and does not put it in the cache |
-| `_handle_update_*()` | Auto-update status, check and apply. The work is passed to `_updater` (`analyze_common.update.Updater`) |
 | `_exit_now()` | Exit after a macOS update has swapped the bundle. Runs the atexit cleanup, then `os._exit(0)` |
 | `_speed_factor` | runtime-calibrated speed factor. Computes the next estimated time from the analysis time |
 | `_set_application_user_model_id()` | Sets the Windows AppUserModelID (reflected in the taskbar icon) |

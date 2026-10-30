@@ -36,16 +36,13 @@ graph LR
 
 | Component | Responsibility |
 |-----------|---------------|
-| `AnalyzeHandler` | `SimpleHTTPRequestHandler` 継承。frontend 配信 + POST エンドポイント処理 |
-| `do_POST()` | `/analyze`, `/compare`, `/save`, `/save-image`, `/load`, `/browse`, `/upload`, `/settings`, `/update/status`, `/update/settings`, `/update/check`, `/update/install` のルーティング。Content-Type の検査 (`_check_content_type`) |
-| `_handle_browse()` | ローカルの音声ファイルを選ぶネイティブダイアログ |
+| `AnalyzeHandler` | py-analyze-common の `GuiHandler` (`analyze_common/server.py`) を継承。`GuiHandler` が frontend と `/common/*` の配信、Host と Content-Type の検査、`/browse`・`/save-image`・`/settings`・`/update/*` を受け持ち、このアプリの状態 (`updater()`・`ui_settings()`・`window()`・`dialog_lock()`・`exit_for_update()`) を渡す |
+| `do_POST()` | `/analyze`, `/compare`, `/save`, `/load`, `/upload` と `GuiHandler` のエンドポイント (`_shared_handlers()`) のルーティング。Content-Type の検査 (`_check_content_type`) |
 | `_handle_upload()` | ドロップされたファイルを一時ディレクトリ `_upload_dir` に保存 |
 | `_run_analysis()` | download -> probe -> ebur128 (計時) -> stats -> result の NDJSON ストリーム |
 | `_handle_save()` | JSON 保存 (ネイティブファイルダイアログ) |
-| `_handle_save_image()` | base64 PNG → バイナリ保存 (ネイティブファイルダイアログ) |
 | `_handle_compare()` | 2〜6 本の単体結果を受け取り、比較 JSON と切り詰めた範囲の統計を返す |
 | `_handle_load()` | JSON 読み込み + バリデーション (ネイティブファイルダイアログ)。比較 JSON は統計を添えて返し、キャッシュには入れない |
-| `_handle_update_*()` | 自動更新の状態・確認・適用。処理は `_updater` (`analyze_common.update.Updater`) に渡す |
 | `_exit_now()` | macOS の更新で bundle を入れ替えた後の終了。atexit の後始末を行ってから `os._exit(0)` |
 | `_speed_factor` | runtime-calibrated 速度係数。分析時間から次回の推定時間を算出 |
 | `_set_application_user_model_id()` | Windows AppUserModelID 設定 (タスクバーアイコン反映) |
