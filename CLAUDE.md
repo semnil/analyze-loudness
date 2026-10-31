@@ -51,7 +51,7 @@ analyze-loudness/
 │   └── vendor/                 # uPlot (bundled)
 ├── tests/                      # pytest
 │   ├── __init__.py
-│   ├── conftest.py
+│   ├── conftest.py             # also points py-analyze-common's analyze_common.testing at this repository and package
 │   ├── test_analysis.py
 │   ├── test_compare.py
 │   ├── test_cli.py
@@ -60,10 +60,9 @@ analyze-loudness/
 │   ├── test_plot.py
 │   ├── test_update.py          # UPDATE_CONFIG and the installer.iss / spec / release.yaml that match it
 │   ├── test_ffmpeg_binary.py   # reads the ffmpeg / ffprobe on PATH with the app's parsers (EXPECT_FFMPEG_DIR points at the bundled binaries)
-│   ├── test_release_workflow.py # release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe inside the distributables; only create-release can write and it runs no Python; the job holding UPDATE_SIGNING_KEY has a read-only token and installs only the hash-pinned yt-dlp; the Developer ID identity is imported right before codesign and deleted when codesign ends; the release jobs install packages only from requirements/*.txt and build tools only after a SHA256 check; requirements/release.txt satisfies pyproject.toml and every requirements/*.txt resolves, with its own pins as constraints, to exactly the packages it pins under the same environment markers (a mirror of analyze-spectrum's)
-│   ├── test_yt_dlp_ejs.py      # the installed yt-dlp-ejs has the version (major.minor) and script hashes the installed yt-dlp accepts (the same file as analyze-spectrum's)
-│   ├── test_build_network.py   # build.py fetches over HTTPS through py-analyze-common's network, whose failed connection names every address it tried (the same file as analyze-spectrum's)
-│   ├── test_third_party_licenses.py # the GPL full texts THIRD_PARTY_LICENSES.txt points at, and the spec / installer.iss that bundle them
+│   ├── test_release_workflow.py # release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe inside the distributables; only create-release can write and it runs no Python; the job holding UPDATE_SIGNING_KEY has a read-only token and installs only the hash-pinned yt-dlp; the Developer ID identity is imported right before codesign and deleted when codesign ends; the release jobs install packages only from requirements/*.txt and build tools only after a SHA256 check; requirements/release.txt satisfies pyproject.toml and every requirements/*.txt resolves, with its own pins as constraints, to exactly the packages it pins under the same environment markers (runs py-analyze-common's analyze_common.testing.release_workflow)
+│   ├── test_yt_dlp_ejs.py      # the installed yt-dlp-ejs has the version (major.minor) and script hashes the installed yt-dlp accepts (runs analyze_common.testing.yt_dlp_ejs)
+│   ├── test_third_party_licenses.py # the GPL full texts THIRD_PARTY_LICENSES.txt points at, and the spec / installer.iss that bundle them (runs analyze_common.testing.third_party_licenses)
 │   ├── test_frontend.py        # Playwright headless Chromium runner
 │   ├── js_coverage.py          # with --js-coverage, the V8 coverage of frontend/*.js that the Playwright tests run, written as LCOV (the same file as analyze-spectrum's)
 │   ├── test_js_coverage.py     # js_coverage.py: matching V8 ranges to lines, and the LCOV it writes (the same file as analyze-spectrum's)
@@ -75,7 +74,7 @@ analyze-loudness/
 │   ├── architecture.ja.md
 │   └── screenshot.png
 ├── vendor/py-analyze-common/   # git submodule (used through sys.path injection)
-├── build.py                    # Build script (asset download + PyInstaller + Inno Setup)
+├── build.py                    # Build script: py-analyze-common's analyze_common.build with this app's names (asset download + PyInstaller + Inno Setup / DMG)
 ├── analyze-loudness.spec       # PyInstaller spec
 ├── installer.iss               # Inno Setup script
 ├── THIRD_PARTY_LICENSES.txt    # Bundled license file
@@ -135,7 +134,7 @@ Flags: `--skip-download` (skip fetching external assets) / `--skip-build` (skip 
 - `yt-dlp` -- bundled as a Python library (PyInstaller includes it automatically)
 - `yt-dlp-ejs` -- the YouTube challenge solver scripts yt-dlp runs on deno, pinned to the version of yt-dlp's `pin` extra. yt-dlp's own PyInstaller hook (`yt_dlp/__pyinstaller/hook-yt_dlp.py`) bundles their `.js` files; without them yt-dlp warns `n challenge solving failed: Some formats may be missing`; `tests/test_yt_dlp_ejs.py` fails when its version or scripts are not the ones the installed yt-dlp accepts, and Dependabot moves yt-dlp and yt-dlp-ejs in one pull request (the `yt-dlp` group of `.github/dependabot.yml`)
 - ffmpeg, ffprobe, deno -- placed in `build_assets/bin/` and bundled (PyInstaller frozen mode)
-- `certifi` -- CA used by the auto-update HTTPS (`pip install -e ".[gui]"`). PyInstaller builds the bundle with only a warning when certifi is missing, so `check_prerequisites()` in `build.py` stops the build when it is missing
+- `certifi` -- CA used by the auto-update HTTPS (`pip install -e ".[gui]"`). PyInstaller builds the bundle with only a warning when certifi is missing, so `check_prerequisites()` of py-analyze-common's `analyze_common/build.py` (which `build.py` runs) stops the build when it is missing
 - `py-analyze-common` -- git submodule (`vendor/py-analyze-common`). Provides OS detection, subprocess kwargs, dark mode detection, the ffmpeg/ffprobe wrapper, the yt-dlp download, JSON sanitizing and auto-update. Not listed in pyproject.toml; used through `sys.path` injection
 
 ## Tests
@@ -484,6 +483,6 @@ The only source of the version is `__version__` in `src/analyze_loudness/__init_
 |----------|----------|
 | `pyproject.toml` | `[tool.hatch.version]` `path` (regex extraction, no import) |
 | `analyze-loudness.spec` | read with a regex in `_read_version()` |
-| `installer.iss` | injected with `/DMyAppVersion=` by `_build_inno()` in `build.py` |
+| `installer.iss` | injected with `/DMyAppVersion=` by `_build_inno()` of py-analyze-common's `analyze_common/build.py` (run by `build.py`) |
 
 A version bump changes only `__version__` in `src/analyze_loudness/__init__.py`.
