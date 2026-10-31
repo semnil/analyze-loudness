@@ -36,20 +36,16 @@ graph LR
 
 | Component | Responsibility |
 |-----------|---------------|
-| `AnalyzeHandler` | `SimpleHTTPRequestHandler` 継承。frontend 配信 + POST エンドポイント処理 |
-| `do_POST()` | `/analyze`, `/compare`, `/save`, `/save-image`, `/load`, `/browse`, `/upload`, `/settings`, `/update/status`, `/update/settings`, `/update/check`, `/update/install` のルーティング。Content-Type の検査 (`_check_content_type`) |
-| `_handle_browse()` | ローカルの音声ファイルを選ぶネイティブダイアログ |
+| `AnalyzeHandler` | py-analyze-common の `GuiHandler` (`analyze_common/server.py`) を継承。`GuiHandler` が frontend と `/common/*` の配信、Host と Content-Type の検査、`/browse`・`/save-image`・`/settings`・`/update/*` を受け持ち、このアプリの状態 (`updater()`・`ui_settings()`・`window()`・`dialog_lock()`・`exit_for_update()`) を渡す |
+| `do_POST()` | `/analyze`, `/compare`, `/save`, `/load`, `/upload` と `GuiHandler` のエンドポイント (`_shared_handlers()`) のルーティング。Content-Type の検査 (`_check_content_type`) |
 | `_handle_upload()` | ドロップされたファイルを一時ディレクトリ `_upload_dir` に保存 |
 | `_run_analysis()` | download -> probe -> ebur128 (計時) -> stats -> result の NDJSON ストリーム |
 | `_handle_save()` | JSON 保存 (ネイティブファイルダイアログ) |
-| `_handle_save_image()` | base64 PNG → バイナリ保存 (ネイティブファイルダイアログ) |
 | `_handle_compare()` | 2〜6 本の単体結果を受け取り、比較 JSON と切り詰めた範囲の統計を返す |
 | `_handle_load()` | JSON 読み込み + バリデーション (ネイティブファイルダイアログ)。比較 JSON は統計を添えて返し、キャッシュには入れない |
-| `_handle_update_*()` | 自動更新の状態・確認・適用。処理は `_updater` (`analyze_common.update.Updater`) に渡す |
 | `_exit_now()` | macOS の更新で bundle を入れ替えた後の終了。atexit の後始末を行ってから `os._exit(0)` |
 | `_speed_factor` | runtime-calibrated 速度係数。分析時間から次回の推定時間を算出 |
-| `_set_application_user_model_id()` | Windows AppUserModelID 設定 (タスクバーアイコン反映) |
-| `main()` | Windows の mutex の保持 (`hold_instance_mutex`) + HTTPServer (127.0.0.1:0) 起動 + pywebview ウインドウ表示 |
+| `main()` | Windows AppUserModelID 設定 (`set_app_user_model_id`、タスクバーアイコン反映) + Windows の mutex の保持 (`hold_instance_mutex`) + HTTPServer (127.0.0.1:0) 起動 + pywebview ウインドウ表示 |
 
 ### Frontend (`frontend/`)
 
@@ -58,7 +54,7 @@ graph LR
 | `index.html` | SPA entry point, local vendor files |
 | `main.js` | Fetch orchestration, NDJSON progress parsing, DOM rendering, save/load/image capture, theme toggle, language toggle, cancel (AbortController), `_addTip` ツールチップ, 比較の待ち行列 (`compareQueue`) と比較表示 (`renderCompare`) |
 | `theme.js` | `isDark()`, `getTheme()` — theme detection + chart color provider (比較トラックの 6 色 `trackColors` を含む) |
-| `i18n.js` | en / ja DICT + `window.i18n.t / setLang / onChange / applyStatic` |
+| `i18n.js` | en / ja DICT。py-analyze-common の `/common/i18n.js` がこれを `window.i18n.t / setLang / onChange / applyStatic` にする。続く `/common/boot.js` が CSS の描画前にテーマと言語を `<html>` に付け、`/common/ui.js` (アイコン、ツールチップ、ボタン幅、エラー行) は `main.js` の前に読む |
 | `gate.js` | `computeGate()` — BS.1770 の絶対 / 相対ゲートを `series.M` から再構成 |
 | `charts/timeline.js` | uPlot time series (60-frame moving average, GATE lane, theme-aware)。比較用 `renderCompareTimeline` (トラックごとの線と GATE 帯、線の右端にトラック番号) |
 | `charts/histogram.js` | Canvas density histogram (theme-aware, タイトルは HTML 側)。比較用 `renderHistogramCompare` (トラックごとの輪郭線、最頻ビンにトラック番号) |
@@ -241,7 +237,7 @@ Timeline の x 軸ガター (プロット領域とメモリラベルの間) に�
   各トラックの `summary` は全長の値、`series` は切り詰めた範囲。一番上に `summary` / `series` を置かないので、
   schema 2 以前の版は「missing summary or series」で読み込みを拒む。読み込みの分岐は `compare` の有無で行う。
   待ち行列が空でないときの比較 JSON の読み込みは拒否する。
-- **サイズの上限**: `/compare` の要求本文は 64 MiB まで (`_MAX_BODY_BYTES`)。保存済みの単体 JSON 9 本
+- **サイズの上限**: `/compare` の要求本文は 64 MiB まで (`_MAX_BODY`)。保存済みの単体 JSON 9 本
   (43,092〜116,299 フレーム) を区切り無しで書き出すと 1 フレーム 18.2〜18.5 バイトで、6 トラック × 各 1010 分
   まで送れる。GUI と CLI は比較 JSON をインデント付きで保存し、3 トラック・12,123 フレームの比較 JSON で
   1 フレーム 56.4 バイト。その大きさで 6 × 1010 分の比較を保存しても開けるよう、`/load` の上限
@@ -325,7 +321,7 @@ sequenceDiagram
 
 ### prefers-reduced-motion
 
-`@media (prefers-reduced-motion: reduce)` で CSS animation / transition を一括無効化している。
+`@media (prefers-reduced-motion: reduce)` (py-analyze-common の `analyze_common/web/common.css`) で CSS animation / transition を一括無効化している。
 
 チャート描画 (uPlot, Canvas histogram, Canvas segments) についてはアニメーション処理を持たず、
 全て即時描画のため個別対応は不要。uPlot のカーソル追従はユーザー操作に対するリアルタイム応答であり、

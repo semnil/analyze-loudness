@@ -36,20 +36,16 @@ graph LR
 
 | Component | Responsibility |
 |-----------|---------------|
-| `AnalyzeHandler` | Inherits `SimpleHTTPRequestHandler`. Serves the frontend + handles the POST endpoints |
-| `do_POST()` | Routing of `/analyze`, `/compare`, `/save`, `/save-image`, `/load`, `/browse`, `/upload`, `/settings`, `/update/status`, `/update/settings`, `/update/check`, `/update/install`. Content-Type check (`_check_content_type`) |
-| `_handle_browse()` | Native dialog for choosing a local audio file |
+| `AnalyzeHandler` | Extends py-analyze-common's `GuiHandler` (`analyze_common/server.py`), which serves the frontend and the `/common/*` files, checks the Host and the Content-Type, and handles `/browse`, `/save-image`, `/settings` and `/update/*`. Gives it this app's state (`updater()`, `ui_settings()`, `window()`, `dialog_lock()`, `exit_for_update()`) |
+| `do_POST()` | Routing of `/analyze`, `/compare`, `/save`, `/load`, `/upload` and `GuiHandler`'s endpoints (`_shared_handlers()`). Content-Type check (`_check_content_type`) |
 | `_handle_upload()` | Saves a dropped file to the temporary directory `_upload_dir` |
 | `_run_analysis()` | NDJSON stream of download -> probe -> ebur128 (timed) -> stats -> result |
 | `_handle_save()` | JSON save (native file dialog) |
-| `_handle_save_image()` | base64 PNG → binary save (native file dialog) |
 | `_handle_compare()` | Receives 2-6 single results and returns the comparison JSON and the statistics over the truncated range |
 | `_handle_load()` | JSON loading + validation (native file dialog). Returns comparison JSON with the statistics attached, and does not put it in the cache |
-| `_handle_update_*()` | Auto-update status, check and apply. The work is passed to `_updater` (`analyze_common.update.Updater`) |
 | `_exit_now()` | Exit after a macOS update has swapped the bundle. Runs the atexit cleanup, then `os._exit(0)` |
 | `_speed_factor` | runtime-calibrated speed factor. Computes the next estimated time from the analysis time |
-| `_set_application_user_model_id()` | Sets the Windows AppUserModelID (reflected in the taskbar icon) |
-| `main()` | Holds the Windows mutex (`hold_instance_mutex`) + starts the HTTPServer (127.0.0.1:0) + shows the pywebview window |
+| `main()` | Sets the Windows AppUserModelID (`set_app_user_model_id`, reflected in the taskbar icon) + holds the Windows mutex (`hold_instance_mutex`) + starts the HTTPServer (127.0.0.1:0) + shows the pywebview window |
 
 ### Frontend (`frontend/`)
 
@@ -58,7 +54,7 @@ graph LR
 | `index.html` | SPA entry point, local vendor files |
 | `main.js` | Fetch orchestration, NDJSON progress parsing, DOM rendering, save/load/image capture, theme toggle, language toggle, cancel (AbortController), `_addTip` tooltips, the comparison queue (`compareQueue`) and comparison display (`renderCompare`) |
 | `theme.js` | `isDark()`, `getTheme()` — theme detection + chart color provider (includes the 6 comparison track colors `trackColors`) |
-| `i18n.js` | en / ja DICT + `window.i18n.t / setLang / onChange / applyStatic` |
+| `i18n.js` | en / ja DICT, which py-analyze-common's `/common/i18n.js` turns into `window.i18n.t / setLang / onChange / applyStatic`. `/common/boot.js` then sets the theme and the language on `<html>` before the CSS paints, and `/common/ui.js` (icons, tooltips, button widths, the error line) loads before `main.js` |
 | `gate.js` | `computeGate()` — rebuilds the BS.1770 absolute / relative gates from `series.M` |
 | `charts/timeline.js` | uPlot time series (60-frame moving average, GATE lane, theme-aware). `renderCompareTimeline` for comparison (a line and GATE band per track, the track number at the right end of the line) |
 | `charts/histogram.js` | Canvas density histogram (theme-aware, the title is on the HTML side). `renderHistogramCompare` for comparison (an outline per track, the track number at the mode bin) |
@@ -241,7 +237,7 @@ showing excluded blocks in amber (at or below the relative gate) / slate (at or 
   Each track's `summary` holds the full-length values, and its `series` the truncated range. There is no `summary` / `series` at the top level, so
   versions up to schema 2 refuse to load it with "missing summary or series". Loading branches on the presence of `compare`.
   Loading a comparison JSON while the queue is not empty is refused.
-- **Size limits**: the `/compare` request body is up to 64 MiB (`_MAX_BODY_BYTES`). Writing out the 9 saved single JSON files
+- **Size limits**: the `/compare` request body is up to 64 MiB (`_MAX_BODY`). Writing out the 9 saved single JSON files
   (43,092-116,299 frames) without separators gives 18.2-18.5 bytes per frame, so up to 6 tracks × 1010 minutes each
   can be sent. The GUI and the CLI save comparison JSON with indentation, and a comparison JSON of 3 tracks and 12,123 frames is
   56.4 bytes per frame. So that a 6 × 1010-minute comparison saved at that size can still be opened, the `/load` limit
@@ -325,7 +321,7 @@ sequenceDiagram
 
 ### prefers-reduced-motion
 
-CSS animation / transition are disabled all at once with `@media (prefers-reduced-motion: reduce)`.
+CSS animation / transition are disabled all at once with `@media (prefers-reduced-motion: reduce)` (in py-analyze-common's `analyze_common/web/common.css`).
 
 Chart drawing (uPlot, Canvas histogram, Canvas segments) has no animation processing,
 and everything is drawn immediately, so no individual handling is needed. uPlot's cursor tracking is a real-time response to user operation, and

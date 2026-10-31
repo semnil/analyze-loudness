@@ -1,7 +1,6 @@
 """GUI application: pywebview window + local HTTP server for analysis."""
 
 import atexit
-import base64
 import glob
 import json
 import math
@@ -14,7 +13,7 @@ import threading
 import time
 import traceback
 from collections import OrderedDict
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import webview
@@ -30,10 +29,12 @@ from analyze_loudness.download import (
     resolve_source, sanitize_filename,
 )
 from analyze_loudness.update import UPDATE_CONFIG
+from analyze_common.server import ClientDisconnected as _ClientDisconnected
+from analyze_common.server import GuiHandler
 from analyze_common.settings import SETTINGS_NAME, SettingsStore, settings_dir
 from analyze_common.ui_settings import UiSettings, show_window_color_until_paint
-from analyze_common.update import UpdateError, Updater, hold_instance_mutex
-from analyze_common.web import COMMON_CSS, UPDATE_JS
+from analyze_common.update import Updater, hold_instance_mutex
+from analyze_common.window import set_app_user_model_id
 
 
 def _get_base_dir() -> Path:
@@ -200,113 +201,34 @@ def _compare_stats(doc: dict) -> list[dict]:
     return _json_safe([truncated_stats(track) for track in doc["compare"]["tracks"]])
 
 
-class _ClientDisconnected(Exception):
-    """Raised when the client aborts the NDJSON stream."""
-
-
-class AnalyzeHandler(SimpleHTTPRequestHandler):
+class AnalyzeHandler(GuiHandler):
     """Serves frontend files and handles /analyze POST requests."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(FRONTEND_DIR), **kwargs)
-
-    _MAX_BODY_BYTES = 64 * 1024 * 1024  # 64 MiB: large enough for full-resolution image payload
+    frontend_dir = FRONTEND_DIR
+    save_image_name = "loudness_result.png"
+    _MAX_BODY = 64 * 1024 * 1024  # 64 MiB: large enough for full-resolution image payload
+    _MAX_IMAGE_BODY = _MAX_BODY
     # /load cap: room for a saved comparison of MAX_TRACKS tracks at the
     # longest length a /compare request body can carry.
     _MAX_LOAD_BYTES = 210 * 1024 * 1024
-    _ALLOWED_HOSTS = ("127.0.0.1", "localhost")
 
-    def _check_host(self) -> bool:
-        """Reject requests whose Host header is not a loopback literal.
+    def updater(self):
+        return _updater
 
-        Defends against DNS rebinding: a malicious page could ask the browser
-        to resolve an attacker-controlled name to 127.0.0.1 and talk to this
-        server. Rejecting non-loopback Host literals blocks that.
-        """
-        host = self.headers.get("Host", "")
-        host_name = host.split(":", 1)[0] if host else ""
-        if host_name not in self._ALLOWED_HOSTS:
-            self.send_error(403, "Forbidden: invalid Host")
-            return False
-        return True
+    def ui_settings(self):
+        return _ui_settings
 
-    def _read_json_body(self) -> dict:
-        try:
-            length = int(self.headers.get("Content-Length", 0))
-        except (ValueError, TypeError):
-            return {}
-        if length <= 0:
-            return {}
-        if length > self._MAX_BODY_BYTES:
-            return {}
-        try:
-            return json.loads(self.rfile.read(length))
-        except (json.JSONDecodeError, ValueError):
-            return {}
+    def window(self):
+        return _window
 
-    @staticmethod
-    def _dialog_path(result) -> str | None:
-        """Extract file path from pywebview dialog result."""
-        if not result:
-            return None
-        return result if isinstance(result, str) else result[0]
+    def dialog_lock(self):
+        return _dialog_lock
 
-    # analyze_common's shared assets, which live outside FRONTEND_DIR.
-    _COMMON_FILES = {
-        "/common/common.css": (COMMON_CSS, "text/css; charset=utf-8"),
-        "/common/update.js": (UPDATE_JS, "text/javascript; charset=utf-8"),
-    }
-
-    def do_GET(self):
-        if not self._check_host():
-            return
-        path = self.path.split("?", 1)[0]
-        if path == "/common/settings.js":
-            self._send_settings_script()
-            return
-        common = self._COMMON_FILES.get(path)
-        if common:
-            self._send_common(*common)
-            return
-        super().do_GET()
-
-    def _check_content_type(self) -> bool:
-        """Accept only the Content-Type the frontend sends.  Browsers send
-        cross-origin requests with these types only after a CORS preflight,
-        which this server never answers."""
-        expected = "application/octet-stream" if self.path == "/upload" else "application/json"
-        content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
-        if content_type != expected:
-            self._json_error(415, f"Content-Type must be {expected}")
-            return False
-        return True
-
-    def _send_common(self, path, content_type):
-        try:
-            body = path.read_bytes()
-        except OSError:
-            self.send_error(404)
-            return
-        self._send_asset(body, content_type)
-
-    def _send_settings_script(self):
-        """The shared settings.js with the stored theme and language, read anew
-        for every page load."""
-        try:
-            body = _ui_settings.script()
-        except OSError:
-            self.send_error(404)
-            return
-        self._send_asset(body, "text/javascript; charset=utf-8", no_store=True)
-
-    def _send_asset(self, body: bytes, content_type: str, no_store: bool = False):
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        if no_store:
-            self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
+    def exit_for_update(self, exit_mode):
+        if exit_mode == "immediate":
+            _exit_now()
+        elif _window is not None:
+            _window.destroy()
 
     def do_POST(self):
         if not self._check_host():
@@ -314,17 +236,11 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         if not self._check_content_type():
             return
         handlers = {
+            **self._shared_handlers(),
             "/save": self._handle_save,
-            "/save-image": self._handle_save_image,
             "/load": self._handle_load,
             "/compare": self._handle_compare,
-            "/browse": self._handle_browse,
             "/upload": self._handle_upload,
-            "/settings": self._handle_settings,
-            "/update/status": self._handle_update_status,
-            "/update/settings": self._handle_update_settings,
-            "/update/check": self._handle_update_check,
-            "/update/install": self._handle_update_install,
         }
         if self.path in handlers:
             try:
@@ -341,6 +257,9 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             return
 
         body = self._read_json_body()
+        if body is None:
+            self._json_error(400, "Invalid JSON body")
+            return
         url = body.get("url", "")
         duration = body.get("duration")
 
@@ -485,10 +404,14 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", 0))
         except (ValueError, TypeError):
             length = 0
-        if length > self._MAX_BODY_BYTES:
-            self._json_error(413, f"Comparison request exceeds {self._MAX_BODY_BYTES // (1024 * 1024)} MiB")
+        if length > self._MAX_BODY:
+            self._json_error(413, f"Comparison request exceeds {self._MAX_BODY // (1024 * 1024)} MiB")
             return
-        tracks = self._read_json_body().get("tracks")
+        body = self._read_json_body()
+        if body is None:
+            self._json_error(400, "Invalid JSON body")
+            return
+        tracks = body.get("tracks")
         err = validate_tracks(tracks)
         if err:
             self._json_error(400, f"Invalid 'tracks': {err}")
@@ -500,27 +423,6 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         "Audio Video Files (" + ";".join("*" + extension for extension in AUDIO_EXTENSIONS) + ")",
     )
 
-    def _handle_browse(self):
-        if not _dialog_lock.acquire(blocking=False):
-            self._json_error(409, "A dialog is already open")
-            return
-        try:
-            result = _window.create_file_dialog(
-                webview.OPEN_DIALOG,
-                file_types=self._AUDIO_TYPES,
-            )
-        except Exception as e:
-            traceback.print_exc()
-            self._json_error(500, f"File dialog error: {e}")
-            return
-        finally:
-            _dialog_lock.release()
-
-        file_path = self._dialog_path(result)
-        if not file_path:
-            self._json_response(200, {"selected": False})
-            return
-        self._json_response(200, {"selected": True, "path": file_path})
 
     _MAX_UPLOAD = 500 * 1024 * 1024  # 500 MB
 
@@ -581,67 +483,12 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
         except OSError:
             pass
 
-    def _handle_settings(self):
-        """Store the theme or the language in the app's settings file."""
-        try:
-            values = _ui_settings.update(self._read_json_body())
-        except ValueError as e:
-            self._json_error(400, str(e))
-            return
-        except OSError as e:
-            self._json_error(500, str(e))
-            return
-        self._json_response(200, values)
-
-    def _handle_update_status(self):
-        self._json_response(200, _updater.status())
-
-    def _handle_update_settings(self):
-        """Store the "Check at launch" setting in the app's settings file."""
-        launch_check = self._read_json_body().get("launch_check")
-        if not isinstance(launch_check, bool):
-            self._json_error(400, "Missing or invalid 'launch_check' field")
-            return
-        try:
-            _updater.set_launch_check(launch_check)
-        except UpdateError as e:
-            self._json_error(500, str(e))
-            return
-        self._json_response(200, {"launch_check": _updater.launch_check()})
-
-    def _handle_update_check(self):
-        try:
-            version = _updater.check()
-        except UpdateError as e:
-            self._json_error(502, str(e))
-            return
-        if version is None:
-            self._json_response(200, {"available": False})
-        else:
-            self._json_response(200, {"available": True, "version": version})
-
-    def _handle_update_install(self):
-        """Download, verify and hand off the update; the app then exits."""
-        version = self._read_json_body().get("version")
-        if not isinstance(version, str) or not version:
-            self._json_error(400, "Missing or invalid 'version' field")
-            return
-        try:
-            handoff = _updater.install(version)
-        except UpdateError as e:
-            self._json_error(500, str(e))
-            return
-        if handoff.exit_mode is None:
-            self._json_response(200, {"installed": True, "restart_error": handoff.restart_error})
-            return
-        self._json_response(200, {"restarting": True})
-        if handoff.exit_mode == "immediate":
-            _exit_now()
-        elif _window is not None:
-            _window.destroy()
 
     def _handle_save(self):
         body = self._read_json_body()
+        if body is None:
+            self._json_error(400, "Invalid JSON body")
+            return
         filename = sanitize_filename(body.get("filename", "loudness_result.json"))
 
         if "data" not in body:
@@ -681,42 +528,6 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             return
         self._json_response(200, {"saved": True, "path": save_path})
 
-    def _handle_save_image(self):
-        body = self._read_json_body()
-        data_url = body.get("dataUrl", "")
-        filename = sanitize_filename(body.get("filename", "loudness_result.png"))
-
-        if not data_url or not data_url.startswith("data:image/png;base64,"):
-            self._json_error(400, "Missing or invalid 'dataUrl' field")
-            return
-
-        if not _dialog_lock.acquire(blocking=False):
-            self._json_error(409, "A dialog is already open")
-            return
-        try:
-            result = _window.create_file_dialog(
-                webview.SAVE_DIALOG,
-                save_filename=filename,
-                file_types=("PNG Images (*.png)",),
-            )
-        except Exception as e:
-            traceback.print_exc()
-            self._json_error(500, f"File dialog error: {e}")
-            return
-        finally:
-            _dialog_lock.release()
-
-        save_path = self._dialog_path(result)
-        if not save_path:
-            self._json_response(200, {"saved": False})
-            return
-        try:
-            png_data = base64.b64decode(data_url.split(",", 1)[1])
-            Path(save_path).write_bytes(png_data)
-        except (OSError, ValueError) as e:
-            self._json_error(500, f"Failed to write image: {e}")
-            return
-        self._json_response(200, {"saved": True, "path": save_path})
 
     def _handle_load(self):
         if not _dialog_lock.acquire(blocking=False):
@@ -798,53 +609,6 @@ class AnalyzeHandler(SimpleHTTPRequestHandler):
             while len(_loaded_cache_data) > _CACHE_MAX_ENTRIES:
                 _loaded_cache_data.popitem(last=False)
 
-    def _json_response(self, status, obj):
-        # Sanitize on retry so a NaN/Inf hiding in externally-loaded JSON does
-        # not crash mid-response and surface in WebKit as a bare "Load failed"
-        # with no diagnostics.  The traceback is kept in stderr for debugging.
-        try:
-            body = json.dumps(obj, ensure_ascii=False, allow_nan=False).encode("utf-8")
-        except (ValueError, TypeError):
-            traceback.print_exc()
-            body = json.dumps(
-                _json_safe(obj), ensure_ascii=False, allow_nan=False
-            ).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        # wfile (SocketIO, wbufsize=0) delegates to socket.send() which may
-        # perform a partial write when body exceeds SO_SNDBUF (~128 KB).
-        # sendall() loops internally until every byte is delivered.
-        self.request.sendall(body)
-
-    def _json_error(self, status, message):
-        self._json_response(status, {"error": message})
-
-    def _send_event(self, event_type, **kwargs):
-        payload = _json_safe({"type": event_type, **kwargs})
-        line = json.dumps(payload, ensure_ascii=False, allow_nan=False)
-        try:
-            self.request.sendall((line + "\n").encode("utf-8"))
-        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError, OSError):
-            # Client aborted mid-stream.  Emit the underlying traceback so
-            # a root cause is visible in stderr even though the event can no
-            # longer reach the frontend.
-            traceback.print_exc()
-            raise _ClientDisconnected()
-
-    def log_message(self, format, *args):
-        pass  # suppress access logs
-
-
-def _set_application_user_model_id():
-    """Set Windows AppUserModelID so the taskbar shows the application icon."""
-    if sys.platform == "win32":
-        import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-            "com.semnil.loudness-analyzer"
-        )
-
 
 class _HTTPServer(ThreadingHTTPServer):
     """Loopback server whose listen backlog holds the burst of connections a
@@ -854,7 +618,7 @@ class _HTTPServer(ThreadingHTTPServer):
 
 
 def main():
-    _set_application_user_model_id()
+    set_app_user_model_id("com.semnil.loudness-analyzer")
     hold_instance_mutex(UPDATE_CONFIG.mutex_name)
     # When frozen, add bundled binaries (ffmpeg, ffprobe, deno) to PATH
     if getattr(sys, "frozen", False):
