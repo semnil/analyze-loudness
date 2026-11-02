@@ -40,7 +40,8 @@ def _test_server():
 
 
 @pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
-def test_frontend_ui(_test_server):
+@pytest.mark.parametrize("slow_update_reply", [False, True])
+def test_frontend_ui(_test_server, slow_update_reply):
     """Execute frontend tests in a headless Chromium browser."""
     port = _test_server
     url = f"http://127.0.0.1:{port}/tests/frontend/test_ui.html"
@@ -48,6 +49,19 @@ def test_frontend_ui(_test_server):
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
+        if slow_update_reply:
+            page.add_init_script("""window.delayedUpdateReply = false;
+                const parse = Response.prototype.json;
+                Response.prototype.json = async function(...args) {
+                    const data = await parse.apply(this, args);
+                    const suites = document.querySelectorAll('#test-output .suite');
+                    const suite = suites.length && suites[suites.length - 1].textContent;
+                    if (!window.delayedUpdateReply && suite && suite.includes('Update: accepted install') && data.available) {
+                        window.delayedUpdateReply = true;
+                        await new Promise(resolve => setTimeout(resolve, 250));
+                    }
+                    return data;
+                };""")
 
         console_msgs = []
         page.on("console", lambda msg: console_msgs.append(msg.text))
@@ -57,6 +71,8 @@ def test_frontend_ui(_test_server):
 
         result = page.evaluate("window._testResult")
         dom_text = page.evaluate("document.getElementById('test-output').innerText")
+        if slow_update_reply:
+            assert page.evaluate("window.delayedUpdateReply") is True
         browser.close()
 
     assert result, "window._testResult was not set by the test runner"

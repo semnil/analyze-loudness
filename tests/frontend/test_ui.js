@@ -1045,12 +1045,13 @@ function fakeStats() {
   confirmCalls = [];
   confirmAnswer = true;
   var install = deferred();
+  var installStarted = deferred();
   mockUpdate(function () { return makeJsonResponse({ available: true, version: "9.9.9" }); });
-  mockUpdate(function () { return install.promise; });
+  mockUpdate(function () { installStarted.resolve(); return install.promise; });
   settingsButton.focus();
   settingsButton.click();
   document.getElementById("settings-update-now").click();
-  await tick(50);
+  await installStarted.promise;
   assert(!settingsOpen(), "Accepting closes the dialog");
   assertEqual(updateCalls[1].url, "/update/install", "Accepting posts /update/install");
   assertEqual(updateCalls[1].body.version, "9.9.9", "The install names the confirmed version");
