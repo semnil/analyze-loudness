@@ -7,13 +7,14 @@ to open the page and read test results from window._testResult.
 import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
+from urllib.parse import unquote
 
 import pytest
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 try:
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import expect, sync_playwright
     _HAS_PLAYWRIGHT = True
 except ImportError:
     _HAS_PLAYWRIGHT = False
@@ -93,6 +94,42 @@ def _app_server(gui_module_name):
     server = _Server(("127.0.0.1", 0), gui_mod.AnalyzeHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_file_drop_sends_a_non_ascii_name_percent_encoded(monkeypatch):
+    import sys
+
+    server = _app_server("analyze_loudness.gui")
+    gui = sys.modules["analyze_loudness.gui"]
+    monkeypatch.setattr(gui._updater, "status", lambda: {"supported": False, "launch_check": False})
+    requests = []
+
+    def upload(route):
+        name = route.request.headers["x-filename"]
+        requests.append(name)
+        route.fulfill(json={"uploaded": True, "path": "/uploaded/" + unquote(name)})
+
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                page = browser.new_page(locale="en-US")
+                page.route("**/upload", upload)
+                page.goto(f"http://127.0.0.1:{server.server_port}/index.html")
+                page.evaluate("window.analyzeUpdate.ready")
+                page.evaluate("""() => {
+                    const data = new DataTransfer();
+                    data.items.add(new File(['audio'], '日本語 track.wav', {type: 'audio/wav'}));
+                    window.dispatchEvent(new DragEvent('drop', {dataTransfer: data}));
+                }""")
+                expect(page.locator("#url-input")).to_have_value("/uploaded/日本語 track.wav")
+                assert requests == ["%E6%97%A5%E6%9C%AC%E8%AA%9E%20track.wav"]
+            finally:
+                browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 @pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
