@@ -12,6 +12,7 @@ from urllib.parse import unquote
 import pytest
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_REQUEST_QUEUE_SIZE = 64
 
 try:
     from playwright.sync_api import expect, sync_playwright
@@ -31,12 +32,19 @@ def _test_server():
             "log_message": lambda self, *a: None,
         },
     )
-    server = HTTPServer(("127.0.0.1", 0), handler_cls)
+    class _Server(HTTPServer):
+        request_queue_size = _REQUEST_QUEUE_SIZE
+
+    server = _Server(("127.0.0.1", 0), handler_cls)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    yield port
-    server.shutdown()
+    try:
+        yield port
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
 
 
 @pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
@@ -105,7 +113,7 @@ def _app_server(gui_module_name):
             sys.modules["webview"] = saved
 
     class _Server(ThreadingHTTPServer):
-        request_queue_size = 64
+        request_queue_size = _REQUEST_QUEUE_SIZE
 
     server = _Server(("127.0.0.1", 0), gui_mod.AnalyzeHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
