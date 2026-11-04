@@ -171,9 +171,11 @@ function _setBusy(busy, cancelable = true) {
 }
 _applySubmitButton();
 
+_applyButtonIcons();
+
 function _reserveButtonWidths() {
   _reserveButtonWidth(submitBtn, ["btn.analyze", "btn.compare", "btn.cancel", "btn.loading"]);
-  _reserveButtonWidth(browseBtn, ["btn.browse"]);
+  _reserveButtonWidth(browseBtn, ["btn.browse"], "span");
   _reserveButtonWidth(addBtn, ["btn.add"]);
   _reserveButtonWidth(loadBtn, ["btn.load_json"], "span");
   // The compare bar starts hidden; reveal it only long enough to measure.
@@ -568,70 +570,26 @@ function _moveTrack(from, to) {
   const item = compareQueue[from];
   compareQueue[from] = compareQueue[to];
   compareQueue[to] = item;
-  _renderQueue();
+  _renderQueue({ from: from, to: to });
 }
 
-function _trackButton(cls, text, ariaKey, n, onClick) {
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "track-btn " + cls;
-  btn.textContent = text;
-  btn.setAttribute("aria-label", window.i18n.t(ariaKey, { n }));
-  btn.disabled = _isBusy;
-  btn.addEventListener("click", onClick);
-  return btn;
-}
-
-// Up/down arrows keep their slot at the ends so rows stay aligned.
-function _placeholder(btn) {
-  btn.classList.add("placeholder");
-  btn.disabled = true;
-  btn.setAttribute("aria-hidden", "true");
-  btn.tabIndex = -1;
-  return btn;
-}
-
-function _renderQueue() {
-  trackList.textContent = "";
+// move: {from, to} after a move swapped the tracks of those rows.
+function _renderQueue(move) {
   const colors = getTheme().trackColors;
-  compareQueue.forEach(function (item, k) {
-    const n = k + 1;
-    const row = document.createElement("div");
-    row.className = "track-item";
-    row.setAttribute("role", "listitem");
-
-    const swatch = document.createElement("span");
-    swatch.className = "track-swatch";
-    swatch.setAttribute("aria-hidden", "true");
-    swatch.style.background = colors[k];
-    row.appendChild(swatch);
-
-    const num = document.createElement("span");
-    num.className = "track-num";
-    num.textContent = String(n);
-    row.appendChild(num);
-
-    const tag = document.createElement("span");
-    tag.className = "track-tag";
-    tag.textContent = window.i18n.t("track.tag_" + item.kind);
-    row.appendChild(tag);
-
-    const label = document.createElement("span");
-    label.className = "track-label";
-    label.textContent = item.label;
-    label.title = item.label;
-    row.appendChild(label);
-
-    const up = _trackButton("", "↑", "track.move_up", n, () => _moveTrack(k, k - 1));
-    row.appendChild(k === 0 ? _placeholder(up) : up);
-    const down = _trackButton("", "↓", "track.move_down", n, () => _moveTrack(k, k + 1));
-    row.appendChild(k === compareQueue.length - 1 ? _placeholder(down) : down);
-    row.appendChild(_trackButton("remove", "×", "track.remove", n, () => {
-      compareQueue.splice(k, 1);
-      _renderQueue();
-    }));
-    trackList.appendChild(row);
+  const rows = compareQueue.map(function (item, k) {
+    return _createTrackRow({
+      index: k, count: compareQueue.length, color: colors[k],
+      kind: item.kind, label: item.label, busy: _isBusy,
+    }, {
+      up: () => _moveTrack(k, k - 1),
+      down: () => _moveTrack(k, k + 1),
+      remove: () => {
+        compareQueue.splice(k, 1);
+        _renderQueue();
+      },
+    });
   });
+  _replaceTrackRows(trackList, rows, move);
   compareBar.hidden = compareQueue.length === 0;
   // With tracks queued an empty field is a valid Compare.
   urlInput.required = compareQueue.length === 0;
@@ -796,9 +754,11 @@ async function readNdjsonStream(resp, signal, prefix = "") {
 
 function rerender() {
   if (!lastRenderedData) return;
-  clearResults();
-  if (lastRenderedData.compare) renderCompare(lastRenderedData, lastCompareStats);
-  else render(lastRenderedData);
+  _redrawKeepingFocus(resultsEl, function () {
+    clearResults();
+    if (lastRenderedData.compare) renderCompare(lastRenderedData, lastCompareStats);
+    else render(lastRenderedData);
+  });
 }
 
 function _appendSaveButtons(row, data) {
@@ -993,20 +953,22 @@ function _renderCharts(data) {
 
 function _reRenderCharts() {
   if (!lastRenderedData) return;
-  activeUPlots.forEach(u => u.destroy());
-  activeUPlots = [];
-  chartCanvasRefs = [];
-  resultsEl.querySelectorAll("[data-chart-block]").forEach(n => n.remove());
-  if (lastRenderedData.compare) {
-    // Track swatches outside the chart blocks (table headings) take the new colours.
-    const colors = getTheme().trackColors;
-    resultsEl.querySelectorAll(".track-swatch[data-track]").forEach(function (swatch) {
-      swatch.style.background = colors[Number(swatch.dataset.track)];
-    });
-    _renderCompareCharts(lastRenderedData, lastCompareStats);
-  } else {
-    _renderCharts(lastRenderedData);
-  }
+  _redrawKeepingFocus(resultsEl, function () {
+    activeUPlots.forEach(u => u.destroy());
+    activeUPlots = [];
+    chartCanvasRefs = [];
+    resultsEl.querySelectorAll("[data-chart-block]").forEach(n => n.remove());
+    if (lastRenderedData.compare) {
+      // Track swatches outside the chart blocks (table headings) take the new colours.
+      const colors = getTheme().trackColors;
+      resultsEl.querySelectorAll(".track-swatch[data-track]").forEach(function (swatch) {
+        swatch.style.background = colors[Number(swatch.dataset.track)];
+      });
+      _renderCompareCharts(lastRenderedData, lastCompareStats);
+    } else {
+      _renderCharts(lastRenderedData);
+    }
+  });
 }
 
 // Reading row under the timeline: what the GATE lane adds up to, plus the key
