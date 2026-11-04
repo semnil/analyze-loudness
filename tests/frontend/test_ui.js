@@ -268,6 +268,18 @@ function fakeStats() {
   assertEqual(_isBusy, false, "Not busy after analysis completes");
 
   // ================================================
+  suite("A redraw keeps the focus in the results area");
+  // ================================================
+
+  assert(resultsEl.querySelector(".save-btn") !== null, "Save buttons are rendered");
+  resultsEl.querySelector(".save-btn").focus();
+  window.i18n.setLang("ja");
+  assert(document.activeElement === resultsEl, "A language switch that rebuilds the results leaves the focus on the results area");
+  urlInput.focus();
+  window.i18n.setLang("en");
+  assert(document.activeElement === urlInput, "Focus outside the results stays where it is through a redraw");
+
+  // ================================================
   suite("Gate caption accompanies the timeline");
   // ================================================
 

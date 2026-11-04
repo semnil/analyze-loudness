@@ -570,14 +570,14 @@ function _moveTrack(from, to) {
   const item = compareQueue[from];
   compareQueue[from] = compareQueue[to];
   compareQueue[to] = item;
-  _renderQueue();
+  _renderQueue({ from: from, to: to });
 }
 
-function _renderQueue() {
-  trackList.textContent = "";
+// move: {from, to} after a move swapped the tracks of those rows.
+function _renderQueue(move) {
   const colors = getTheme().trackColors;
-  compareQueue.forEach(function (item, k) {
-    trackList.appendChild(_createTrackRow({
+  const rows = compareQueue.map(function (item, k) {
+    return _createTrackRow({
       index: k, count: compareQueue.length, color: colors[k],
       kind: item.kind, label: item.label, busy: _isBusy,
     }, {
@@ -587,8 +587,9 @@ function _renderQueue() {
         compareQueue.splice(k, 1);
         _renderQueue();
       },
-    }));
+    });
   });
+  _replaceTrackRows(trackList, rows, move);
   compareBar.hidden = compareQueue.length === 0;
   // With tracks queued an empty field is a valid Compare.
   urlInput.required = compareQueue.length === 0;
@@ -753,9 +754,11 @@ async function readNdjsonStream(resp, signal, prefix = "") {
 
 function rerender() {
   if (!lastRenderedData) return;
-  clearResults();
-  if (lastRenderedData.compare) renderCompare(lastRenderedData, lastCompareStats);
-  else render(lastRenderedData);
+  _redrawKeepingFocus(resultsEl, function () {
+    clearResults();
+    if (lastRenderedData.compare) renderCompare(lastRenderedData, lastCompareStats);
+    else render(lastRenderedData);
+  });
 }
 
 function _appendSaveButtons(row, data) {
@@ -950,20 +953,22 @@ function _renderCharts(data) {
 
 function _reRenderCharts() {
   if (!lastRenderedData) return;
-  activeUPlots.forEach(u => u.destroy());
-  activeUPlots = [];
-  chartCanvasRefs = [];
-  resultsEl.querySelectorAll("[data-chart-block]").forEach(n => n.remove());
-  if (lastRenderedData.compare) {
-    // Track swatches outside the chart blocks (table headings) take the new colours.
-    const colors = getTheme().trackColors;
-    resultsEl.querySelectorAll(".track-swatch[data-track]").forEach(function (swatch) {
-      swatch.style.background = colors[Number(swatch.dataset.track)];
-    });
-    _renderCompareCharts(lastRenderedData, lastCompareStats);
-  } else {
-    _renderCharts(lastRenderedData);
-  }
+  _redrawKeepingFocus(resultsEl, function () {
+    activeUPlots.forEach(u => u.destroy());
+    activeUPlots = [];
+    chartCanvasRefs = [];
+    resultsEl.querySelectorAll("[data-chart-block]").forEach(n => n.remove());
+    if (lastRenderedData.compare) {
+      // Track swatches outside the chart blocks (table headings) take the new colours.
+      const colors = getTheme().trackColors;
+      resultsEl.querySelectorAll(".track-swatch[data-track]").forEach(function (swatch) {
+        swatch.style.background = colors[Number(swatch.dataset.track)];
+      });
+      _renderCompareCharts(lastRenderedData, lastCompareStats);
+    } else {
+      _renderCharts(lastRenderedData);
+    }
+  });
 }
 
 // Reading row under the timeline: what the GATE lane adds up to, plus the key
