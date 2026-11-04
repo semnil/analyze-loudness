@@ -6,8 +6,8 @@
     en: {
       "app.title": "Loudness Analyzer (BS.1770 / EBU R128)",
       "form.aria": "Analyze audio source",
-      "url.label": "YouTube URL or local file path",
-      "url.placeholder": "YouTube URL or local file path",
+      "url.label": "URL or local file path",
+      "url.placeholder": "URL or local file path",
       "btn.analyze": "Analyze",
       "btn.cancel": "Cancel",
       "btn.loading": "Loading",
@@ -147,8 +147,8 @@
     ja: {
       "app.title": "Loudness Analyzer (BS.1770 / EBU R128)",
       "form.aria": "音声ソースを分析",
-      "url.label": "YouTube URL またはローカルファイルのパス",
-      "url.placeholder": "YouTube URL またはローカルファイルのパス",
+      "url.label": "URL またはローカルファイルのパス",
+      "url.placeholder": "URL またはローカルファイルのパス",
       "btn.analyze": "分析",
       "btn.cancel": "キャンセル",
       "btn.loading": "読込中",
