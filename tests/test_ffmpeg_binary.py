@@ -12,6 +12,8 @@ missing one fails the module instead of skipping it.
 
 import math
 import os
+import shutil
+import struct
 import wave
 from pathlib import Path
 
@@ -79,6 +81,35 @@ def test_ebur128_frames_cover_the_file_every_100_ms(tone):
     assert np.allclose(np.diff(t), 0.1, atol=1e-3)
     assert abs(t[-1] - SECONDS) <= 0.1
     assert len(M) == len(S) == len(t)
+
+
+def test_ebur128_reads_a_file_with_a_non_ascii_name(tone, tmp_path):
+    path, peak = tone
+    renamed = tmp_path / "音源 テスト.wav"
+    shutil.copyfile(path, renamed)
+    _, _, _, summary = run_ebur128(str(renamed))
+    assert abs(summary["true_peak"] - 20 * math.log10(peak)) <= TOLERANCE
+    assert "warnings" not in summary
+
+
+def test_ebur128_reads_a_file_with_a_tag_that_is_not_utf8(tone, tmp_path):
+    path, peak = tone
+    value = "日本語タイトル".encode("cp932") + b"\0"
+    value += b"\0" * (len(value) % 2)
+    info = b"INFO" + b"INAM" + struct.pack("<I", len(value)) + value
+    riff = Path(path).read_bytes()[8:] + b"LIST" + struct.pack("<I", len(info)) + info
+    tagged = tmp_path / "tagged.wav"
+    tagged.write_bytes(b"RIFF" + struct.pack("<I", len(riff)) + riff)
+    _, _, _, summary = run_ebur128(str(tagged))
+    assert abs(summary["true_peak"] - 20 * math.log10(peak)) <= TOLERANCE
+    assert "warnings" not in summary
+
+
+def test_ebur128_failure_names_a_non_ascii_file_in_its_own_letters(tmp_path):
+    broken = tmp_path / "音源 テスト.wav"
+    broken.write_bytes(b"not audio")
+    with pytest.raises(RuntimeError, match="音源 テスト"):
+        run_ebur128(str(broken))
 
 
 def test_ffprobe_reads_the_duration(tone):
