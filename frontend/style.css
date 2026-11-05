@@ -72,16 +72,6 @@ h1 {
 
 .input-bar #url-input { flex: 1; }
 
-/* Toolbar (lang + theme toggles) */
-#status {
-  text-align: center;
-  margin-bottom: 16px;
-  font-size: 14px;
-  color: var(--text-secondary);
-  min-height: 40px;
-  overflow-wrap: anywhere;
-}
-
 /* Summary table */
 .summary-table {
   width: 100%;

@@ -843,3 +843,21 @@ def test_theme_and_language_carry_over_to_a_new_page():
     finally:
         server.shutdown()
         server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_status_area_reserves_one_line():
+    """The status area keeps common.css's height, so the results start at the
+    same place in both GUIs."""
+    server = _app_server("analyze_loudness.gui")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            assert page.evaluate("getComputedStyle(document.getElementById('status')).minHeight") == "20px"
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
