@@ -156,7 +156,7 @@ CI (`.github/workflows/ci.yaml`) runs `pytest -q --cov --cov-report=xml --js-cov
 
 ### ebur128 parsing
 
-Parses the stderr of `ffmpeg -af ebur128=peak=true -f null -` with the regex `t:\s*([\d.]+)\s+TARGET.*?M:\s*([-\d.]+)\s+S:\s*([-\d.]+)`. The Summary block takes Integrated / LRA / True Peak from `output.rfind("Summary")` onward.
+Parses the stderr of `ffmpeg -af ebur128=peak=true -f null -` with the regex `t:\s*([\d.]+)\s+TARGET.*?M:\s*([-\d.]+)\s+S:\s*([-\d.]+)`. The Summary block takes Integrated / LRA / True Peak from `output.rfind("Summary")` onward. The stderr is decoded as UTF-8 with undecodable bytes replaced, on every OS: ffmpeg writes paths in UTF-8 and metadata values as the raw bytes of the file, and Python's default decoding on Windows (the system code page) fails on them, which leaves `stderr` as `None`.
 
 ### Memory constraints
 
@@ -228,7 +228,7 @@ ffmpeg / ffprobe are fetched as osxexperts.net's arm64 native builds. evermeet.c
     --pin build_assets/ffmpeg.json --version-file src/analyze_loudness/__init__.py --candidate <tmpdir>/ffmpeg.json
   ```
 
-- Verification: `tests/test_ffmpeg_binary.py` reads a 1 kHz sine wave written with numpy through the ffmpeg / ffprobe on PATH and the app's parsers (`run_ebur128()` / `probe_duration()`), and compares Integrated, the relative gate and True Peak with the BS.1770 calculation. Given the directory of the bundled binaries in `EXPECT_FFMPEG_DIR`, it confirms the ffmpeg / ffprobe there are found first, and fails instead of skipping when they are not (the last line of [Tests](#tests)). The release build (`.github/workflows/release.yaml`) runs this test on the copies inside the distributables (on Windows `dist/analyze-loudness/_internal/bin` collected by PyInstaller, on macOS `Contents/Frameworks/bin` of the `.app` after signing), and on failure it does not proceed to uploading the artifacts and creating the Draft Release (`tests/test_release_workflow.py` checks the position of that step and the directory it passes against the spec and `installer.iss`)
+- Verification: `tests/test_ffmpeg_binary.py` reads a 1 kHz sine wave written with numpy through the ffmpeg / ffprobe on PATH and the app's parsers (`run_ebur128()` / `probe_duration()`), and compares Integrated, the relative gate and True Peak with the BS.1770 calculation, and also reads a copy with a non-ASCII name and a copy with a tag that is not UTF-8. Given the directory of the bundled binaries in `EXPECT_FFMPEG_DIR`, it confirms the ffmpeg / ffprobe there are found first, and fails instead of skipping when they are not (the last line of [Tests](#tests)). The release build (`.github/workflows/release.yaml`) runs this test on the copies inside the distributables (on Windows `dist/analyze-loudness/_internal/bin` collected by PyInstaller, on macOS `Contents/Frameworks/bin` of the `.app` after signing), and on failure it does not proceed to uploading the artifacts and creating the Draft Release (`tests/test_release_workflow.py` checks the position of that step and the directory it passes against the spec and `installer.iss`)
 
 ### Starting ffmpeg / ffprobe by absolute path
 

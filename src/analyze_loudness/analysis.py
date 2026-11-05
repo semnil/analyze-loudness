@@ -58,7 +58,11 @@ def run_ebur128(
     if duration is not None:
         cmd += ["-t", str(duration)]
     cmd += ["-af", "ebur128=peak=true", "-f", "null", "-"]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=600, **_ffmpeg_kwargs())
+    # stderr carries paths as UTF-8 and metadata values as the raw bytes of the file.
+    r = subprocess.run(
+        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=600, **_ffmpeg_kwargs(),
+    )
     warnings: list[str] = []
     if r.returncode != 0:
         import sys
