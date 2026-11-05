@@ -1034,6 +1034,50 @@ function fakeStats() {
   assert(statusEl.textContent.indexOf(".txt") !== -1, "Upload error is shown");
   assertEqual(urlInput.value, "", "Rejected drop leaves the field empty");
 
+  // A file dropped next to a comparison on screen drops it, and the app is busy
+  // until the upload ends.
+  resetState();
+  compareQueue.push({ kind: "json", label: "A", data: fakeResult("https://example.com/a") });
+  compareQueue.push({ kind: "json", label: "B", data: fakeResult("https://example.com/b") });
+  _renderQueue();
+  renderCompare(fakeCompare(), JSON.parse(JSON.stringify(fakeStats())));
+  var finishUpload = null;
+  mockFetch(function() {
+    return new Promise(function(resolve) {
+      finishUpload = function() { resolve(makeJsonResponse({ uploaded: true, path: "/tmp/up/c.wav" })); };
+    });
+  });
+  dropFiles(["c.wav"]);
+  await new Promise(function(r) { setTimeout(r, 50); });
+  assertEqual(_isBusy, true, "The app is busy during an upload");
+  assertEqual(submitBtn.disabled, true, "Nothing starts during an upload");
+  assert(resultsEl.querySelector(".compare-table") !== null, "The comparison stays until the file is in");
+  finishUpload();
+  await new Promise(function(r) { setTimeout(r, 100); });
+  assertEqual(_isBusy, false, "The app is free after the upload");
+  assertEqual(compareQueue.length, 3, "The dropped file is queued");
+  assert(!resultsEl.classList.contains("visible"), "A queued file drops the comparison");
+  assertEqual(lastRenderedData, null, "No comparison is kept after the drop");
+
+  // The same with a single result on screen, and after a failed upload.
+  resetState();
+  render(fakeResult("https://www.youtube.com/watch?v=a"));
+  mockFetch(function() { return makeJsonResponse({ uploaded: true, path: "/tmp/up/f.wav" }); });
+  mockFetch(function() { return makeJsonResponse({ uploaded: true, path: "/tmp/up/g.wav" }); });
+  dropFiles(["f.wav", "g.wav"]);
+  await new Promise(function(r) { setTimeout(r, 150); });
+  assert(!resultsEl.classList.contains("visible"), "Queued files drop the single result");
+  resetState();
+  render(fakeResult("https://www.youtube.com/watch?v=a"));
+  compareQueue.push({ kind: "url", label: "https://www.youtube.com/watch?v=a" });
+  _renderQueue();
+  mockFetch(function() { return makeJsonResponse({ error: "Unsupported file type: .txt" }, 400); });
+  dropFiles(["notes.txt"]);
+  await new Promise(function(r) { setTimeout(r, 100); });
+  assertEqual(_isBusy, false, "The app is free after a failed upload");
+  assertEqual(submitBtn.disabled, false, "Submit works after a failed upload");
+  assert(resultsEl.classList.contains("visible"), "A failed upload keeps the result");
+
   // ================================================
   suite("Update: settings button and dialog");
   // ================================================

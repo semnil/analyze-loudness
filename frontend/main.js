@@ -578,7 +578,16 @@ window.addEventListener("drop", async (e) => {
   const files = Array.from(e.dataTransfer.files);
   if (!files.length) return;
   const toField = files.length === 1 && compareQueue.length === 0;
+  // Nothing can start or edit the queue until the files are in.
+  _setBusy(true, false);
+  try {
+    await _uploadDropped(files, toField);
+  } finally {
+    _setBusy(false);
+  }
+}, true);
 
+async function _uploadDropped(files, toField) {
   for (const file of files) {
     if (file.size > MAX_UPLOAD_BYTES) {
       showError(window.i18n.t("err.file_too_large"));
@@ -603,15 +612,16 @@ window.addEventListener("drop", async (e) => {
       if (toField) {
         urlInput.value = result.path;
         urlInput.focus();
-      } else if (!_queueTrack({ kind: "file", label: result.path })) {
-        break;
+      } else {
+        if (!_queueTrack({ kind: "file", label: result.path })) break;
+        _maybeInvalidateResults();
       }
       statusEl.textContent = window.i18n.t("status.file_loaded") + file.name;
     } catch (err) {
       showError(err.message);
     }
   }
-}, true);
+}
 
 function _moveTrack(from, to) {
   const item = compareQueue[from];
