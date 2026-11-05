@@ -496,11 +496,13 @@ def test_cancelling_a_save_empties_the_status_line(button, before):
 
 @pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
 @pytest.mark.parametrize("save", ["saveResult", "saveImage"])
-@pytest.mark.parametrize("write,line,error", [
-    ("_setUpdateLock(true); statusEl.textContent = 'Downloading';", "Downloading", False),
-    ("showError('Settings could not be saved');", "Settings could not be saved", True),
-], ids=["update", "error"])
-def test_cancelling_a_save_keeps_a_line_written_after_it_began(save, write, line, error):
+@pytest.mark.parametrize("before,write,line,error", [
+    ("", "_setUpdateLock(true); statusEl.textContent = 'Downloading';", "Downloading", False),
+    ("", "showError('Settings could not be saved');", "Settings could not be saved", True),
+    ("showError('Settings could not be saved');", "showError('Settings could not be saved');",
+     "Settings could not be saved", True),
+], ids=["update", "error", "same_error"])
+def test_cancelling_a_save_keeps_a_line_written_after_it_began(save, before, write, line, error):
     """When another line reaches the status while a save's file dialog is open,
     cancelling the dialog leaves that line; an error stays an error."""
     server = _app_server("analyze_loudness.gui")
@@ -514,6 +516,8 @@ def test_cancelling_a_save_keeps_a_line_written_after_it_began(save, write, line
             page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
             page.wait_for_load_state("networkidle")
             page.evaluate(_RENDER_RESULT_JS)
+            if before:
+                page.evaluate(before)
             with page.expect_request(lambda request: "/save" in request.url):
                 page.evaluate("(name) => { window.running = window[name](lastRenderedData); }", save)
             page.evaluate(write)
@@ -524,6 +528,38 @@ def test_cancelling_a_save_keeps_a_line_written_after_it_began(save, write, line
             if error:
                 expect(status).to_have_attribute("role", "alert")
                 expect(status.locator(".copy-btn")).to_have_count(1)
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_cancelling_a_save_empties_an_error_whose_copy_label_came_back():
+    """The Copy label changing back while a save's file dialog is open is not a
+    new line: cancelling the dialog empties the error."""
+    server = _app_server("analyze_loudness.gui")
+    held = []
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(reduced_motion="reduce")
+            page.add_init_script("Object.defineProperty(navigator, 'clipboard', "
+                                 "{value: {writeText: () => Promise.resolve()}, configurable: true})")
+            page.route("**/save", lambda route: held.append(route))
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            page.evaluate(_RENDER_RESULT_JS)
+            page.evaluate("showError('HTTP Error 403: Forbidden')")
+            copy = page.locator("#status .copy-btn")
+            label = copy.text_content()
+            copy.click()
+            expect(copy).not_to_have_text(label)
+            with page.expect_request("**/save"):
+                page.locator(".save-btn").nth(0).click()
+            expect(copy).to_have_text(label)
+            held[0].fulfill(json={"saved": False})
+            expect(page.locator("#status")).to_have_text("")
             browser.close()
     finally:
         server.shutdown()
