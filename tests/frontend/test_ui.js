@@ -264,7 +264,7 @@ function fakeStats() {
   document.getElementById("analyze-form").dispatchEvent(new Event("submit"));
   await new Promise(function(r) { setTimeout(r, 300); });
   assert(resultsEl.classList.contains("visible"), "Results made visible after analysis");
-  assert(resultsEl.querySelector(".video-title") !== null, "Video title rendered");
+  assert(resultsEl.querySelector("h2.result-title") !== null, "Video title rendered");
   assertEqual(_isBusy, false, "Not busy after analysis completes");
 
   // ================================================

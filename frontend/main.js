@@ -788,14 +788,7 @@ function render(data) {
   const st = summary.short_term || {};
   const mo = summary.momentary || {};
 
-  const titleRow = document.createElement("div");
-  titleRow.className = "title-row";
-
-  const titleEl = document.createElement("h2");
-  titleEl.className = "video-title";
-  titleEl.textContent = title || window.i18n.t("summary.untitled");
-  titleRow.appendChild(titleEl);
-
+  const titleRow = _createTitleRow(title || window.i18n.t("summary.untitled"));
   _appendSaveButtons(titleRow, data);
   resultsEl.appendChild(titleRow);
 
@@ -1025,12 +1018,7 @@ function renderCompare(doc, stats) {
   chartCanvasRefs = [];
   const tracks = doc.compare.tracks;
 
-  const titleRow = document.createElement("div");
-  titleRow.className = "title-row";
-  const titleEl = document.createElement("h2");
-  titleEl.className = "video-title";
-  titleEl.textContent = window.i18n.t("compare.title", { n: tracks.length });
-  titleRow.appendChild(titleEl);
+  const titleRow = _createTitleRow(window.i18n.t("compare.title", { n: tracks.length }));
   _appendSaveButtons(titleRow, doc);
   resultsEl.appendChild(titleRow);
 

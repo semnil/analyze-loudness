@@ -357,6 +357,101 @@ _OVERFLOW_JS = """() => {
 }"""
 
 
+def test_style_css_defines_the_same_variables_for_both_themes():
+    """A variable that only one theme of style.css defines leaves the other
+    theme on the value of common.css, or on none."""
+    import re
+    css = (_PROJECT_ROOT / "frontend" / "style.css").read_text(encoding="utf-8")
+    root = re.search(r":root\s*\{([^}]*)\}", css).group(1)
+    dark = re.search(r'\[data-theme="dark"\]\s*\{([^}]*)\}', css).group(1)
+    names = lambda body: sorted(re.findall(r"(--[\w-]+)\s*:", body))
+    assert names(root) == names(dark)
+    assert "--result-title-fg" in names(root)
+
+
+_RESULT_ROW_JS = """() => {
+  const row = document.querySelector("#results .title-row");
+  const title = row.firstElementChild;
+  const saves = Array.from(row.querySelectorAll(".save-btn"));
+  const box = (el) => el.getBoundingClientRect();
+  const shape = (el) => { const s = getComputedStyle(el);
+    return [s.minHeight, s.paddingTop, s.paddingRight, s.borderTopLeftRadius, s.fontSize]; };
+  return {
+    title: [title.tagName, title.className],
+    titleLeft: box(title).left - box(row).left,
+    savesRight: box(row).right - box(saves[saves.length - 1]).right,
+    saveShapes: saves.map(shape),
+    copyShape: shape(document.querySelector("#status .copy-btn")),
+    barShape: shape(document.getElementById("clear-btn")),
+  };
+}"""
+_TITLE_ROW_FITS_JS = """() => {
+  const row = document.querySelector("#results .title-row");
+  const title = row.querySelector(".result-title");
+  return row.scrollWidth <= row.clientWidth && title.scrollWidth <= title.clientWidth;
+}"""
+_FACE_JS = """(sel) => { const s = getComputedStyle(document.querySelector(sel)); return [s.backgroundColor, s.color]; }"""
+
+
+def _contrast(a, b):
+    hi, lo = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_result_title_and_buttons_take_the_common_look(scheme):
+    """The result title is an h2 on the left with the save buttons on the
+    right; the save buttons wear the primary face and, like Copy in an error
+    line, the shape of the compare bar's buttons; Copy's label keeps 4.5:1
+    with and without hover (common.css)."""
+    server = _app_server("analyze_loudness.gui")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(color_scheme=scheme, reduced_motion="reduce")
+            page.add_init_script("Object.defineProperty(navigator, 'clipboard', "
+                                 "{value: {writeText: () => Promise.resolve()}, configurable: true})")
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            page.evaluate("render({title: 'Test Video', summary: {duration_sec: 600, frames: 5999, integrated: -18.1, "
+                          "true_peak: 0.8, lra: 9.3, short_term: {median: -19.4, mean: -20.5, p10: -24.1, p90: -15.4}, "
+                          "momentary: {median: -20.8, mean: -21.3, p10: -26.9, p90: -14.4}, silence_pct: 1.0}, "
+                          "series: {t: [0.1, 0.2, 0.3], S: [-20, -21, -22], M: [-21, -22, -23]}, "
+                          "meta: {version: '1.0.0', analyzed_at: '2026-01-01T00:00:00Z', source_url: 'https://example.com/a'}})")
+            page.evaluate("showError('HTTP Error 403: Forbidden')")
+            page.mouse.move(0, 0)
+            row = page.evaluate(_RESULT_ROW_JS)
+            assert row["title"] == ["H2", "result-title"]
+            assert abs(row["titleLeft"]) < 1
+            title = page.evaluate(_FACE_JS, "#results .result-title")[1]
+            assert _contrast(title, page.evaluate("getComputedStyle(document.body).backgroundColor")) >= 4.5
+            link = page.evaluate(_FACE_JS, "#results .meta-info a")[1]
+            assert _contrast(link, page.evaluate("getComputedStyle(document.body).backgroundColor")) >= 4.5
+            assert abs(row["savesRight"]) < 1
+            for shape in row["saveShapes"] + [row["copyShape"]]:
+                assert shape == row["barShape"]
+            save = page.evaluate(_FACE_JS, ".save-btn")
+            assert save[0] == page.evaluate(_RESOLVE_VAR_JS, "--primary-bg")
+            page.hover(".save-btn")
+            assert page.evaluate(_FACE_JS, ".save-btn")[0] == page.evaluate(_RESOLVE_VAR_JS, "--primary-bg-hover")
+            page.mouse.move(0, 0)
+            copy = page.evaluate(_FACE_JS, ".copy-btn")
+            page.hover(".copy-btn")
+            hovered = page.evaluate(_FACE_JS, ".copy-btn")
+            assert hovered[0] != copy[0]
+            for face in (copy, hovered):
+                assert _contrast(*face) >= 4.5, face
+            page.evaluate("document.querySelector('#results .result-title').textContent = "
+                          "'https://example.com/' + 'a'.repeat(200)")
+            page.set_viewport_size({"width": 480, "height": 700})
+            assert page.evaluate(_TITLE_ROW_FITS_JS)
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 @pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
 def test_input_bar_controls_stay_inside_the_window_around_the_wrap_width():
     """With two queued tracks, no input bar control or label runs past the bar
