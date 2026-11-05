@@ -1094,7 +1094,10 @@ function renderCompare(doc, stats) {
   scope.textContent = window.i18n.t("compare.scope", { mins: fmt(doc.compare.truncate_sec / 60, 1) });
   resultsEl.appendChild(scope);
 
-  resultsEl.appendChild(_buildCompareTable(tracks, lastCompareStats));
+  const tableScroll = document.createElement("div");
+  tableScroll.className = "table-scroll";
+  tableScroll.appendChild(_buildCompareTable(tracks, lastCompareStats));
+  resultsEl.appendChild(tableScroll);
   _renderCompareCharts(doc, lastCompareStats);
 }
 

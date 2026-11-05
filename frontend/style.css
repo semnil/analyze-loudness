@@ -89,6 +89,10 @@ h1 {
   color: var(--text);
 }
 
+/* A comparison table wider than the window scrolls inside this box. */
+.table-scroll { overflow-x: auto; margin-bottom: 24px; }
+.table-scroll > .summary-table { margin-bottom: 0; }
+
 .compare-table tbody th { text-align: left; width: 16%; white-space: nowrap; }
 .compare-table .track-head {
   max-width: 0;
