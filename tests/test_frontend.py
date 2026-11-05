@@ -633,6 +633,53 @@ def test_saving_is_locked_while_an_update_installs(result):
 
 
 @pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_a_running_save_keeps_its_button_off_until_it_ends():
+    """When an update fails while a save runs, the button of that save stays off
+    until the save ends, also across a redraw, and the other button comes back."""
+    from tests.test_chart_rendering import track
+    server = _app_server("analyze_loudness.gui")
+    held = {}
+    saves = []
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(viewport={"width": 1100, "height": 800}, locale="en-US")
+            page.on("dialog", lambda dialog: dialog.accept())
+            page.on("request", lambda r: saves.append(r.url) if r.url.endswith("/save") else None)
+            page.route("**/update/status", lambda route: route.fulfill(
+                json={"current": "1.0.0", "supported": True, "launch_check": False}))
+            page.route("**/update/check", lambda route: route.fulfill(json={"available": True, "version": "9.9.9"}))
+            page.route("**/update/install", lambda route: held.update(install=route))
+            page.route("**/save", lambda route: held.update(save=route))
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.evaluate("window.analyzeUpdate.ready")
+            page.evaluate("data => render(data)", track(-20, "First"))
+            buttons = page.locator(".save-btn")
+            buttons.nth(0).click()
+            expect(buttons.nth(0)).to_be_disabled()
+            page.click("#settings-toggle")
+            page.click("#settings-update-now")
+            expect(page.locator("#status")).to_contain_text("Downloading update")
+            assert held.get("install") is not None
+            held["install"].fulfill(status=500, json={"error": "bad signature"})
+            page.wait_for_selector("#status.error")
+            expect(buttons.nth(1)).to_be_enabled()
+            expect(buttons.nth(0)).to_be_disabled()
+            page.evaluate("window.i18n.setLang('ja')")
+            expect(buttons.nth(0)).to_be_disabled()
+            expect(buttons.nth(1)).to_be_enabled()
+            buttons.nth(0).click(force=True)
+            assert len(saves) == 1
+            held["save"].fulfill(json={"saved": True, "path": "/saved/result"})
+            expect(page.locator("#status")).to_contain_text("/saved/result")
+            expect(buttons.nth(0)).to_be_enabled()
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
 def test_theme_and_language_carry_over_to_a_new_page():
     """The theme and the language picked on one page are what the next page,
     with empty webview storage, starts with, and the window color follows."""
