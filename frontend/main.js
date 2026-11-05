@@ -121,6 +121,9 @@ function safeName(title) {
 
 let _isBusy = false;
 let _busyCancelable = true;
+let _updateLocked = false;
+// The save buttons' keys whose save has not ended.
+const _savesRunning = new Set();
 
 function _submitLabel() {
   return window.i18n.t(compareQueue.length > 0 ? "btn.compare" : "btn.analyze");
@@ -761,18 +764,32 @@ function rerender() {
   });
 }
 
+function _saveIsOff(key) {
+  return _updateLocked || _savesRunning.has(key);
+}
+
+function _applySaveButtons() {
+  document.querySelectorAll(".save-btn").forEach(function (button) {
+    button.disabled = _saveIsOff(button.dataset.saveKey);
+  });
+}
+
 function _appendSaveButtons(row, data) {
   for (const [key, save] of [["btn.save_json", saveResult], ["btn.save_image", saveImage]]) {
     const btn = document.createElement("button");
     btn.className = "save-btn";
     btn.textContent = window.i18n.t(key);
     btn.style.minWidth = _saveBtnWidths[key] + "px";
+    btn.dataset.saveKey = key;
+    btn.disabled = _saveIsOff(key);
     btn.addEventListener("click", async () => {
-      btn.disabled = true;
+      _savesRunning.add(key);
+      _applySaveButtons();
       try {
         await save(data);
       } finally {
-        btn.disabled = false;
+        _savesRunning.delete(key);
+        _applySaveButtons();
       }
     });
     row.appendChild(btn);
@@ -1487,12 +1504,21 @@ function showError(message) {
   _renderError(statusEl, message, _copyBtnWidth);
 }
 
+// Held while an accepted update downloads and installs: the app is busy without
+// a way to cancel, the input field takes no text, and no result can be saved.
+function _setUpdateLock(locked) {
+  _updateLocked = locked;
+  _setBusy(locked, false);
+  urlInput.disabled = locked;
+  _applySaveButtons();
+}
+
 // Settings button, update check at launch, and the update install
 // (vendor/py-analyze-common/src/analyze_common/web/update.js).
 window.analyzeUpdate.init({
   appName: "Loudness Analyzer",
   isBusy: function () { return _isBusy; },
-  setBusy: function (busy) { _setBusy(busy, false); },
+  setBusy: _setUpdateLock,
   setStatus: function (text) {
     _setStatusNormal();
     statusEl.textContent = text;
