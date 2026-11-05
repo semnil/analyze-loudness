@@ -266,6 +266,11 @@ function fakeStats() {
   assert(resultsEl.classList.contains("visible"), "Results made visible after analysis");
   assert(resultsEl.querySelector("h2.result-title") !== null, "Video title rendered");
   assertEqual(_isBusy, false, "Not busy after analysis completes");
+  assertEqual(urlInput.value, "", "The analyzed source leaves the field");
+  assertEqual(compareQueue.length, 1, "The analyzed source joins the queue");
+  assertEqual(compareQueue[0].label, "https://www.youtube.com/watch?v=test", "The row holds the source");
+  assertEqual(compareQueue[0].data && compareQueue[0].data.title, "Test Video", "The row keeps its result");
+  assertEqual(submitBtn.textContent, "Analyze", "Submit reads Analyze with one track");
 
   // ================================================
   suite("A redraw keeps the focus in the results area");
@@ -386,6 +391,8 @@ function fakeStats() {
   assert(statusEl.classList.contains("error"), "Status flagged as error");
   assert(statusEl.textContent.indexOf("boom") !== -1, "Server error message surfaced");
   assertEqual(_isBusy, false, "Not busy after failure");
+  assertEqual(compareQueue.length, 1, "A failed source stays in the queue");
+  assertEqual(compareQueue[0].data, undefined, "A failed source holds no result");
 
   // ================================================
   suite("Load JSON: loaded:false leaves URL untouched");
@@ -501,7 +508,7 @@ function fakeStats() {
     "gate.lane_label", "gate.counted", "gate.out", "gate.silence",
     "gate.counted_of_timeline", "gate.excluded_detail", "aria.gate_lane",
     "btn.add", "btn.compare", "btn.clear", "track.move_up", "track.move_down", "track.remove",
-    "err.max_tracks", "err.compare_min", "err.compare_queue_busy", "err.url_scheme",
+    "err.max_tracks", "err.duplicate_track", "err.compare_queue_busy", "err.url_scheme",
     "compare.title", "compare.scope", "table.integrated_full", "table.true_peak_full",
     "table.lra_full", "tip.integrated_full", "tip.true_peak_full", "tip.lra_full",
     "gate.lane_label_n", "gate.compare_counted", "btn.browse", "drop.overlay", "track.tag_file",
@@ -578,7 +585,7 @@ function fakeStats() {
   assertEqual(urlInput.value, "", "URL field cleared after queuing");
   assertEqual(trackListEl.querySelectorAll(".track-item").length, 1, "One queue row rendered");
   assertEqual(compareBar.hidden, false, "Clear All bar shown with a queued track");
-  assertEqual(submitBtn.textContent, "Compare", "Submit reads Compare with tracks queued");
+  assertEqual(submitBtn.textContent, "Analyze", "Submit reads Analyze with one queued track");
   assertEqual(urlInput.required, false, "URL field not required while tracks are queued");
 
   urlInput.value = "ftp://example.com/x";
@@ -621,16 +628,99 @@ function fakeStats() {
               "Remove track 1", "Remove button names its track number");
 
   // ================================================
-  suite("Compare needs two tracks");
+  suite("One queued track is a single analysis");
   // ================================================
 
   resetState();
   urlInput.value = "https://www.youtube.com/watch?v=a";
   addBtn.click();
+  var singleBody = null;
+  mockFetch(function(url, opts) {
+    singleBody = JSON.parse(opts.body);
+    return makeNdjsonResponse([{ type: "result", data: fakeResult("https://www.youtube.com/watch?v=a") }]);
+  });
+  _fetchLog.length = 0;
+  document.getElementById("analyze-form").dispatchEvent(new Event("submit"));
+  await new Promise(function(r) { setTimeout(r, 200); });
+  assertEqual(singleBody && singleBody.url, "https://www.youtube.com/watch?v=a", "The row's source is analyzed");
+  assertEqual(_fetchLog.length, 1, "Only /analyze ran");
+  assert(resultsEl.querySelector(".compare-table") === null, "No comparison is shown");
+  assert(resultsEl.querySelector(".title-row") !== null, "The single result is shown");
+  assert(!statusEl.classList.contains("error"), "No error with one track");
+
+  // A source the queue holds stays in the field and adds no row.
+  urlInput.value = "https://www.youtube.com/watch?v=a";
+  urlInput.dispatchEvent(new Event("input"));
+  assertEqual(submitBtn.textContent, "Analyze", "A queued source in the field does not read as a second track");
+  mockFetch(function() {
+    return makeNdjsonResponse([{ type: "result", data: fakeResult("https://www.youtube.com/watch?v=a") }]);
+  });
+  document.getElementById("analyze-form").dispatchEvent(new Event("submit"));
+  await new Promise(function(r) { setTimeout(r, 200); });
+  assertEqual(compareQueue.length, 1, "A source already queued adds no row on submit");
+  assertEqual(urlInput.value, "https://www.youtube.com/watch?v=a", "A source already queued stays in the field");
+  assert(resultsEl.querySelector(".compare-table") === null, "A source already queued does not start a comparison");
+
+  addBtn.click();
+  assertEqual(compareQueue.length, 1, "+ Add Track does not add a source already queued");
+  assert(statusEl.classList.contains("error"), "+ Add Track shows an error for a source already queued");
+  assert(statusEl.textContent.indexOf("already added") !== -1, "The error names the duplicate");
+
+  // ================================================
+  suite("The next source after an analysis starts a comparison");
+  // ================================================
+
+  resetState();
+  urlInput.value = "https://www.youtube.com/watch?v=a";
+  mockFetch(function() {
+    return makeNdjsonResponse([{ type: "result", data: fakeResult("https://www.youtube.com/watch?v=a") }]);
+  });
+  document.getElementById("analyze-form").dispatchEvent(new Event("submit"));
+  await new Promise(function(r) { setTimeout(r, 200); });
+  assertEqual(compareQueue.length, 1, "The first source is queued");
+
+  urlInput.value = "https://www.youtube.com/watch?v=b";
+  urlInput.dispatchEvent(new Event("input"));
+  assertEqual(submitBtn.textContent, "Compare", "Submit reads Compare with a new source in the field");
+  urlInput.value = "";
+  urlInput.dispatchEvent(new Event("input"));
+  assertEqual(submitBtn.textContent, "Analyze", "Submit reads Analyze again with an empty field");
+
+  urlInput.value = "https://www.youtube.com/watch?v=b";
+  var analyzedUrls = [];
+  var nextCompareBody = null;
+  mockFetch(function(url, opts) {
+    analyzedUrls.push(JSON.parse(opts.body).url);
+    return makeNdjsonResponse([{ type: "result", data: fakeResult("https://www.youtube.com/watch?v=b") }]);
+  });
+  mockFetch(function(url, opts) {
+    nextCompareBody = JSON.parse(opts.body);
+    return makeJsonResponse({ data: fakeCompare(), stats: fakeStats() });
+  });
+  document.getElementById("analyze-form").dispatchEvent(new Event("submit"));
+  await new Promise(function(r) { setTimeout(r, 300); });
+  assertEqual(JSON.stringify(analyzedUrls), JSON.stringify(["https://www.youtube.com/watch?v=b"]),
+              "Only the new source is analyzed");
+  assertEqual(nextCompareBody && nextCompareBody.tracks.length, 2, "/compare receives both tracks");
+  assertEqual(nextCompareBody && nextCompareBody.tracks[0].meta.source_url, "https://www.youtube.com/watch?v=a",
+              "The first track travels as its kept result");
+  assert(resultsEl.querySelector(".compare-table") !== null, "The comparison is shown");
+  assertEqual(compareQueue.length, 2, "Both sources stay queued");
+  assertEqual(urlInput.value, "", "The field is empty after the comparison");
+
+  // ================================================
+  suite("One queued JSON result is shown without a request");
+  // ================================================
+
+  resetState();
+  compareQueue.push({ kind: "json", label: "Loaded", data: fakeResult("https://example.com/b") });
+  _renderQueue();
+  _fetchLog.length = 0;
   document.getElementById("analyze-form").dispatchEvent(new Event("submit"));
   await new Promise(function(r) { setTimeout(r, 50); });
-  assertEqual(_isBusy, false, "One queued track does not start a comparison");
-  assert(statusEl.classList.contains("error"), "Comparison with one track shows an error");
+  assertEqual(_fetchLog.length, 0, "No request for a queued result");
+  assert(resultsEl.querySelector(".title-row") !== null, "The queued result is shown");
+  assert(!statusEl.classList.contains("error"), "No error with one queued result");
 
   // ================================================
   suite("Load JSON while tracks are queued");
@@ -654,6 +744,101 @@ function fakeStats() {
   assertEqual(compareQueue.length, 2, "A comparison JSON is not queued");
   assert(statusEl.classList.contains("error"), "Comparison JSON with a non-empty queue is refused");
   assert(resultsEl.querySelector(".compare-table") === null, "Refused comparison is not rendered");
+
+  // ================================================
+  suite("Results follow the queue");
+  // ================================================
+
+  // Clear All drops the result and the status.
+  resetState();
+  urlInput.value = "https://www.youtube.com/watch?v=a";
+  mockFetch(function() {
+    return makeNdjsonResponse([{ type: "result", data: fakeResult("https://www.youtube.com/watch?v=a") }]);
+  });
+  document.getElementById("analyze-form").dispatchEvent(new Event("submit"));
+  await new Promise(function(r) { setTimeout(r, 200); });
+  assert(resultsEl.classList.contains("visible"), "A result is shown");
+  showError("something");
+  clearBtn.click();
+  assertEqual(compareQueue.length, 0, "Clear All empties the queue");
+  assert(!resultsEl.classList.contains("visible"), "Clear All drops the result");
+  assertEqual(resultsEl.children.length, 0, "Clear All empties the results");
+  assertEqual(statusEl.textContent, "", "Clear All clears the status");
+  assert(!statusEl.classList.contains("error"), "Clear All clears the error");
+  assertEqual(lastRenderedData, null, "No result is kept after Clear All");
+
+  // Removing the row of the single result on screen keeps the result.
+  resetState();
+  urlInput.value = "https://www.youtube.com/watch?v=a";
+  mockFetch(function() {
+    return makeNdjsonResponse([{ type: "result", data: fakeResult("https://www.youtube.com/watch?v=a") }]);
+  });
+  document.getElementById("analyze-form").dispatchEvent(new Event("submit"));
+  await new Promise(function(r) { setTimeout(r, 200); });
+  trackListEl.querySelector(".track-btn.remove").click();
+  assertEqual(compareQueue.length, 0, "The row is removed");
+  assert(resultsEl.classList.contains("visible"), "An empty queue keeps the single result");
+
+  // A track added next to the single result on screen drops it, and a track
+  // whose source is that result carries it.
+  urlInput.value = "https://www.youtube.com/watch?v=a";
+  addBtn.click();
+  assertEqual(compareQueue[0].data && compareQueue[0].data.meta.source_url, "https://www.youtube.com/watch?v=a",
+              "The added row carries the result on screen");
+  assert(!resultsEl.classList.contains("visible"), "+ Add Track drops the single result");
+  assertEqual(lastRenderedData, null, "No result is kept after + Add Track");
+
+  // A JSON file queued next to the single result on screen drops it.
+  resetState();
+  render(fakeResult("https://www.youtube.com/watch?v=a"));
+  compareQueue.push({ kind: "url", label: "https://www.youtube.com/watch?v=a" });
+  _renderQueue();
+  mockFetch(function() { return makeJsonResponse({ loaded: true, data: fakeResult() }); });
+  loadBtn.click();
+  await new Promise(function(r) { setTimeout(r, 100); });
+  assertEqual(compareQueue.length, 2, "The loaded result joins the queue");
+  assert(!resultsEl.classList.contains("visible"), "A queued JSON drops the single result");
+
+  // A comparison on screen follows the rows: a move reorders it, a removal drops it.
+  resetState();
+  compareQueue.push({ kind: "json", label: "A", data: fakeResult("https://example.com/a") });
+  compareQueue.push({ kind: "json", label: "B", data: fakeResult("https://example.com/b") });
+  _renderQueue();
+  var shownCompare = fakeCompare();
+  shownCompare.compare.tracks[0].title = "First track";
+  shownCompare.compare.tracks[1].title = "Second track";
+  var firstSource = shownCompare.compare.tracks[0].meta.source_url;
+  var secondSource = shownCompare.compare.tracks[1].meta.source_url;
+  var shownStats = JSON.parse(JSON.stringify(fakeStats()));
+  shownStats[0].integrated = -11;
+  mockFetch(function() { return makeJsonResponse({ data: shownCompare, stats: shownStats }); });
+  document.getElementById("analyze-form").dispatchEvent(new Event("submit"));
+  await new Promise(function(r) { setTimeout(r, 200); });
+  assert(resultsEl.querySelector(".compare-table") !== null, "The comparison is shown");
+  var statsBefore = JSON.stringify(lastCompareStats[0]);
+  trackListEl.querySelectorAll(".track-item")[0].querySelectorAll(".track-btn")[1].click();
+  await new Promise(function(r) { setTimeout(r, 50); });
+  assertEqual(compareQueue[0].label, "B", "The rows moved");
+  assert(resultsEl.querySelector(".compare-table") !== null, "A move keeps the comparison on screen");
+  assert(resultsEl.querySelectorAll(".compare-table thead th")[1].textContent.indexOf("Second track") !== -1,
+         "The table on screen shows the new order");
+  assertEqual(lastRenderedData.compare.tracks[0].meta.source_url, secondSource, "The comparison's first track follows the rows");
+  assertEqual(lastRenderedData.compare.tracks[1].meta.source_url, firstSource, "The comparison's second track follows the rows");
+  assertEqual(JSON.stringify(lastCompareStats[1]), statsBefore, "The statistics move with their track");
+  trackListEl.querySelectorAll(".track-item")[0].querySelector(".track-btn.remove").click();
+  assert(!resultsEl.classList.contains("visible"), "Removing a compared track drops the comparison");
+  assertEqual(lastRenderedData, null, "No comparison is kept after the removal");
+
+  // A failed analysis leaves no result for a redraw to bring back.
+  resetState();
+  render(fakeResult("https://www.youtube.com/watch?v=old"));
+  urlInput.value = "https://www.youtube.com/watch?v=fail";
+  mockFetch(function() { return makeJsonResponse({ error: "boom" }, 500); });
+  document.getElementById("analyze-form").dispatchEvent(new Event("submit"));
+  await new Promise(function(r) { setTimeout(r, 100); });
+  assertEqual(lastRenderedData, null, "A failed analysis keeps no earlier result");
+  rerender();
+  assert(!resultsEl.classList.contains("visible"), "A redraw does not bring an earlier result back");
 
   // ================================================
   suite("Load comparison JSON with an empty queue");
@@ -802,6 +987,15 @@ function fakeStats() {
   await new Promise(function(r) { setTimeout(r, 50); });
   assertEqual(urlInput.value, "/music/b.flac", "Chosen path lands in the field");
 
+  // A chosen path next to a queued track reads as a second track.
+  resetState();
+  urlInput.value = "https://www.youtube.com/watch?v=a";
+  addBtn.click();
+  mockFetch(function() { return makeJsonResponse({ selected: true, path: "/music/b.flac" }); });
+  document.getElementById("browse-btn").click();
+  await new Promise(function(r) { setTimeout(r, 50); });
+  assertEqual(submitBtn.textContent, "Compare", "Submit reads Compare after a chosen path joins a queued track");
+
   // ================================================
   suite("Drop: one file fills the field, a queue takes every file");
   // ================================================
@@ -839,6 +1033,50 @@ function fakeStats() {
   await new Promise(function(r) { setTimeout(r, 100); });
   assert(statusEl.textContent.indexOf(".txt") !== -1, "Upload error is shown");
   assertEqual(urlInput.value, "", "Rejected drop leaves the field empty");
+
+  // A file dropped next to a comparison on screen drops it, and the app is busy
+  // until the upload ends.
+  resetState();
+  compareQueue.push({ kind: "json", label: "A", data: fakeResult("https://example.com/a") });
+  compareQueue.push({ kind: "json", label: "B", data: fakeResult("https://example.com/b") });
+  _renderQueue();
+  renderCompare(fakeCompare(), JSON.parse(JSON.stringify(fakeStats())));
+  var finishUpload = null;
+  mockFetch(function() {
+    return new Promise(function(resolve) {
+      finishUpload = function() { resolve(makeJsonResponse({ uploaded: true, path: "/tmp/up/c.wav" })); };
+    });
+  });
+  dropFiles(["c.wav"]);
+  await new Promise(function(r) { setTimeout(r, 50); });
+  assertEqual(_isBusy, true, "The app is busy during an upload");
+  assertEqual(submitBtn.disabled, true, "Nothing starts during an upload");
+  assert(resultsEl.querySelector(".compare-table") !== null, "The comparison stays until the file is in");
+  finishUpload();
+  await new Promise(function(r) { setTimeout(r, 100); });
+  assertEqual(_isBusy, false, "The app is free after the upload");
+  assertEqual(compareQueue.length, 3, "The dropped file is queued");
+  assert(!resultsEl.classList.contains("visible"), "A queued file drops the comparison");
+  assertEqual(lastRenderedData, null, "No comparison is kept after the drop");
+
+  // The same with a single result on screen, and after a failed upload.
+  resetState();
+  render(fakeResult("https://www.youtube.com/watch?v=a"));
+  mockFetch(function() { return makeJsonResponse({ uploaded: true, path: "/tmp/up/f.wav" }); });
+  mockFetch(function() { return makeJsonResponse({ uploaded: true, path: "/tmp/up/g.wav" }); });
+  dropFiles(["f.wav", "g.wav"]);
+  await new Promise(function(r) { setTimeout(r, 150); });
+  assert(!resultsEl.classList.contains("visible"), "Queued files drop the single result");
+  resetState();
+  render(fakeResult("https://www.youtube.com/watch?v=a"));
+  compareQueue.push({ kind: "url", label: "https://www.youtube.com/watch?v=a" });
+  _renderQueue();
+  mockFetch(function() { return makeJsonResponse({ error: "Unsupported file type: .txt" }, 400); });
+  dropFiles(["notes.txt"]);
+  await new Promise(function(r) { setTimeout(r, 100); });
+  assertEqual(_isBusy, false, "The app is free after a failed upload");
+  assertEqual(submitBtn.disabled, false, "Submit works after a failed upload");
+  assert(resultsEl.classList.contains("visible"), "A failed upload keeps the result");
 
   // ================================================
   suite("Update: settings button and dialog");

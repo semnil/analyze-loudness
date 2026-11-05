@@ -72,16 +72,6 @@ h1 {
 
 .input-bar #url-input { flex: 1; }
 
-/* Toolbar (lang + theme toggles) */
-#status {
-  text-align: center;
-  margin-bottom: 16px;
-  font-size: 14px;
-  color: var(--text-secondary);
-  min-height: 40px;
-  overflow-wrap: anywhere;
-}
-
 /* Summary table */
 .summary-table {
   width: 100%;
@@ -98,6 +88,10 @@ h1 {
   border: 1px solid var(--border-header);
   color: var(--text);
 }
+
+/* A comparison table wider than the window scrolls inside this box. */
+.table-scroll { overflow-x: auto; margin-bottom: 24px; }
+.table-scroll > .summary-table { margin-bottom: 0; }
 
 .compare-table tbody th { text-align: left; width: 16%; white-space: nowrap; }
 .compare-table .track-head {
@@ -216,10 +210,10 @@ h1 {
 [data-theme="dark"] .u-title,
 [data-theme="dark"] .u-legend th,
 [data-theme="dark"] .u-legend td {
-  color: var(--text) !important;
+  color: var(--text);
 }
 
-[data-theme="dark"] .u-legend { background: transparent !important; }
+[data-theme="dark"] .u-legend { background: transparent; }
 
 @media (max-width: 480px) {
   h1 {

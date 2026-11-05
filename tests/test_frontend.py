@@ -843,3 +843,75 @@ def test_theme_and_language_carry_over_to_a_new_page():
     finally:
         server.shutdown()
         server.server_close()
+
+
+_SIX_TRACK_COMPARE_JS = """() => {
+  const block = {median: -20, mean: -20, p10: -25, p90: -15};
+  const track = (i) => ({
+    title: "A long title of track " + i + " " + "x".repeat(40),
+    meta: {version: "1.0.0", analyzed_at: "2026-01-01T00:00:00Z", source_url: "https://example.com/" + i},
+    summary: {duration_sec: 1, frames: 8, integrated: -18, true_peak: 0.8, lra: 9, gate_threshold: -28,
+              short_term: block, momentary: block, silence_pct: 1},
+    series: {t: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8], S: [-20, -21, -22, -20, -21, -22, -20, -21],
+             M: [-21, -22, -23, -21, -22, -23, -21, -22]},
+  });
+  const tracks = [0, 1, 2, 3, 4, 5].map(track);
+  renderCompare({meta: tracks[0].meta, compare: {truncate_sec: 0.8, tracks}},
+                tracks.map(() => ({duration_sec: 0.8, frames: 8, integrated: -18,
+                                   short_term: block, momentary: block, silence_pct: 1})));
+}"""
+_TABLE_BOX_JS = """() => {
+  const box = document.querySelector("#results .table-scroll");
+  const table = box.querySelector(".compare-table");
+  box.scrollLeft = 40;
+  return {
+    pageFits: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    boxWidth: box.clientWidth,
+    tableWidth: table.getBoundingClientRect().width,
+    resultsWidth: document.getElementById("results").clientWidth,
+    scrolled: box.scrollLeft,
+  };
+}"""
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_comparison_table_scrolls_inside_its_box_in_a_narrow_window():
+    """Six tracks in a 480 px window: the page keeps the window's width and the
+    table scrolls inside its box.  At 1100 px the table fills the results."""
+    server = _app_server("analyze_loudness.gui")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(viewport={"width": 480, "height": 800}, reduced_motion="reduce")
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            page.evaluate(_SIX_TRACK_COMPARE_JS)
+            narrow = page.evaluate(_TABLE_BOX_JS)
+            assert narrow["pageFits"]
+            assert narrow["tableWidth"] > narrow["boxWidth"]
+            assert narrow["scrolled"] > 0
+            page.set_viewport_size({"width": 1100, "height": 800})
+            wide = page.evaluate(_TABLE_BOX_JS)
+            assert abs(wide["tableWidth"] - wide["resultsWidth"]) < 1
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_status_area_reserves_one_line():
+    """The status area keeps common.css's height, so the results start at the
+    same place in both GUIs."""
+    server = _app_server("analyze_loudness.gui")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            assert page.evaluate("getComputedStyle(document.getElementById('status')).minHeight") == "20px"
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()

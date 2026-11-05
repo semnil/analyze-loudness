@@ -113,6 +113,13 @@ function clearResults() {
   chartCanvasRefs = [];
   resultsEl.className = "";
   resultsEl.innerHTML = "";
+  lastRenderedData = null;
+}
+
+// After a track was added or removed, the results on screen no longer match a
+// queue that holds tracks.
+function _maybeInvalidateResults() {
+  if (lastRenderedData && compareQueue.length > 0) clearResults();
 }
 
 function safeName(title) {
@@ -125,8 +132,14 @@ let _updateLocked = false;
 // The save buttons' keys whose save has not ended.
 const _savesRunning = new Set();
 
+// The tracks a submit runs with: the queue and a field value it does not hold.
+function _effectiveTrackCount() {
+  const pending = urlInput.value.trim();
+  return compareQueue.length + (pending && !_isQueued(pending) ? 1 : 0);
+}
+
 function _submitLabel() {
-  return window.i18n.t(compareQueue.length > 0 ? "btn.compare" : "btn.analyze");
+  return window.i18n.t(_effectiveTrackCount() >= MIN_TRACKS ? "btn.compare" : "btn.analyze");
 }
 
 // The submit button's text and accessible name for the current state.  main.js
@@ -294,12 +307,27 @@ function _setStatusWithCountdown(message, countdownText) {
   return countdown;
 }
 
+urlInput.addEventListener("input", () => {
+  if (!_isBusy) _applySubmitButton();
+});
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (_isBusy) { _cancelActive(); return; }
-  if (compareQueue.length > 0) { await _runCompare(); return; }
-  const url = urlInput.value.trim();
-  if (!url) return;
+  if (compareQueue.length === 0 && !urlInput.value.trim()) return;
+  _setStatusNormal();
+  statusEl.textContent = "";
+  // The field's source joins the queue.  One track is a single analysis, two
+  // or more a comparison.
+  if (!_queueUrlInput()) return;
+  if (compareQueue.length >= MIN_TRACKS) { await _runCompare(); return; }
+  const item = compareQueue[0];
+  if (item.kind === "json") {
+    clearResults();
+    render(item.data);
+    resultsEl.focus({ preventScroll: true });
+    return;
+  }
 
   statusEl.textContent = window.i18n.t("status.starting");
   _setStatusNormal();
@@ -312,7 +340,7 @@ form.addEventListener("submit", async (e) => {
     const resp = await fetch(window.location.origin + "/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url: item.label }),
       signal: activeAbort.signal,
     });
 
@@ -322,6 +350,7 @@ form.addEventListener("submit", async (e) => {
     }
 
     const data = await readNdjsonStream(resp, activeAbort.signal);
+    item.data = data;
     statusEl.textContent = "";
     render(data);
     resultsEl.focus({ preventScroll: true });
@@ -390,6 +419,7 @@ loadBtn.addEventListener("click", async () => {
         endedAbnormally = true;
         return;
       }
+      _maybeInvalidateResults();
       statusEl.textContent = "";
       return;
     }
@@ -451,11 +481,16 @@ function _isNtNamespacePath(source) {
   return segments[0] === "??";
 }
 
+function _isQueued(source) {
+  return compareQueue.some((item) => item.label === source);
+}
+
 // Moves a non-empty URL field into the queue.  Returns false (with the error
-// shown) on a non-http(s) scheme or a full queue; an empty field is a no-op.
+// shown) on a non-http(s) scheme or a full queue.  An empty field is a no-op,
+// and a source the queue already holds stays in the field.
 function _queueUrlInput() {
   const source = urlInput.value.trim();
-  if (!source) return true;
+  if (!source || _isQueued(source)) return true;
   const kind = _sourceKind(source);
   if (!kind || kind === "network") {
     showError(window.i18n.t(kind ? "err.network_path" : "err.url_scheme"));
@@ -472,16 +507,24 @@ function _queueUrlInput() {
 
 addBtn.addEventListener("click", () => {
   if (_isBusy) return;
-  if (!urlInput.value.trim()) { urlInput.focus(); return; }
+  const source = urlInput.value.trim();
+  if (!source) { urlInput.focus(); return; }
+  if (_isQueued(source)) { showError(window.i18n.t("err.duplicate_track")); return; }
   _setStatusNormal();
   statusEl.textContent = "";
-  if (_queueUrlInput()) urlInput.focus();
+  if (_queueUrlInput()) {
+    _maybeInvalidateResults();
+    urlInput.focus();
+  }
 });
 
 clearBtn.addEventListener("click", () => {
   if (_isBusy) return;
   compareQueue = [];
   _renderQueue();
+  clearResults();
+  _setStatusNormal();
+  statusEl.textContent = "";
   urlInput.focus();
 });
 
@@ -500,6 +543,7 @@ browseBtn.addEventListener("click", async () => {
     }
     if (result.selected) {
       urlInput.value = result.path;
+      _applySubmitButton();
       urlInput.focus();
     }
   } catch (err) {
@@ -534,7 +578,16 @@ window.addEventListener("drop", async (e) => {
   const files = Array.from(e.dataTransfer.files);
   if (!files.length) return;
   const toField = files.length === 1 && compareQueue.length === 0;
+  // Nothing can start or edit the queue until the files are in.
+  _setBusy(true, false);
+  try {
+    await _uploadDropped(files, toField);
+  } finally {
+    _setBusy(false);
+  }
+}, true);
 
+async function _uploadDropped(files, toField) {
   for (const file of files) {
     if (file.size > MAX_UPLOAD_BYTES) {
       showError(window.i18n.t("err.file_too_large"));
@@ -559,21 +612,32 @@ window.addEventListener("drop", async (e) => {
       if (toField) {
         urlInput.value = result.path;
         urlInput.focus();
-      } else if (!_queueTrack({ kind: "file", label: result.path })) {
-        break;
+      } else {
+        if (!_queueTrack({ kind: "file", label: result.path })) break;
+        _maybeInvalidateResults();
       }
       statusEl.textContent = window.i18n.t("status.file_loaded") + file.name;
     } catch (err) {
       showError(err.message);
     }
   }
-}, true);
+}
 
 function _moveTrack(from, to) {
   const item = compareQueue[from];
   compareQueue[from] = compareQueue[to];
   compareQueue[to] = item;
   _renderQueue({ from: from, to: to });
+  // A comparison on screen follows the new order.
+  const shownTracks = lastRenderedData && lastRenderedData.compare && lastRenderedData.compare.tracks;
+  if (shownTracks && from < shownTracks.length && to < shownTracks.length) {
+    for (const list of [shownTracks, lastCompareStats]) {
+      const moved = list[from];
+      list[from] = list[to];
+      list[to] = moved;
+    }
+    rerender();
+  }
 }
 
 // move: {from, to} after a move swapped the tracks of those rows.
@@ -589,6 +653,7 @@ function _renderQueue(move) {
       remove: () => {
         compareQueue.splice(k, 1);
         _renderQueue();
+        _maybeInvalidateResults();
       },
     });
   });
@@ -600,13 +665,6 @@ function _renderQueue(move) {
 }
 
 async function _runCompare() {
-  _setStatusNormal();
-  statusEl.textContent = "";
-  if (!_queueUrlInput()) return;
-  if (compareQueue.length < MIN_TRACKS) {
-    showError(window.i18n.t("err.compare_min"));
-    return;
-  }
   const items = compareQueue.slice();
   statusEl.textContent = window.i18n.t("status.starting");
   _setBusy(true);
@@ -756,11 +814,13 @@ async function readNdjsonStream(resp, signal, prefix = "") {
 }
 
 function rerender() {
-  if (!lastRenderedData) return;
+  const data = lastRenderedData;
+  const stats = lastCompareStats;
+  if (!data) return;
   _redrawKeepingFocus(resultsEl, function () {
     clearResults();
-    if (lastRenderedData.compare) renderCompare(lastRenderedData, lastCompareStats);
-    else render(lastRenderedData);
+    if (data.compare) renderCompare(data, stats);
+    else render(data);
   });
 }
 
@@ -1044,7 +1104,10 @@ function renderCompare(doc, stats) {
   scope.textContent = window.i18n.t("compare.scope", { mins: fmt(doc.compare.truncate_sec / 60, 1) });
   resultsEl.appendChild(scope);
 
-  resultsEl.appendChild(_buildCompareTable(tracks, lastCompareStats));
+  const tableScroll = document.createElement("div");
+  tableScroll.className = "table-scroll";
+  tableScroll.appendChild(_buildCompareTable(tracks, lastCompareStats));
+  resultsEl.appendChild(tableScroll);
   _renderCompareCharts(doc, lastCompareStats);
 }
 
