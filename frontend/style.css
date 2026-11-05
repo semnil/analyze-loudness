@@ -206,10 +206,10 @@ h1 {
 [data-theme="dark"] .u-title,
 [data-theme="dark"] .u-legend th,
 [data-theme="dark"] .u-legend td {
-  color: var(--text) !important;
+  color: var(--text);
 }
 
-[data-theme="dark"] .u-legend { background: transparent !important; }
+[data-theme="dark"] .u-legend { background: transparent; }
 
 @media (max-width: 480px) {
   h1 {
