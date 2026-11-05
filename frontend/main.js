@@ -1284,6 +1284,20 @@ function _exportStem(data) {
     : `loudness_${safeName(data.title)}`;
 }
 
+// The status line after a save: the saved path, the error, or, when the file
+// dialog was cancelled, nothing. A cancel leaves an update's download line.
+function _showSaveOutcome(result) {
+  if (result.saved) {
+    _setStatusNormal();
+    statusEl.textContent = window.i18n.t("status.saved") + result.path;
+  } else if (result.error) {
+    showError(window.i18n.t("err.save_failed") + result.error);
+  } else if (!_updateLocked) {
+    _setStatusNormal();
+    statusEl.textContent = "";
+  }
+}
+
 async function saveResult(data) {
   const filename = `${_exportStem(data)}.json`;
   try {
@@ -1296,13 +1310,7 @@ async function saveResult(data) {
       showError(window.i18n.t("err.save_failed_http") + resp.status);
       return;
     }
-    const result = await resp.json();
-    if (result.saved) {
-      _setStatusNormal();
-      statusEl.textContent = window.i18n.t("status.saved") + result.path;
-    } else if (result.error) {
-      showError(window.i18n.t("err.save_failed") + result.error);
-    }
+    _showSaveOutcome(await resp.json());
   } catch (err) {
     showError(window.i18n.t("err.save_failed") + err.message);
   }
@@ -1471,15 +1479,7 @@ async function saveImage(data) {
       showError(window.i18n.t("err.save_failed_http") + resp.status);
       return;
     }
-    const result = await resp.json();
-    if (result.saved) {
-      _setStatusNormal();
-      statusEl.textContent = window.i18n.t("status.saved") + result.path;
-    } else if (result.error) {
-      showError(window.i18n.t("err.save_failed") + result.error);
-    } else {
-      statusEl.textContent = "";
-    }
+    _showSaveOutcome(await resp.json());
   } catch (err) {
     showError(window.i18n.t("err.save_failed") + err.message);
   }
