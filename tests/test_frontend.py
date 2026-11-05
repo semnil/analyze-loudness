@@ -391,6 +391,11 @@ _TITLE_ROW_FITS_JS = """() => {
   return row.scrollWidth <= row.clientWidth && title.scrollWidth <= title.clientWidth;
 }"""
 _FACE_JS = """(sel) => { const s = getComputedStyle(document.querySelector(sel)); return [s.backgroundColor, s.color]; }"""
+_RENDER_RESULT_JS = ("render({title: 'Test Video', summary: {duration_sec: 600, frames: 5999, integrated: -18.1, "
+                     "true_peak: 0.8, lra: 9.3, short_term: {median: -19.4, mean: -20.5, p10: -24.1, p90: -15.4}, "
+                     "momentary: {median: -20.8, mean: -21.3, p10: -26.9, p90: -14.4}, silence_pct: 1.0}, "
+                     "series: {t: [0.1, 0.2, 0.3], S: [-20, -21, -22], M: [-21, -22, -23]}, "
+                     "meta: {version: '1.0.0', analyzed_at: '2026-01-01T00:00:00Z', source_url: 'https://example.com/a'}})")
 
 
 def _contrast(a, b):
@@ -414,11 +419,7 @@ def test_result_title_and_buttons_take_the_common_look(scheme):
                                  "{value: {writeText: () => Promise.resolve()}, configurable: true})")
             page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
             page.wait_for_load_state("networkidle")
-            page.evaluate("render({title: 'Test Video', summary: {duration_sec: 600, frames: 5999, integrated: -18.1, "
-                          "true_peak: 0.8, lra: 9.3, short_term: {median: -19.4, mean: -20.5, p10: -24.1, p90: -15.4}, "
-                          "momentary: {median: -20.8, mean: -21.3, p10: -26.9, p90: -14.4}, silence_pct: 1.0}, "
-                          "series: {t: [0.1, 0.2, 0.3], S: [-20, -21, -22], M: [-21, -22, -23]}, "
-                          "meta: {version: '1.0.0', analyzed_at: '2026-01-01T00:00:00Z', source_url: 'https://example.com/a'}})")
+            page.evaluate(_RENDER_RESULT_JS)
             page.evaluate("showError('HTTP Error 403: Forbidden')")
             page.mouse.move(0, 0)
             row = page.evaluate(_RESULT_ROW_JS)
@@ -446,6 +447,119 @@ def test_result_title_and_buttons_take_the_common_look(scheme):
                           "'https://example.com/' + 'a'.repeat(200)")
             page.set_viewport_size({"width": 480, "height": 700})
             assert page.evaluate(_TITLE_ROW_FITS_JS)
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("button", [0, 1], ids=["save_json", "save_image"])
+@pytest.mark.parametrize("before", ["saved", "error"])
+def test_cancelling_a_save_empties_the_status_line(button, before):
+    """A cancelled file dialog leaves an empty status line that is not an error,
+    whatever the line said before; an error reply still shows the error."""
+    server = _app_server("analyze_loudness.gui")
+    reply = {"saved": True, "path": "/saved/result"}
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(reduced_motion="reduce")
+            for path in ("/save", "/save-image"):
+                page.route("**" + path, lambda route: route.fulfill(json=reply))
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            page.evaluate(_RENDER_RESULT_JS)
+            save = page.locator(".save-btn").nth(button)
+            status = page.locator("#status")
+            if before == "saved":
+                save.click()
+                expect(status).to_contain_text("/saved/result")
+            else:
+                page.evaluate("showError('HTTP Error 403: Forbidden')")
+                expect(status.locator(".copy-btn")).to_have_count(1)
+            reply.clear()
+            reply["saved"] = False
+            save.click()
+            expect(status).to_have_text("")
+            expect(status).to_have_attribute("role", "status")
+            assert not page.evaluate("document.getElementById('status').classList.contains('error')")
+            reply["error"] = "disk full"
+            save.click()
+            expect(status).to_contain_text("disk full")
+            expect(status).to_have_attribute("role", "alert")
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("save", ["saveResult", "saveImage"])
+@pytest.mark.parametrize("before,write,line,error", [
+    ("", "_setUpdateLock(true); statusEl.textContent = 'Downloading';", "Downloading", False),
+    ("", "showError('Settings could not be saved');", "Settings could not be saved", True),
+    ("showError('Settings could not be saved');", "showError('Settings could not be saved');",
+     "Settings could not be saved", True),
+], ids=["update", "error", "same_error"])
+def test_cancelling_a_save_keeps_a_line_written_after_it_began(save, before, write, line, error):
+    """When another line reaches the status while a save's file dialog is open,
+    cancelling the dialog leaves that line; an error stays an error."""
+    server = _app_server("analyze_loudness.gui")
+    held = []
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(reduced_motion="reduce")
+            for path in ("/save", "/save-image"):
+                page.route("**" + path, lambda route: held.append(route))
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            page.evaluate(_RENDER_RESULT_JS)
+            if before:
+                page.evaluate(before)
+            with page.expect_request(lambda request: "/save" in request.url):
+                page.evaluate("(name) => { window.running = window[name](lastRenderedData); }", save)
+            page.evaluate(write)
+            held[0].fulfill(json={"saved": False})
+            page.evaluate("window.running")
+            status = page.locator("#status")
+            expect(status).to_contain_text(line)
+            if error:
+                expect(status).to_have_attribute("role", "alert")
+                expect(status.locator(".copy-btn")).to_have_count(1)
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_cancelling_a_save_empties_an_error_whose_copy_label_came_back():
+    """The Copy label changing back while a save's file dialog is open is not a
+    new line: cancelling the dialog empties the error."""
+    server = _app_server("analyze_loudness.gui")
+    held = []
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(reduced_motion="reduce")
+            page.add_init_script("Object.defineProperty(navigator, 'clipboard', "
+                                 "{value: {writeText: () => Promise.resolve()}, configurable: true})")
+            page.route("**/save", lambda route: held.append(route))
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            page.evaluate(_RENDER_RESULT_JS)
+            page.evaluate("showError('HTTP Error 403: Forbidden')")
+            copy = page.locator("#status .copy-btn")
+            label = copy.text_content()
+            copy.click()
+            expect(copy).not_to_have_text(label)
+            with page.expect_request("**/save"):
+                page.locator(".save-btn").nth(0).click()
+            expect(copy).to_have_text(label)
+            held[0].fulfill(json={"saved": False})
+            expect(page.locator("#status")).to_have_text("")
             browser.close()
     finally:
         server.shutdown()

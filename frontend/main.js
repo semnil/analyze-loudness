@@ -1299,8 +1299,24 @@ function _exportStem(data) {
     : `loudness_${safeName(data.title)}`;
 }
 
+// The status line after a save: the saved path, the error, or, when the file
+// dialog was cancelled, nothing. A cancel leaves a line written after the save
+// began: `nodeAtStart` is the first node of the line at that moment.
+function _showSaveOutcome(result, nodeAtStart) {
+  if (result.saved) {
+    _setStatusNormal();
+    statusEl.textContent = window.i18n.t("status.saved") + result.path;
+  } else if (result.error) {
+    showError(window.i18n.t("err.save_failed") + result.error);
+  } else if (statusEl.firstChild === nodeAtStart) {
+    _setStatusNormal();
+    statusEl.textContent = "";
+  }
+}
+
 async function saveResult(data) {
   const filename = `${_exportStem(data)}.json`;
+  const nodeAtStart = statusEl.firstChild;
   try {
     const resp = await fetch(window.location.origin + "/save", {
       method: "POST",
@@ -1311,13 +1327,7 @@ async function saveResult(data) {
       showError(window.i18n.t("err.save_failed_http") + resp.status);
       return;
     }
-    const result = await resp.json();
-    if (result.saved) {
-      _setStatusNormal();
-      statusEl.textContent = window.i18n.t("status.saved") + result.path;
-    } else if (result.error) {
-      showError(window.i18n.t("err.save_failed") + result.error);
-    }
+    _showSaveOutcome(await resp.json(), nodeAtStart);
   } catch (err) {
     showError(window.i18n.t("err.save_failed") + err.message);
   }
@@ -1477,6 +1487,7 @@ async function saveImage(data) {
     if (!dataUrl) return;
     _setStatusNormal();
     statusEl.textContent = window.i18n.t("status.generating_image");
+    const nodeAtStart = statusEl.firstChild;
     const resp = await fetch(window.location.origin + "/save-image", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1486,15 +1497,7 @@ async function saveImage(data) {
       showError(window.i18n.t("err.save_failed_http") + resp.status);
       return;
     }
-    const result = await resp.json();
-    if (result.saved) {
-      _setStatusNormal();
-      statusEl.textContent = window.i18n.t("status.saved") + result.path;
-    } else if (result.error) {
-      showError(window.i18n.t("err.save_failed") + result.error);
-    } else {
-      statusEl.textContent = "";
-    }
+    _showSaveOutcome(await resp.json(), nodeAtStart);
   } catch (err) {
     showError(window.i18n.t("err.save_failed") + err.message);
   }
