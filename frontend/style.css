@@ -2,11 +2,7 @@
   --text-secondary: #5f5f5f;
   --text-muted: #6b6b6b;
   --accent: #9C27B0;
-  --accent-dark: #7B1FA2;
-  --accent-deeper: #6A1B9A;
-  --accent-deepest: #4A148C;
   --accent-bg: #E1BEE7;
-  --on-accent: #fff;
   --primary-bg: #9C27B0;
   --primary-bg-hover: #7B1FA2;
   --primary-fg: #fff;
@@ -17,10 +13,6 @@
   --border: #ddd;
   --border-light: #eee;
   --border-header: #ccc;
-  --error-bg: #FFEBEE;
-  --copy-bg-hover: #ddd;
-  --copy-border: #ccc;
-  --copy-fg: #666;
   --focus-ring: #9C27B0;
   --gate-track: #E9EAEE;
   --gate-out: #B26A00;
@@ -29,6 +21,7 @@
   --track-tag-bg: #E1BEE7;
   --track-tag-fg: #4A148C;
   --track-remove: #C62828;
+  --result-title-fg: #4A148C;
   --drop-bg: rgba(250, 250, 250, 0.92);
 }
 
@@ -36,11 +29,7 @@
   --text-secondary: #c8c8c8;
   --text-muted: #b6b6b6;
   --accent: #CE93D8;
-  --accent-dark: #BA68C8;
-  --accent-deeper: #C27BCB;
-  --accent-deepest: #E1BEE7;
   --accent-bg: #3a2a5e;
-  --on-accent: #1a1a2e;
   --primary-bg: #CE93D8;
   --primary-bg-hover: #E1BEE7;
   --primary-fg: #1a1a2e;
@@ -51,10 +40,6 @@
   --border: #333;
   --border-light: #2a2a4a;
   --border-header: #444;
-  --error-bg: #3d1a1a;
-  --copy-bg-hover: #3a3a5a;
-  --copy-border: #555;
-  --copy-fg: #bbb;
   --focus-ring: #D1A3DC;
   --gate-track: #232C4A;
   --gate-out: #E9A93C;
@@ -63,6 +48,7 @@
   --track-tag-bg: #3a2a5e;
   --track-tag-fg: #E1BEE7;
   --track-remove: #FF8A80;
+  --result-title-fg: #E1BEE7;
   --drop-bg: rgba(26, 26, 46, 0.92);
 }
 
@@ -95,21 +81,6 @@ h1 {
   min-height: 40px;
   overflow-wrap: anywhere;
 }
-
-.copy-btn {
-  margin-left: 8px;
-  padding: 6px 14px;
-  min-height: 36px;
-  background: var(--copy-bg);
-  color: var(--copy-fg);
-  border: 1px solid var(--copy-border);
-  border-radius: 4px;
-  font-size: 12px;
-  cursor: pointer;
-  vertical-align: middle;
-}
-
-.copy-btn:hover { background: var(--copy-bg-hover); }
 
 /* Summary table */
 .summary-table {
@@ -239,42 +210,6 @@ h1 {
   max-height: 220px;
   height: auto;
 }
-
-.video-title {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--accent-deepest);
-}
-
-.meta-info {
-  text-align: center;
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-bottom: 12px;
-  overflow-wrap: anywhere;
-  word-break: normal;
-}
-
-.save-btn {
-  padding: 6px 16px;
-  min-height: 36px;
-  background: var(--accent-dark);
-  color: var(--on-accent);
-  border: none;
-  border-radius: 4px;
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.save-btn:hover { background: var(--accent-deeper); }
-.save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* uPlot dark mode overrides */
 [data-theme="dark"] .uplot,
