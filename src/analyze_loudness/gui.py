@@ -638,8 +638,8 @@ def main():
     _window = webview.create_window(
         "Loudness Analyzer (BS.1770 / EBU R128)",
         url=f"http://127.0.0.1:{port}/index.html",
-        width=1100,
-        height=800,
+        width=1200,
+        height=900,
         background_color=bg,
     )
     show_window_color_until_paint(_window)
