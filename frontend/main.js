@@ -1285,14 +1285,15 @@ function _exportStem(data) {
 }
 
 // The status line after a save: the saved path, the error, or, when the file
-// dialog was cancelled, nothing. A cancel leaves an update's download line.
-function _showSaveOutcome(result) {
+// dialog was cancelled, nothing. A cancel leaves a line other than `lineAtStart`,
+// the one the save began with.
+function _showSaveOutcome(result, lineAtStart) {
   if (result.saved) {
     _setStatusNormal();
     statusEl.textContent = window.i18n.t("status.saved") + result.path;
   } else if (result.error) {
     showError(window.i18n.t("err.save_failed") + result.error);
-  } else if (!_updateLocked) {
+  } else if (statusEl.textContent === lineAtStart) {
     _setStatusNormal();
     statusEl.textContent = "";
   }
@@ -1300,6 +1301,7 @@ function _showSaveOutcome(result) {
 
 async function saveResult(data) {
   const filename = `${_exportStem(data)}.json`;
+  const lineAtStart = statusEl.textContent;
   try {
     const resp = await fetch(window.location.origin + "/save", {
       method: "POST",
@@ -1310,7 +1312,7 @@ async function saveResult(data) {
       showError(window.i18n.t("err.save_failed_http") + resp.status);
       return;
     }
-    _showSaveOutcome(await resp.json());
+    _showSaveOutcome(await resp.json(), lineAtStart);
   } catch (err) {
     showError(window.i18n.t("err.save_failed") + err.message);
   }
@@ -1470,6 +1472,7 @@ async function saveImage(data) {
     if (!dataUrl) return;
     _setStatusNormal();
     statusEl.textContent = window.i18n.t("status.generating_image");
+    const lineAtStart = statusEl.textContent;
     const resp = await fetch(window.location.origin + "/save-image", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1479,7 +1482,7 @@ async function saveImage(data) {
       showError(window.i18n.t("err.save_failed_http") + resp.status);
       return;
     }
-    _showSaveOutcome(await resp.json());
+    _showSaveOutcome(await resp.json(), lineAtStart);
   } catch (err) {
     showError(window.i18n.t("err.save_failed") + err.message);
   }
