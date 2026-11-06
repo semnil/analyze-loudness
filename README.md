@@ -66,9 +66,9 @@ A single analysis writes `<title>_loudness.png` (`<title>_<minutes>m_loudness.pn
 ========================================================
   Video Title
 ========================================================
-  Duration          : 30.5 min (18265 frames)
+  Duration          : 30.4 min (18265 frames)
   Integrated        : -20.8 LUFS
-  True Peak (max)   : +0.3 dBFS
+  True Peak (max)   : 0.3 dBFS
   LRA               : 4.5 LU
   Short-term median : -21.4 LUFS
   Short-term P10/P90: -24.3 / -20.1 LUFS
@@ -87,7 +87,7 @@ analyze-loudness-gui
 
 Enter a URL or a local file path in the input field (you can also choose a file with "Browse" or drop a file onto the window) and press "Analyze". The source moves from the input field to the queue of tracks. The GUI always analyzes the full length. An equivalent of `--duration` (specifying the length to analyze) is not implemented in the GUI. To analyze only the middle part, use the CLI's `--duration` option.
 
-To compare, enter the next URL or local file path and press "Compare" (the button reads "Compare" while the queue and the field hold two or more sources), or queue sources first with "+ Add Track". To analyze another source on its own, press "Clear All" first. "Clear All" also clears the result on screen, and adding or removing a track clears it while tracks stay in the queue. Moving a track reorders a comparison on screen. A source already in the queue is not added twice. While the queue is not empty, "Load JSON" adds a saved single-result JSON to the queue, and a dropped file joins the queue (so do several files dropped at once). Pressing "Compare" analyzes the rows that hold no result yet in order and shows the comparison. With one row in the queue, "Analyze" analyzes that row. A saved comparison JSON can be opened with "Load JSON" while the queue is empty.
+To compare, enter the next URL or local file path and press "Compare" (the button reads "Compare" while the queue and the field hold two or more sources), or queue sources first with "+ Add Track". To analyze another source on its own, press "Clear All" first. "Clear All" also clears the result on screen, and adding or removing a track clears it while tracks stay in the queue. Moving a track reorders a comparison on screen. A source in the input field that the queue already holds stays in the field and is not added twice; "Load JSON" and dropped files are not checked. While the queue is not empty, "Load JSON" adds a saved single-result JSON to the queue, and a dropped file joins the queue (so do several files dropped at once). Pressing "Compare" analyzes the rows that hold no result yet in order and shows the comparison. With one row in the queue, "Analyze" analyzes that row (a JSON row is shown without analysis). A saved comparison JSON can be opened with "Load JSON" while the queue is empty.
 
 Dark mode is supported (a 3-way switch Light / Dark / Auto; the default follows the OS setting). The chosen theme and display language (EN / JA) are kept when the app is restarted.
 

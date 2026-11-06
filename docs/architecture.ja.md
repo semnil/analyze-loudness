@@ -53,9 +53,9 @@ graph LR
 | ファイル | 役割 |
 |------|---------------|
 | `frontend/index.html` | シングルページアプリケーション (SPA) の入口、ローカルの vendor ファイル |
-| `frontend/main.js` | fetch の流れ、NDJSON の進捗の解析、Document Object Model (DOM) の描画、保存・読み込み・画像の取り込み、テーマの切り替え、言語の切り替え、キャンセル (AbortController)、`_addTip` ツールチップ、比較の待ち行列 (`compareQueue`) と比較表示 (`renderCompare`) |
+| `frontend/main.js` | fetch の流れ、NDJSON の進捗の解析、Document Object Model (DOM) の描画、保存・読み込み・画像の取り込み、テーマの切り替え、言語の切り替え、キャンセル (AbortController)、`_addTip` でのツールチップの取り付け、比較の待ち行列 (`compareQueue`) と比較表示 (`renderCompare`) |
 | `frontend/theme.js` | `isDark()`, `getTheme()`: テーマの判定 + チャートの色の提供 (比較トラックの 6 色 `trackColors` を含む) |
-| `frontend/i18n.js` | en / ja DICT。py-analyze-common の `/common/i18n.js` がこれを `window.i18n.t / setLang / onChange / applyStatic` にする。続く `/common/boot.js` が Cascading Style Sheets (CSS) の描画前にテーマと言語を `<html>` に付け、`/common/ui.js` (アイコン、ツールチップ、ボタン幅、エラー行) は `frontend/main.js` の前に読む |
+| `frontend/i18n.js` | en / ja DICT。py-analyze-common の `/common/i18n.js` がこれを `window.i18n.t / setLang / onChange / applyStatic` にする。続く `/common/boot.js` が Cascading Style Sheets (CSS) の描画前にテーマと言語を `<html>` に付け、`/common/ui.js` (アイコン、テーマ切り替えボタンの描画、待ち行列の行、結果のタイトル行、ツールチップ、ボタン幅、ドロップ時のオーバーレイの文字、エラー行) は `frontend/main.js` の前に読む |
 | `frontend/gate.js` | `computeGate()`: BS.1770 の絶対 / 相対ゲートを `series.M` から再構成 |
 | `frontend/charts/timeline.js` | uPlot の時系列 (60 フレーム移動平均、GATE レーン、テーマ対応)。比較用 `renderCompareTimeline` (トラックごとの線と GATE 帯、線の右端にトラック番号) |
 | `frontend/charts/histogram.js` | Canvas の密度ヒストグラム (テーマ対応、タイトルは HyperText Markup Language (HTML) 側)。比較用 `renderHistogramCompare` (トラックごとの輪郭線、最頻ビンにトラック番号) |
@@ -112,10 +112,10 @@ graph TD
 
 2〜6 本の結果を先頭から重ね、一番短いトラックの長さで全トラックを切り詰めて比べる。
 
-- **入力**: 送信ボタンを押すと、入力欄の音源を待ち行列へ移す (待ち行列にある音源は入力欄に残る)。1 行なら単体の分析で、行が結果を持つ。2 行以上なら比較で、待ち行列と入力欄を合わせて 2 本以上あるときボタンは Compare になる。
-  待ち行列には `+ Add Track` で URL とローカルファイルのパス、ドロップしたファイル、待ち行列が空でないときの Load JSON で保存済みの単体 JSON も入る。
+- **入力**: 送信ボタンを押すと、入力欄の音源を待ち行列へ移す (待ち行列にある音源は入力欄に残る)。1 行なら単体の分析で (JSON の行は分析せずに表示する)、行が結果を持つ。2 行以上なら比較で、待ち行列と入力欄を合わせて 2 本以上あるときボタンは Compare になる。
+  待ち行列には `+ Add Track` で URL とローカルファイルのパス、ドロップしたファイル (待ち行列が空のときに 1 ファイルだけドロップすると、入力欄に入る)、待ち行列が空でないときの Load JSON で保存済みの単体 JSON も入る。
   比較では、結果を持たない行を `/analyze` で順に分析し、全トラックを `/compare` へ送る。
-  `+ Add Track`、行の削除、Load JSON は、待ち行列にトラックが残るときに表示中の結果を消す。Clear All も結果を消す。行を動かすと、表示中の比較の順番も入れ替わる。
+  `+ Add Track`、行の削除、Load JSON、待ち行列に加わるドロップしたファイルは、待ち行列にトラックが残るときに表示中の結果を消す。Clear All も結果を消す。行を動かすと、表示中の比較の順番も入れ替わる。
   単体の結果を表示しているときに入力欄がその `source_url` と同じなら、`+ Add Track` は表示中の結果そのものを
   行に持たせる (`/load` のキャッシュは URL ごとに最後に読んだ結果だけを持つため、URL で引き直すと別の結果に入れ替わりうる)。
   CLI は位置引数を 2〜6 個受け取り、`.json` で終わるローカルパスを保存済みの単体 JSON として読む。
@@ -142,7 +142,7 @@ graph TD
   (43,092〜116,299 フレーム) を区切り無しで書き出すと 1 フレーム 18.2〜18.5 バイトで、6 トラック × 各 1010 分
   まで送れる。GUI と CLI は比較 JSON をインデント付きで保存し、3 トラック・12,123 フレームの比較 JSON で
   1 フレーム 56.4 バイト。その大きさで 6 × 1010 分の比較を保存しても開けるよう、`/load` の上限
-  (`_MAX_LOAD_BYTES`) を 210 MB にしている。
+  (`_MAX_LOAD_BYTES`) を 210 MiB にしている。
 - **トラックの区別**: 色は `frontend/theme.js` の `trackColors` (ライト / ダーク各 6 色、チャート背景とのコントラスト比は
   最小 3.05)。色だけに頼らないよう、タイムラインの線の右端・ヒストグラムの最頻ビン・GATE 帯のラベル・
   セグメントの見出しにトラック番号を描く。CLI の図はライトの 6 色 (`src/analyze_loudness/plot.py` の `TRACK_COLORS`) を使う。
@@ -338,7 +338,7 @@ Web Content Accessibility Guidelines (WCAG) 2.3.3 が対象とするアニメー
 
 タイトルの `<h3 class="chart-title">` は必ずこのノードの**外側**に置く。
 Accessible Rich Internet Applications (ARIA) は `role="img"` の子孫を presentational として扱うため、内側に入れると
-タイトルと `_addTip()` が張る `aria-describedby` (ツールチップ本文) が
+タイトルと `_showTip()` が張る `aria-describedby` (ツールチップ本文) が
 支援技術に渡らないエンジンが生じる。
 
 ## 設計判断

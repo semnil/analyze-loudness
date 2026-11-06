@@ -104,7 +104,7 @@ graph LR
     root --> r_gpl["licenses/<br>Full texts of GPL v2 / v3 (pointed at by the FFmpeg section of THIRD_PARTY_LICENSES.txt;<br>the spec bundles them at the same level)"]
     root --> ba_pin["build_assets/ffmpeg.json<br>series of the bundled ffmpeg / ffprobe, and URL / SHA256 of the macOS build"]
     root --> ba_sum["build_assets/checksums.json<br>version and SHA256 of the bundled uPlot files"]
-    root --> ba_icon["build_assets/icon_draft.svg<br>the source of icon.ico / icon.png / icon.iconset (python -m analyze_common.icons)"]
+    root --> ba_icon["build_assets/icon_draft.svg<br>the source of icon.ico / icon.png / icon.iconset (PYTHONPATH=vendor/py-analyze-common/src python -m analyze_common.icons build_assets)"]
     root --> ba["build_assets/bin/<br>ffmpeg, ffprobe, deno (not tracked by git)"]
 ```
 
@@ -407,7 +407,7 @@ computed only by `truncated_stats()` in `src/analyze_loudness/compare.py`; the f
 The Integrated and the GATE band of the truncated range recompute the relative gate (they do not use the full-length `summary.gate_threshold`).
 The verification measurements, the shape of the comparison JSON and the reasons for the track colors are in the "Comparison mode" section of `docs/architecture.md`.
 On Submit, `_queueUrlInput()` moves the field's source into `compareQueue` (a source the queue holds stays in the field, and `+ Add Track` refuses it with `err.duplicate_track`). One row is a single analysis whose row keeps its result, two or more are a comparison, and one JSON row is shown without a request. `_effectiveTrackCount()` decides the Submit button label; the button is refreshed on the field's `input` event and after Browse.
-`_maybeInvalidateResults()` drops the results on screen when `+ Add Track`, removing a row or Load JSON leaves tracks in the queue, Clear All also drops the status, and moving a row reorders a comparison on screen (`_moveTrack()`).
+`_maybeInvalidateResults()` drops the results on screen when `+ Add Track`, removing a row, Load JSON or a dropped file that joins the queue leaves tracks in the queue, Clear All also drops the status, and moving a row reorders a comparison on screen (`_moveTrack()`).
 `MIN_TRACKS` / `MAX_TRACKS` are mirrored between `src/analyze_loudness/compare.py` and `frontend/main.js`, the gate constants
 (`GATE_ABSOLUTE` / `GATE_RELATIVE_OFFSET` / `GATE_BLOCK_SEC`) between `src/analyze_loudness/compare.py` and `frontend/gate.js`,
 and the track colors (light) between `trackColors` in `frontend/theme.js` and `TRACK_COLORS` in `src/analyze_loudness/plot.py`; always update them together.

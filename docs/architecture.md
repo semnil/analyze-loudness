@@ -53,9 +53,9 @@ graph LR
 | File | Responsibility |
 |------|---------------|
 | `frontend/index.html` | Single-page application (SPA) entry point, local vendor files |
-| `frontend/main.js` | Fetch orchestration, NDJSON progress parsing, Document Object Model (DOM) rendering, save/load/image capture, theme toggle, language toggle, cancel (AbortController), `_addTip` tooltips, the comparison queue (`compareQueue`) and comparison display (`renderCompare`) |
+| `frontend/main.js` | Fetch orchestration, NDJSON progress parsing, Document Object Model (DOM) rendering, save/load/image capture, theme toggle, language toggle, cancel (AbortController), attaching tooltips with `_addTip`, the comparison queue (`compareQueue`) and comparison display (`renderCompare`) |
 | `frontend/theme.js` | `isDark()`, `getTheme()`: theme detection + chart color provider (includes the 6 comparison track colors `trackColors`) |
-| `frontend/i18n.js` | en / ja DICT, which py-analyze-common's `/common/i18n.js` turns into `window.i18n.t / setLang / onChange / applyStatic`. `/common/boot.js` then sets the theme and the language on `<html>` before the Cascading Style Sheets (CSS) paint, and `/common/ui.js` (icons, tooltips, button widths, the error line) loads before `frontend/main.js` |
+| `frontend/i18n.js` | en / ja DICT, which py-analyze-common's `/common/i18n.js` turns into `window.i18n.t / setLang / onChange / applyStatic`. `/common/boot.js` then sets the theme and the language on `<html>` before the Cascading Style Sheets (CSS) paint, and `/common/ui.js` (icons, the theme toggle's drawing, the queue's rows, the result title row, tooltips, button widths, the drop overlay's text, the error line) loads before `frontend/main.js` |
 | `frontend/gate.js` | `computeGate()`: rebuilds the BS.1770 absolute / relative gates from `series.M` |
 | `frontend/charts/timeline.js` | uPlot time series (60-frame moving average, GATE lane, theme-aware). `renderCompareTimeline` for comparison (a line and GATE band per track, the track number at the right end of the line) |
 | `frontend/charts/histogram.js` | Canvas density histogram (theme-aware, the title is on the HyperText Markup Language (HTML) side). `renderHistogramCompare` for comparison (an outline per track, the track number at the mode bin) |
@@ -112,10 +112,10 @@ graph TD
 
 2-6 results are overlaid from the start, and all tracks are truncated to the length of the shortest track for comparison.
 
-- **Input**: pressing the submit button moves the input field's source into the queue (a source the queue already holds stays in the field). One row is a single analysis, and the row keeps its result. Two or more rows are a comparison, and the button reads Compare while the queue and the field hold two or more sources.
-  The queue also takes URLs and local file paths with `+ Add Track`, dropped files, and saved single JSON with Load JSON while the queue is not empty.
+- **Input**: pressing the submit button moves the input field's source into the queue (a source the queue already holds stays in the field). One row is a single analysis (a JSON row is shown without one), and the row keeps its result. Two or more rows are a comparison, and the button reads Compare while the queue and the field hold two or more sources.
+  The queue also takes URLs and local file paths with `+ Add Track`, dropped files (one file dropped on an empty queue goes into the input field instead), and saved single JSON with Load JSON while the queue is not empty.
   In a comparison, rows without a result are analyzed in order with `/analyze`, and all tracks are sent to `/compare`.
-  `+ Add Track`, removing a row and Load JSON drop the results on screen when tracks stay in the queue, Clear All drops them too, and moving a row reorders a comparison on screen.
+  `+ Add Track`, removing a row, Load JSON and a dropped file that joins the queue drop the results on screen when tracks stay in the queue, Clear All drops them too, and moving a row reorders a comparison on screen.
   When a single result is displayed and the input field equals its `source_url`, `+ Add Track` gives the row the displayed result itself
   (the `/load` cache holds only the last loaded result per URL, so looking it up again by URL could swap in a different result).
   The CLI takes 2-6 positional arguments, and reads local paths ending in `.json` as saved single JSON.
@@ -142,7 +142,7 @@ graph TD
   (43,092-116,299 frames) without separators gives 18.2-18.5 bytes per frame, so up to 6 tracks × 1010 minutes each
   can be sent. The GUI and the CLI save comparison JSON with indentation, and a comparison JSON of 3 tracks and 12,123 frames is
   56.4 bytes per frame. So that a 6 × 1010-minute comparison saved at that size can still be opened, the `/load` limit
-  (`_MAX_LOAD_BYTES`) is set to 210 MB.
+  (`_MAX_LOAD_BYTES`) is set to 210 MiB.
 - **Telling tracks apart**: the colors are `trackColors` in `frontend/theme.js` (6 colors each for light / dark; the contrast ratio against the chart background is
   at least 3.05). So as not to rely on color alone, the track number is drawn at the right end of the timeline line, at the mode bin of the histogram, on the GATE band label,
   and in the segment heading. The CLI figure uses the 6 light colors (`TRACK_COLORS` in `src/analyze_loudness/plot.py`).
@@ -337,7 +337,7 @@ and the segments chart attaches it to the div that holds its canvas.
 
 The title `<h3 class="chart-title">` is always placed **outside** this node.
 Accessible Rich Internet Applications (ARIA) treats descendants of `role="img"` as presentational, so placing it inside creates engines in which
-the title and the `aria-describedby` (tooltip text) set by `_addTip()`
+the title and the `aria-describedby` (tooltip text) set by `_showTip()`
 do not reach assistive technology.
 
 ## Design decisions
