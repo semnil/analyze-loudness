@@ -100,3 +100,50 @@ def test_real_charts_and_png_export(kind, theme, monkeypatch):
     finally:
         server.shutdown()
         server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("kind", ["single", "silent", "compare"])
+def test_chart_text_is_drawn_in_the_font_of_the_page(kind, monkeypatch):
+    from analyze_loudness import gui
+    from playwright.sync_api import sync_playwright
+
+    monkeypatch.setattr(gui._updater, "status", lambda: {"supported": False, "launch_check": False})
+    data = track(-120.7 if kind == "silent" else -20, "First")
+    stats = None
+    if kind == "compare":
+        data = build_compare([data, track(-30, "Second")])
+        stats = [truncated_stats(item) for item in data["compare"]["tracks"]]
+    server = _app_server("analyze_loudness.gui")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                page = browser.new_page(viewport={"width": 1100, "height": 800}, locale="en-US")
+                page.add_init_script("""
+                    window.__chartFonts = new Set();
+                    const fillText = CanvasRenderingContext2D.prototype.fillText;
+                    CanvasRenderingContext2D.prototype.fillText = function (...args) {
+                        window.__chartFonts.add(this.font);
+                        return fillText.apply(this, args);
+                    };
+                """)
+                page.goto(f"http://127.0.0.1:{server.server_port}/index.html")
+                page.evaluate("window.analyzeUpdate.ready")
+                page.evaluate("window.i18n.setLang('en')")
+                page.evaluate("({data, stats}) => { clearResults(); if (stats) renderCompare(data, stats); else render(data); }",
+                              {"data": data, "stats": stats})
+                page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+                page.evaluate("data => { captureImage(data); }", data)
+                fonts = page.evaluate("Array.from(window.__chartFonts)")
+                # The families the page names, in the page's order; the generic families after them can differ.
+                page_families = page.evaluate("getComputedStyle(document.body).fontFamily").split(", ")[:3]
+                # uPlot draws its own axes in its default font, which starts with system-ui.
+                ours = [font for font in fonts if not font.split("px ", 1)[1].startswith("system-ui")]
+                assert ours
+                assert all(font.split("px ", 1)[1].split(", ")[:3] == page_families for font in ours), ours
+            finally:
+                browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()

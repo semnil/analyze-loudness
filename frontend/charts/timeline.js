@@ -53,7 +53,7 @@ function gateLanePlugin(lanes) {
         var xs = u.data[0];
         var idxs = u.series[0].idxs || [0, xs.length - 1];
         ctx.save();
-        ctx.font = (10 * r) + "px 'Segoe UI', 'Meiryo', sans-serif";
+        ctx.font = (10 * r) + "px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
         ctx.textAlign = "right";
         ctx.textBaseline = "middle";
 
@@ -217,7 +217,7 @@ function trackEndLabelPlugin(tracks) {
         var r = u.ctx.canvas.width / u.width;
         var idxs = u.series[0].idxs || [0, u.data[0].length - 1];
         ctx.save();
-        ctx.font = "bold " + (12 * r) + "px 'Segoe UI', 'Meiryo', sans-serif";
+        ctx.font = "bold " + (12 * r) + "px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
         for (var k = 0; k < tracks.length; k++) {
