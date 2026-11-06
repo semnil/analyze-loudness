@@ -227,9 +227,12 @@ def test_opening_a_json_file_keeps_its_loading_button_across_a_language_switch()
             try:
                 page.click("#load-btn")
                 page.wait_for_function("_isBusy")
+                loading_en = page.inner_text("#submit-btn")
+                assert loading_en == page.evaluate("window.i18n.t('btn.loading')")
                 page.click("#lang-toggle")
                 assert page.evaluate("window.i18n.lang()") == "ja"
                 assert page.inner_text("#submit-btn") == page.evaluate("window.i18n.t('btn.loading')")
+                assert page.inner_text("#submit-btn") != loading_en
                 assert page.get_attribute("#submit-btn", "aria-label") is None
                 assert page.is_disabled("#submit-btn")
             finally:
@@ -237,6 +240,30 @@ def test_opening_a_json_file_keeps_its_loading_button_across_a_language_switch()
                     route.abort()
             page.wait_for_function("!_isBusy")
             assert "Failed to fetch" in page.inner_text("#status.error")
+            browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_the_submit_button_reserves_the_width_of_its_loading_label():
+    server = _app_server("analyze_loudness.gui")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            page = browser.new_page(locale="en-US")
+            page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+            page.wait_for_load_state("networkidle")
+            width = "document.getElementById('submit-btn').getBoundingClientRect().width"
+            before = page.evaluate(width)
+            page.evaluate("""() => {
+              const tr = window.i18n.tr;
+              window.i18n.tr = (key, lang) => key === "btn.loading" ? "W".repeat(40) : tr(key, lang);
+              _reserveButtonWidths();
+              window.i18n.tr = tr;
+            }""")
+            assert page.evaluate(width) > before
             browser.close()
     finally:
         server.shutdown()
