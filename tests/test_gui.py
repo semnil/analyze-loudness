@@ -1120,3 +1120,14 @@ class TestUiSettingsEndpoint:
         monkeypatch.setattr(gui_mod, "show_window_color_until_paint", shown.append)
         gui_mod.main()
         assert shown == [webview.create_window.return_value]
+
+    def test_quit_runs_the_atexit_cleanup(self, update_settings, monkeypatch):
+        import analyze_loudness.gui as gui_mod
+        watch = MagicMock()
+        monkeypatch.setattr(gui_mod, "webview", MagicMock())
+        monkeypatch.setattr(gui_mod, "hold_instance_mutex", MagicMock())
+        monkeypatch.setattr(gui_mod, "_HTTPServer", MagicMock(return_value=MagicMock(server_address=("127.0.0.1", 1))))
+        monkeypatch.setattr(gui_mod, "_window", None)
+        monkeypatch.setattr(gui_mod, "run_atexit_on_app_quit", watch)
+        gui_mod.main()
+        watch.assert_called_once_with()
