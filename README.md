@@ -4,8 +4,8 @@
 
 > 日本語版は [README.ja.md](README.ja.md) を参照してください.
 
-A tool that analyzes the audio loudness of YouTube videos in compliance with BS.1770 / EBU R128.
-It comes in two forms: a CLI version and a GUI application version (Windows / macOS).
+A tool that analyzes the audio loudness of YouTube videos and local audio files in compliance with BS.1770 / EBU R128.
+It comes in two forms: a command-line interface (CLI) version and a graphical user interface (GUI) application version (Windows / macOS).
 
 ![Loudness Analyzer](docs/screenshot.png)
 
@@ -13,54 +13,27 @@ It comes in two forms: a CLI version and a GUI application version (Windows / ma
 
 - Downloads the audio of a YouTube video (yt_dlp Python API, opus format)
 - EBU R128 loudness analysis (Momentary 400ms / Short-term 3s)
-- Numeric summary (Integrated, True Peak, LRA, median, P10/P90, silence ratio)
+- Numeric summary (Integrated loudness in Loudness Units relative to Full Scale (LUFS), True Peak, Loudness Range (LRA), median, 10th and 90th percentiles (P10/P90), silence ratio)
 - CLI: generates a 4-row PNG chart (matplotlib)
-- GUI: interactive charts drawn in the browser (uPlot + Canvas)
-- Saves analysis results as JSON
+- GUI: interactive charts drawn in the app window (uPlot + Canvas)
+- GUI: saves analysis results as JSON and as an image
 - Analysis of local audio files (path input, file picker, drag & drop)
-- Comparison mode: overlays 2-6 results for comparison (aligned to the length of the shortest track). URLs and saved JSON can be mixed, and the comparison result can also be saved as JSON and as an image
+- Comparison mode: overlays 2-6 results for comparison (aligned to the length of the shortest track). URLs, local files and saved JSON can be mixed, and the comparison result can also be saved as JSON and as an image
+- GUI: light / dark / auto theme and English / Japanese display
 - Auto-update of the installed app (Windows / macOS) (it asks before updating; the check at launch can be turned off in the settings)
 
-## Architecture
-
-```mermaid
-graph LR
-    A["pywebview<br/>(WebView2 / WebKit)"] -->|"HTTP<br/>127.0.0.1:random"| B["Local HTTP Server<br/>(gui.py)"]
-    B -->|"NDJSON stream"| C["Analysis Pipeline"]
-    C --> D["yt_dlp.YoutubeDL<br/>(audio DL)"]
-    D --> E["ffmpeg -af ebur128<br/>(loudness measurement)"]
-    E --> F["JSON result"]
-    F --> A
-```
-
-The GUI consists of pywebview (Windows: WebView2 / macOS: WebKit) + a local HTTP server.
-
 ## Requirements
+
+The distributed app runs on:
 
 - Windows (x64)
 - macOS: **v1.3.0 and later are Apple Silicon (M1 or later) only**. Intel Macs (x86_64) are not supported (to stop the warning macOS 26 shows that support for apps for Intel processors is ending, the bundled ffmpeg / ffprobe were switched to Apple Silicon native builds only). If you use an Intel Mac, please use [v1.2.0](../../releases/tag/v1.2.0)
 
-## Local setup
+## Usage
 
-### Prerequisites
+### CLI
 
-- Python 3.11+
-- ffmpeg / ffprobe (`static-ffmpeg` is not needed if they are already installed on the system)
-
-### Setup
-
-```bash
-git clone --recurse-submodules <repo-url>
-cd analyze-loudness
-
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
-
-python -m pytest tests/ -v
-```
-
-### CLI usage
+Install it from a clone of this repository (the "Setup" section under "Development"), then:
 
 ```bash
 # Analyze the full length
@@ -78,24 +51,24 @@ analyze-loudness "https://www.youtube.com/watch?v=AAAAA" ./loudness_B.json
 analyze-loudness ./recording.wav
 ```
 
-A comparison writes `loudness_compare.json` and `loudness_compare.png` (when a file with the same name exists, `_2`, `_3` … is appended). `--duration` cannot be used for a comparison.
+A single analysis writes `<title>_loudness.png` (`<title>_<minutes>m_loudness.png` with `--duration`). A comparison writes `loudness_compare.json` and `loudness_compare.png` (when a file with the same name exists, `_2`, `_3` … is appended). `--duration` cannot be used for a comparison, and a saved JSON can only be used in a comparison.
 
-#### CLI options
+#### Options
 
 | Option | Default | Description |
 |---|---|---|
-| `--duration` | none (full length) | Length to analyze (minutes). Cuts out the middle part of the video and analyzes it (single analysis only) |
-| `--output-dir` | `.` | PNG output directory |
+| `--duration` | none (full length) | Length to analyze in minutes, up to 240. Cuts out the middle part of the source and analyzes it (single analysis only) |
+| `--output-dir` | `.` | Output directory of the PNG and, for a comparison, of the JSON |
 
-#### CLI output example
+#### Output example
 
 ```
 ========================================================
   Video Title
 ========================================================
-  Duration          : 30.5 min (18265 frames)
+  Duration          : 30.4 min (18265 frames)
   Integrated        : -20.8 LUFS
-  True Peak (max)   : +0.3 dBFS
+  True Peak (max)   : 0.3 dBFS
   LRA               : 4.5 LU
   Short-term median : -21.4 LUFS
   Short-term P10/P90: -24.3 / -20.1 LUFS
@@ -105,25 +78,76 @@ A comparison writes `loudness_compare.json` and `loudness_compare.png` (when a f
 ========================================================
 ```
 
-### GUI usage
+### GUI
 
 ```bash
 pip install -e ".[gui]"
 analyze-loudness-gui
 ```
 
-To compare, enter a URL and queue it with "+ Add Track". While the queue is not empty, "Load JSON" adds a saved single-result JSON to the queue. With two or more queued, pressing "Compare" analyzes the URL rows in order and shows the comparison. A saved comparison JSON can be opened with "Load JSON" while the queue is empty.
+Enter a URL or a local file path in the input field (you can also choose a file with "Browse" or drop a file onto the window) and press "Analyze". The source moves from the input field to the queue of tracks. The GUI always analyzes the full length. An equivalent of `--duration` (specifying the length to analyze) is not implemented in the GUI. To analyze only the middle part, use the CLI's `--duration` option.
 
-Enter a URL or a local file path in the input field (you can also choose a file with "Browse" or drop a file onto the window). The GUI always analyzes the full length. An equivalent of `--duration` (specifying the length to analyze) is not implemented in the GUI. To analyze only the middle part, use the CLI's `--duration` option.
+To compare, enter the next URL or local file path and press "Compare" (the button reads "Compare" while the queue and the field hold two or more sources), or queue sources first with "+ Add Track". To analyze another source on its own, press "Clear All" first. "Clear All" also clears the result on screen, and adding or removing a track clears it while tracks stay in the queue. Moving a track reorders a comparison on screen. A source in the input field that the queue already holds stays in the field and is not added twice; "Load JSON" and dropped files are not checked. While the queue is not empty, "Load JSON" adds a saved single-result JSON to the queue, and a dropped file joins the queue (so do several files dropped at once). Pressing "Compare" analyzes the rows that hold no result yet in order and shows the comparison. With one row in the queue, "Analyze" analyzes that row (a JSON row is shown without analysis). A saved comparison JSON can be opened with "Load JSON" while the queue is empty.
+
+Dark mode is supported (a 3-way switch Light / Dark / Auto; the default follows the OS setting). The chosen theme and display language (EN / JA) are kept when the app is restarted.
 
 ### App updates
 
-The installed app checks [GitHub Releases](../../releases) at launch for a newer version (apart from the audio fetched for analysis, this is the only network access the app makes on its own). If a newer version exists, it asks "Version X is available. Update now?", and only when you press OK does it download the update, verify with its signature that it has not been tampered with, install it, and restart the app. Restarting clears analysis results that are not saved.
+The installed app (the installer version on Windows, the disk image (DMG) version on macOS) checks [GitHub Releases](../../releases) at launch for a newer version (apart from the audio fetched for analysis, this is the only network access the app makes on its own). If a newer version exists, it asks "Version {version} is available. Update now?" with the new version in place of `{version}`, and only when you press OK does it download the update, verify with its signature and the public key built into the app that it has not been tampered with, install it, and restart the app. Cancel does nothing. Restarting clears analysis results that are not saved. The check at launch shows nothing when there is no newer version or when the check fails.
 
 - The check at launch can be turned off in the settings of the gear button at the top right ("Check at launch"). "Check now" checks manually as well
-- Windows: a User Account Control (UAC) prompt appears when the installer runs. The app is already closed at that point, so choosing "No" leaves the app not updated and closed. Launching it again shows the update prompt again
+- Windows: a User Account Control (UAC) prompt appears when the installer runs. The app is already closed at that point, so choosing "No" leaves the app not updated and closed. Launching it again shows the update prompt again (when the check at launch is on)
 - macOS: keep the app in the "Applications" folder. If you lack permission to write to that folder, it asks for an administrator password. When two copies of the same app are running, quit one before updating
 - It does not update during an analysis. Press "Check now" after the analysis finishes
+- The update check and the download connect to the releases on github.com and to the delivery host that GitHub redirects release file downloads to (release-assets.githubusercontent.com). The User-Agent of the requests is the app name and version (`analyze-loudness/<version>`)
+
+## Architecture
+
+The GUI consists of pywebview (Windows: WebView2 / macOS: WebKit) + a local HTTP server, which streams progress and results as newline-delimited JSON (NDJSON).
+
+```mermaid
+graph LR
+    A["pywebview<br>(WebView2 / WebKit)"] -->|"HTTP<br>127.0.0.1:random"| B["Local HTTP server<br>(src/analyze_loudness/gui.py)"]
+    B -->|"NDJSON stream"| C["Analysis pipeline"]
+    C --> D["yt_dlp.YoutubeDL API / local file"]
+    D --> E["ffmpeg -af ebur128<br>(loudness measurement)"]
+    E --> F["JSON result"]
+    F --> A
+```
+
+See [docs/architecture.md](docs/architecture.md) for details.
+
+## Development
+
+### Setup
+
+Prerequisites:
+
+- Python 3.11 or later
+- ffmpeg / ffprobe on `PATH` (when ffmpeg is not on `PATH`, the CLI uses the `static-ffmpeg` package installed with this project; the GUI run from source does not)
+
+```bash
+git clone --recurse-submodules https://github.com/semnil/analyze-loudness.git
+cd analyze-loudness
+
+python3 -m venv .venv            # Windows: python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+```
+
+In a clone made without `--recurse-submodules`, run `git submodule update --init`.
+
+### Tests
+
+```bash
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python -m pytest tests/ -v
+
+# With coverage
+python -m pytest tests/ --cov=analyze_loudness --cov-report=html
+```
+
+The UI tests (`tests/test_frontend.py`, `tests/test_chart_rendering.py`) use Playwright's Chromium. Run `python -m playwright install --with-deps chromium` the first time.
 
 ### Build & distribution
 
@@ -132,60 +156,104 @@ python build.py              # download assets + PyInstaller bundle
 python build.py --installer  # + Inno Setup installer (.exe) / DMG (macOS)
 ```
 
-The macOS DMG needs create-dmg (`brew install create-dmg`).
+The bundle is written to `dist/analyze-loudness/` (`dist/Loudness Analyzer.app` on macOS) and the installer to `installer_output/`.
 
-## Tests
+Prerequisites:
 
-```bash
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-python -m pytest tests/ -v
-```
+- PyInstaller (`pip install pyinstaller`, or the `dev` extra) and certifi (`pip install -e ".[gui]"`). The build stops without them
+- Inno Setup 6 (only when generating the Windows installer)
+- create-dmg (only when generating the macOS DMG: `brew install create-dmg`)
 
-The UI tests (`tests/test_frontend.py`) use Playwright's Chromium. Run `python -m playwright install --with-deps chromium` the first time.
+`build.py` downloads the following automatically:
+
+- ffmpeg / ffprobe (Windows: BtbN/FFmpeg-Builds, macOS: osxexperts.net. The series and the macOS URL and SHA256 are in `build_assets/ffmpeg.json`)
+- deno (the latest GitHub release, needed for yt-dlp's YouTube JavaScript extraction)
+- uPlot (jsDelivr CDN)
+
+yt-dlp is managed as a Python dependency (`pyproject.toml`), and PyInstaller bundles it automatically.
+
+uPlot is checked against the SHA256 in `build_assets/checksums.json` (`python build.py --update-checksums` updates that file), and the macOS ffmpeg / ffprobe against the SHA256 in `build_assets/ffmpeg.json`. deno and the Windows ffmpeg / ffprobe are not pinned.
+
+| Flag | Description |
+|---|---|
+| `--installer` | Also builds the installer (Inno Setup / DMG) |
+| `--skip-download` | Skips downloading the assets |
+| `--skip-build` | Skips PyInstaller (assumes `dist/` exists) |
+| `--update-checksums` | Downloads the assets, updates `build_assets/checksums.json` and stops |
+| `--ffmpeg-only` | Downloads only ffmpeg / ffprobe into `build_assets/bin/` and stops |
 
 ## Project layout
 
+```mermaid
+graph LR
+    root["analyze-loudness/"]
+    root --> gh[".github/<br>workflows (continuous integration, release and tagging, ffmpeg watch,<br>workflow checks, Dependabot auto-merge) and their tests,<br>Dependabot settings, issue templates"]
+    root --> r_ignore[".gitignore"]
+    root --> r_mod[".gitmodules"]
+    root --> r_venv[".venv/<br>Python virtual environment (not tracked by git)"]
+    root --> r_claude["CLAUDE.md<br>project instructions for AI"]
+    root --> r_readme["README.md"]
+    root --> r_readme_ja["README.ja.md"]
+    root --> r_pyproj["pyproject.toml<br>package, dependencies, commands"]
+    root --> req["requirements/<br>hash-pinned packages the release jobs install"]
+    root --> src["src/analyze_loudness/<br>Python package"]
+    src --> src_init["__init__.py<br>sys.path injection of vendor/, SCHEMA_VERSION"]
+    src --> src_main["__main__.py"]
+    src --> src_cli["cli.py<br>argparse + main orchestration (CLI)"]
+    src --> src_gui["gui.py<br>pywebview + local HTTP server (GUI)"]
+    src --> src_dl["download.py<br>yt_dlp.YoutubeDL API, local files, ffprobe duration"]
+    src --> src_ana["analysis.py<br>ebur128 stderr parsing, compute_stats"]
+    src --> src_cmp["compare.py<br>result / comparison JSON, truncated statistics"]
+    src --> src_upd["update.py<br>auto-update identity (UPDATE_CONFIG)"]
+    src --> src_plot["plot.py<br>matplotlib figure generation (CLI only)"]
+    root --> fe["frontend/"]
+    fe --> fe_idx["index.html"]
+    fe --> fe_main["main.js<br>fetch + NDJSON progress + DOM rendering"]
+    fe --> fe_theme["theme.js<br>chart colors (light / dark)"]
+    fe --> fe_gate["gate.js<br>BS.1770 gating for the GATE lane"]
+    fe --> fe_i18n["i18n.js<br>en / ja UI strings"]
+    fe --> ch["charts/"]
+    ch --> ch_tl["timeline.js<br>uPlot wrapper"]
+    ch --> ch_hist["histogram.js<br>Canvas histogram"]
+    ch --> ch_seg["segments.js<br>Canvas segment bars"]
+    fe --> fe_css["style.css"]
+    fe --> fe_vendor["vendor/<br>uPlot (bundled)"]
+    root --> t["tests/<br>pytest (tests/frontend/ holds the UI tests run with Playwright)"]
+    root --> docs["docs/"]
+    docs --> docs_arch["architecture.md"]
+    docs --> docs_arch_ja["architecture.ja.md"]
+    docs --> docs_shot["screenshot.png"]
+    root --> vend["vendor/py-analyze-common/<br>shared library (git submodule)"]
+    root --> r_build["build.py<br>build script (asset download + PyInstaller + Inno Setup / DMG)"]
+    root --> r_spec["analyze-loudness.spec<br>PyInstaller spec"]
+    root --> r_iss["installer.iss<br>Inno Setup script"]
+    root --> r_tpl["THIRD_PARTY_LICENSES.txt<br>bundled license file"]
+    root --> r_gpl["licenses/<br>full texts of the GNU General Public License (GPL) v2 / v3"]
+    root --> ba["build_assets/"]
+    ba --> ba_pin["ffmpeg.json<br>pinned ffmpeg / ffprobe builds"]
+    ba --> ba_sum["checksums.json<br>SHA256 of the uPlot files"]
+    ba --> ba_icon["icon_draft.svg, icon.ico, icon.png, icon.iconset/<br>app icon"]
+    ba --> ba_bin["bin/<br>ffmpeg, ffprobe, deno (not tracked by git)"]
 ```
-analyze-loudness/
-├── .github/                    # workflows (CI, release, ffmpeg watch, workflow checks) and their tests, issue templates
-├── .gitignore
-├── .venv/                      # Python virtual environment (not tracked by git)
-├── CLAUDE.md                   # Project instructions for AI
-├── README.md
-├── README.ja.md
-├── pyproject.toml              # CLI tool (pip install -e ".[dev]")
-├── src/analyze_loudness/       # Python package
-│   ├── __init__.py             # sys.path injection of vendor/, SCHEMA_VERSION
-│   ├── __main__.py
-│   ├── cli.py                  # argparse + main orchestration (CLI)
-│   ├── gui.py                  # pywebview + local HTTP server (GUI)
-│   ├── download.py             # yt_dlp.YoutubeDL API, local files, ffprobe duration
-│   ├── analysis.py             # ebur128 stderr parsing, compute_stats
-│   ├── compare.py              # result / comparison JSON, truncated statistics
-│   ├── update.py               # auto-update settings (UPDATE_CONFIG)
-│   └── plot.py                 # matplotlib figure generation (CLI only)
-├── frontend/
-│   ├── index.html
-│   ├── main.js                 # fetch + NDJSON progress + DOM rendering
-│   ├── theme.js                # chart colors (light / dark)
-│   ├── gate.js                 # BS.1770 gating for the GATE lane
-│   ├── i18n.js                 # en / ja UI strings
-│   ├── charts/
-│   │   ├── timeline.js         # uPlot wrapper
-│   │   ├── histogram.js        # Canvas histogram
-│   │   └── segments.js         # Canvas segment bars
-│   ├── style.css
-│   └── vendor/                 # uPlot (bundled)
-├── tests/                      # pytest (tests/frontend/ holds the UI tests run with Playwright)
-├── docs/
-│   ├── architecture.md
-│   └── architecture.ja.md
-├── vendor/py-analyze-common/   # shared library (git submodule)
-├── build.py                    # Build script (asset download + PyInstaller + Inno Setup / DMG)
-├── analyze-loudness.spec       # PyInstaller spec
-├── installer.iss               # Inno Setup script
-├── THIRD_PARTY_LICENSES.txt    # Bundled license file
-├── licenses/                   # GPL v2 / v3 full texts
-├── build_assets/ffmpeg.json    # pinned ffmpeg / ffprobe builds
-└── build_assets/bin/           # ffmpeg, ffprobe, deno (not tracked by git)
-```
+
+## Dependencies
+
+### Runtime
+
+- numpy
+- matplotlib (the CLI's chart)
+- yt-dlp (pinned to one version in `pyproject.toml`)
+- yt-dlp-ejs (pinned to one version in `pyproject.toml`; the YouTube challenge solver scripts yt-dlp reads)
+- static-ffmpeg (the CLI uses it when ffmpeg is not on `PATH`)
+- pywebview (GUI only)
+- certifi (GUI only, certificate authority (CA) bundle for the update check)
+- py-analyze-common (the git submodule at `vendor/py-analyze-common`, not listed in `pyproject.toml`)
+
+### External tools
+
+- ffmpeg / ffprobe
+- deno (the built app bundles it. Run from source, yt-dlp uses the one on `PATH`, and runs with no JavaScript runtime when there is none)
+
+## License
+
+See [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) for bundled third-party software licenses. `licenses/` holds the full texts of the GPL v2 / v3 that file points at.
