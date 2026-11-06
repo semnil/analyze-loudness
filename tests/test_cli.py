@@ -197,3 +197,33 @@ class TestStaticFfmpegFallback:
             with pytest.raises(SystemExit):
                 main(["--help"])
         add_paths.assert_not_called()
+
+
+class TestInstanceLock:
+    """The CLI holds the instance lock while its work folder exists."""
+
+    @pytest.mark.parametrize("sources", [["tone.wav"], ["tone.wav", "tone2.wav"]], ids=["single", "comparison"])
+    def test_held_while_the_work_folder_exists(self, tmp_path, monkeypatch, sources):
+        import glob
+        import tempfile
+        from unittest.mock import Mock
+        import numpy as np
+        from analyze_loudness import cli
+
+        monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+        pattern = str(tmp_path / "loudness_instance_*.lock")
+        seen = []
+
+        def watching(url, workdir):
+            seen.append(glob.glob(pattern))
+            return url, "tone"
+
+        monkeypatch.setattr(cli, "_resolve", watching)
+        t, M, S = np.arange(1, 60) * 0.1, np.full(59, -20.0), np.full(59, -20.0)
+        monkeypatch.setattr(cli, "run_ebur128", Mock(return_value=(t, M, S, {"integrated": -20.0, "lra": 1.0, "true_peak": -1.0})))
+        monkeypatch.setattr(cli, "plot_analysis", Mock())
+        monkeypatch.setattr(cli, "plot_compare", Mock())
+        cli.main(sources + ["--output-dir", str(tmp_path / "out")])
+        assert len(seen) == len(sources)
+        assert all(len(locks) == 1 for locks in seen)
+        assert glob.glob(pattern) == []

@@ -447,6 +447,10 @@ gh secret set UPDATE_SIGNING_KEY < analyze-loudness.pem
 
 The sign-manifest job of `.github/workflows/release.yaml` makes `latest.json` with `python -m analyze_common.update_manifest sign`, and the create-release job puts it on the Release together with the installers. `UPDATE_SIGNING_KEY` is referenced only by sign-manifest, which runs with a read-only token, a checkout without stored credentials and no pip cache, and installs only the `yt-dlp` wheel in `requirements/sign-manifest.txt` (`--require-hashes --no-deps --only-binary :all:`; `analyze_common` imports `yt_dlp`). create-release is the only job with `contents: write`, and it runs no Python (`tests/test_release_workflow.py` checks both). The sign-manifest job fails when the secret is missing, when the created signature cannot be verified with `PUBLIC_KEY` (the secret and the public key disagree), or when the tag is not `v` + `__version__`.
 
+### Temp folders of a killed run
+
+`src/analyze_loudness/gui.py` holds py-analyze-common's `InstanceLock` while it runs, and the CLI holds one while its work folder exists. When the GUI ends, `_cleanup_orphan_tempdirs()` removes the `loudness_*` temp folders a killed run left behind, unless another instance runs (the "Temp folders a killed process left behind" section of `vendor/py-analyze-common/CLAUDE.md`).
+
 ### Window icon
 
 PyInstaller's `EXE(icon=...)` is only the icon of the EXE file itself (shown in Explorer). The pywebview window icon (title bar and taskbar) needs an explicit `webview.start(icon=...)` (moved from `create_window` to `start` in pywebview 6.x). `build_assets/icon.ico` is bundled through PyInstaller's `datas` and resolved through `_ICON_PATH`.

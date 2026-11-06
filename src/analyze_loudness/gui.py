@@ -1,7 +1,6 @@
 """GUI application: pywebview window + local HTTP server for analysis."""
 
 import atexit
-import glob
 import json
 import math
 import os
@@ -32,6 +31,7 @@ from analyze_loudness.update import UPDATE_CONFIG
 from analyze_common.server import ClientDisconnected as _ClientDisconnected
 from analyze_common.server import GuiHandler
 from analyze_common.settings import SETTINGS_NAME, SettingsStore, settings_dir
+from analyze_common.tempdirs import InstanceLock, sweep_orphan_tempdirs
 from analyze_common.ui_settings import UiSettings, show_window_color_until_paint
 from analyze_common.update import Updater, hold_instance_mutex
 from analyze_common.window import run_atexit_on_app_quit, set_app_user_model_id
@@ -58,6 +58,9 @@ _SPEED_EMA_ALPHA = 0.3
 # pywebview window reference (set in main())
 _window = None
 
+_instance_lock = InstanceLock("loudness_")
+atexit.register(_instance_lock.release)
+
 # Analysis result cache — avoids re-analysis for same URL + duration
 _cache_dir = tempfile.mkdtemp(prefix="loudness_cache_")
 atexit.register(shutil.rmtree, _cache_dir, True)
@@ -67,33 +70,15 @@ _upload_dir = tempfile.mkdtemp(prefix="loudness_upload_")
 atexit.register(shutil.rmtree, _upload_dir, True)
 
 
-_ORPHAN_TEMPDIR_MIN_AGE_SEC = 3600  # 1 hour
-
-
 def _cleanup_orphan_tempdirs() -> None:
     """Remove loudness_* temp directories left by a previous hard-killed run.
 
     TemporaryDirectory('s with' block cleans up on normal exit, but if the
     webview window is force-closed while a worker is inside ebur128 the
     directory can survive across sessions.  Sweep them once at shutdown.
-
-    Only directories older than ``_ORPHAN_TEMPDIR_MIN_AGE_SEC`` are removed so
-    that tempdirs belonging to another concurrently running instance are not
-    deleted when this process exits.
+    While another instance runs, the sweep removes nothing.
     """
-    pattern = os.path.join(tempfile.gettempdir(), "loudness_*")
-    now = time.time()
-    for path in glob.glob(pattern):
-        if path in (_cache_dir, _upload_dir):
-            continue
-        try:
-            if os.path.islink(path) or not os.path.isdir(path):
-                continue
-            if now - os.path.getmtime(path) <= _ORPHAN_TEMPDIR_MIN_AGE_SEC:
-                continue
-            shutil.rmtree(path, ignore_errors=True)
-        except OSError:
-            pass
+    sweep_orphan_tempdirs("loudness_", _instance_lock, keep={_cache_dir, _upload_dir})
 
 
 atexit.register(_cleanup_orphan_tempdirs)
@@ -111,6 +96,7 @@ def _exit_now() -> None:
     shutil.rmtree(_cache_dir, True)
     shutil.rmtree(_upload_dir, True)
     _cleanup_orphan_tempdirs()
+    _instance_lock.release()
     os._exit(0)
 
 
