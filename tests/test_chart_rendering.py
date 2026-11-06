@@ -21,6 +21,34 @@ def track(level, title):
 
 
 @pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_resizing_the_window_redraws_a_rendered_result(monkeypatch):
+    from analyze_loudness import gui
+    from playwright.sync_api import sync_playwright
+
+    monkeypatch.setattr(gui._updater, "status", lambda: {"supported": False, "launch_check": False})
+    server = _app_server("analyze_loudness.gui")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                page = browser.new_page(viewport={"width": 1100, "height": 800}, locale="en-US")
+                page.goto(f"http://127.0.0.1:{server.server_port}/index.html")
+                page.evaluate("window.analyzeUpdate.ready")
+                page.evaluate("data => { render(data); }", track(-20, "First"))
+                page.evaluate("""() => {
+                    window.__redraws = 0;
+                    window.rerender = () => { window.__redraws += 1; };
+                    window.dispatchEvent(new Event("resize"));
+                }""")
+                page.wait_for_function("window.__redraws === 1")
+            finally:
+                browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
 @pytest.mark.parametrize("kind, theme", [("single", "light"), ("silent", "dark"), ("compare", "light"), ("compare", "dark")])
 def test_real_charts_and_png_export(kind, theme, monkeypatch):
     from analyze_loudness import gui
@@ -95,34 +123,6 @@ def test_real_charts_and_png_export(kind, theme, monkeypatch):
                 assert width == 2200
                 assert height > 1500
                 assert errors == []
-            finally:
-                browser.close()
-    finally:
-        server.shutdown()
-        server.server_close()
-
-
-@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
-def test_resizing_the_window_redraws_a_rendered_result(monkeypatch):
-    from analyze_loudness import gui
-    from playwright.sync_api import sync_playwright
-
-    monkeypatch.setattr(gui._updater, "status", lambda: {"supported": False, "launch_check": False})
-    server = _app_server("analyze_loudness.gui")
-    try:
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
-            try:
-                page = browser.new_page(viewport={"width": 1100, "height": 800}, locale="en-US")
-                page.goto(f"http://127.0.0.1:{server.server_port}/index.html")
-                page.evaluate("window.analyzeUpdate.ready")
-                page.evaluate("data => { render(data); }", track(-20, "First"))
-                page.evaluate("""() => {
-                    window.__redraws = 0;
-                    window.rerender = () => { window.__redraws += 1; };
-                    window.dispatchEvent(new Event("resize"));
-                }""")
-                page.wait_for_function("window.__redraws === 1")
             finally:
                 browser.close()
     finally:
