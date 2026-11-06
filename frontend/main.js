@@ -1492,7 +1492,7 @@ function captureImage(data) {
 
   // Title
   ctx.fillStyle = th.titleColor;
-  ctx.font = "bold 18px 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "bold 18px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "center";
   var displayTitle = text.title;
   var maxTitleW = W - PAD * 2;
@@ -1504,7 +1504,7 @@ function captureImage(data) {
 
   // Summary text
   ctx.fillStyle = th.fg;
-  ctx.font = "13px 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "13px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
   ctx.textAlign = "left";
   const col1 = PAD, col2 = W / 2 + PAD;
 
@@ -1528,7 +1528,7 @@ function captureImage(data) {
   for (const { canvas, w, h, label } of chartSizes) {
     if (label) {
       ctx.fillStyle = th.fg;
-      ctx.font = "bold 13px 'Segoe UI', 'Meiryo', sans-serif";
+      ctx.font = "bold 13px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
       ctx.textAlign = "center";
       ctx.fillText(label, W / 2, y + 14);
       y += 22;
