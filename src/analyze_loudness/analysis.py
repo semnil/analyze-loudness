@@ -1,10 +1,10 @@
 """EBU R128 loudness analysis via ffmpeg ebur128 filter."""
 
 import re
-import subprocess
 
 import numpy as np
 
+from analyze_common.ffmpeg import run_ffmpeg
 from analyze_loudness import _ffmpeg_kwargs, _find_executable
 
 SILENCE_THRESHOLD = -60
@@ -59,7 +59,7 @@ def run_ebur128(
         cmd += ["-t", str(duration)]
     cmd += ["-af", "ebur128=peak=true", "-f", "null", "-"]
     # stderr carries paths as UTF-8 and metadata values as the raw bytes of the file.
-    r = subprocess.run(
+    r = run_ffmpeg(
         cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
         timeout=600, **_ffmpeg_kwargs(),
     )

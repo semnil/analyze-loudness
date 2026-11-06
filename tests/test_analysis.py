@@ -94,7 +94,7 @@ MOCK_EBUR128_STDERR = """\
 class TestRunEbur128Parsing:
     """Test ebur128 stderr parsing with mocked subprocess."""
 
-    @patch("analyze_loudness.analysis.subprocess.run")
+    @patch("analyze_loudness.analysis.run_ffmpeg")
     @patch("analyze_loudness.analysis._find_executable", return_value="/opt/tools/ffmpeg")
     def test_runs_ffmpeg_from_find_executable(self, mock_find, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stderr=MOCK_EBUR128_STDERR)
@@ -102,14 +102,14 @@ class TestRunEbur128Parsing:
         mock_find.assert_called_once_with("ffmpeg")
         assert mock_run.call_args[0][0][0] == "/opt/tools/ffmpeg"
 
-    @patch("analyze_loudness.analysis.subprocess.run")
+    @patch("analyze_loudness.analysis.run_ffmpeg")
     @patch("analyze_loudness.analysis._find_executable", return_value=None)
     def test_no_ffmpeg_on_path_raises_before_running(self, _find, mock_run):
         with pytest.raises(FileNotFoundError, match="ffmpeg"):
             run_ebur128("/fake/audio.opus")
         mock_run.assert_not_called()
 
-    @patch("analyze_loudness.analysis.subprocess.run")
+    @patch("analyze_loudness.analysis.run_ffmpeg")
     def test_parses_per_frame_data(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stderr=MOCK_EBUR128_STDERR)
         t, M, S, summary = run_ebur128("/fake/audio.opus")
@@ -118,39 +118,39 @@ class TestRunEbur128Parsing:
         assert M[0] == pytest.approx(-20.1)
         assert S[0] == pytest.approx(-22.3)
 
-    @patch("analyze_loudness.analysis.subprocess.run")
+    @patch("analyze_loudness.analysis.run_ffmpeg")
     def test_parses_summary_integrated(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stderr=MOCK_EBUR128_STDERR)
         _, _, _, summary = run_ebur128("/fake/audio.opus")
         assert summary["integrated"] == pytest.approx(-22.0)
 
-    @patch("analyze_loudness.analysis.subprocess.run")
+    @patch("analyze_loudness.analysis.run_ffmpeg")
     def test_parses_gate_threshold_not_lra_threshold(self, mock_run):
         """The Summary has two Threshold: lines; take the Integrated one."""
         mock_run.return_value = MagicMock(returncode=0, stderr=MOCK_EBUR128_STDERR)
         _, _, _, summary = run_ebur128("/fake/audio.opus")
         assert summary["gate_threshold"] == pytest.approx(-32.0)
 
-    @patch("analyze_loudness.analysis.subprocess.run")
+    @patch("analyze_loudness.analysis.run_ffmpeg")
     def test_gate_threshold_absent_without_summary_block(self, mock_run):
         stderr = MOCK_EBUR128_STDERR.split("Summary:")[0]
         mock_run.return_value = MagicMock(returncode=0, stderr=stderr)
         _, _, _, summary = run_ebur128("/fake/audio.opus")
         assert "gate_threshold" not in summary
 
-    @patch("analyze_loudness.analysis.subprocess.run")
+    @patch("analyze_loudness.analysis.run_ffmpeg")
     def test_parses_summary_lra(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stderr=MOCK_EBUR128_STDERR)
         _, _, _, summary = run_ebur128("/fake/audio.opus")
         assert summary["lra"] == pytest.approx(5.2)
 
-    @patch("analyze_loudness.analysis.subprocess.run")
+    @patch("analyze_loudness.analysis.run_ffmpeg")
     def test_parses_summary_true_peak(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stderr=MOCK_EBUR128_STDERR)
         _, _, _, summary = run_ebur128("/fake/audio.opus")
         assert summary["true_peak"] == pytest.approx(0.3)
 
-    @patch("analyze_loudness.analysis.subprocess.run")
+    @patch("analyze_loudness.analysis.run_ffmpeg")
     def test_no_summary_block(self, mock_run):
         stderr = (
             "[Parsed_ebur128_0 @ 0x1] t: 0.100    TARGET:-23 LUFS"
@@ -160,7 +160,7 @@ class TestRunEbur128Parsing:
         _, _, _, summary = run_ebur128("/fake/audio.opus")
         assert summary == {}
 
-    @patch("analyze_loudness.analysis.subprocess.run")
+    @patch("analyze_loudness.analysis.run_ffmpeg")
     def test_ss_and_duration_in_command(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stderr=MOCK_EBUR128_STDERR)
         run_ebur128("/fake/audio.opus", ss=10.0, duration=30.0)
@@ -170,13 +170,13 @@ class TestRunEbur128Parsing:
         assert "-t" in cmd
         assert "30.0" in cmd
 
-    @patch("analyze_loudness.analysis.subprocess.run")
+    @patch("analyze_loudness.analysis.run_ffmpeg")
     def test_no_data_raises(self, mock_run):
         mock_run.return_value = MagicMock(returncode=1, stderr="some error\n")
         with pytest.raises(RuntimeError, match="No ebur128 data"):
             run_ebur128("/fake/audio.opus")
 
-    @patch("analyze_loudness.analysis.subprocess.run")
+    @patch("analyze_loudness.analysis.run_ffmpeg")
     def test_true_peak_negative_inf(self, mock_run):
         stderr = MOCK_EBUR128_STDERR.replace("0.3 dBFS", "-inf dBFS")
         mock_run.return_value = MagicMock(returncode=0, stderr=stderr)
@@ -220,7 +220,7 @@ class TestComputeStatsNanInf:
 class TestRunEbur128InfNanFrames:
     """V-03: Parsing frames with -inf / nan M/S values."""
 
-    @patch("analyze_loudness.analysis.subprocess.run")
+    @patch("analyze_loudness.analysis.run_ffmpeg")
     def test_inf_frame_parsed(self, mock_run):
         stderr = (
             "[Parsed_ebur128_0 @ 0x1] t: 0.100    TARGET:-23 LUFS"
@@ -235,7 +235,7 @@ class TestRunEbur128InfNanFrames:
         assert S[0] == float("-inf")
         assert M[1] == pytest.approx(-20.0)
 
-    @patch("analyze_loudness.analysis.subprocess.run")
+    @patch("analyze_loudness.analysis.run_ffmpeg")
     def test_nan_frame_parsed(self, mock_run):
         stderr = (
             "[Parsed_ebur128_0 @ 0x1] t: 0.100    TARGET:-23 LUFS"
@@ -249,7 +249,7 @@ class TestRunEbur128InfNanFrames:
         assert np.isnan(M[0])
         assert np.isnan(S[0])
 
-    @patch("analyze_loudness.analysis.subprocess.run")
+    @patch("analyze_loudness.analysis.run_ffmpeg")
     def test_all_inf_integration_with_compute_stats(self, mock_run):
         """All-silent audio: every frame is -inf -> stats return None."""
         stderr = (
