@@ -17,6 +17,7 @@ from analyze_loudness.compare import (
     validate_tracks,
 )
 from analyze_loudness.plot import plot_analysis, plot_compare
+from analyze_common.tempdirs import InstanceLock
 
 
 def _positive_float(value: str) -> float:
@@ -72,7 +73,7 @@ def main(argv: list[str] | None = None) -> None:
         return
     url = args.sources[0]
 
-    with tempfile.TemporaryDirectory(prefix="loudness_") as workdir:
+    with InstanceLock("loudness_"), tempfile.TemporaryDirectory(prefix="loudness_") as workdir:
         # Step 1: Download audio (or use the local file)
         print(f"[1/3] {'Downloading audio' if is_url(url) else 'Reading file'}: {url}")
         src, title = _resolve(url, workdir)
@@ -141,7 +142,7 @@ def _resolve(source: str, workdir: str) -> tuple[str, str]:
 
 
 def _analyze_track(url: str) -> dict:
-    with tempfile.TemporaryDirectory(prefix="loudness_") as workdir:
+    with InstanceLock("loudness_"), tempfile.TemporaryDirectory(prefix="loudness_") as workdir:
         src, title = _resolve(url, workdir)
         print(f"       -> {title}")
         t, M, S, summary = run_ebur128(src)

@@ -1055,11 +1055,70 @@ class TestUpdateEndpoints:
         with patch.object(gui_mod, "_cache_dir", str(cache)), \
              patch.object(gui_mod, "_upload_dir", str(upload)), \
              patch.object(gui_mod, "_cleanup_orphan_tempdirs") as sweep, \
+             patch.object(gui_mod, "_instance_lock") as lock, \
              patch.object(gui_mod.os, "_exit") as exit_:
             gui_mod._exit_now()
         assert not cache.exists() and not upload.exists()
         sweep.assert_called_once()
+        lock.release.assert_called_once()
         exit_.assert_called_once_with(0)
+
+
+_RUNNING_INSTANCE = """
+import json, os, sys, time
+from unittest.mock import MagicMock
+sys.modules["webview"] = MagicMock()
+from analyze_loudness import gui
+then = time.time() - 3601
+for path in (gui._instance_lock.path, gui._cache_dir, gui._upload_dir):
+    os.utime(path, (then, then))
+print(json.dumps([gui._cache_dir, gui._upload_dir]), flush=True)
+sys.stdin.readline()
+"""
+
+
+class TestOrphanSweep:
+    def test_the_end_of_the_app_leaves_a_running_instance_alone(self, tmp_path, monkeypatch):
+        import subprocess
+        import sys
+        import tempfile
+        import time
+        import analyze_loudness.gui as gui_mod
+        monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+        own = tmp_path / "loudness_cache_own"
+        own.mkdir()
+        os.utime(own, (time.time() - 3601, time.time() - 3601))
+        monkeypatch.setattr(gui_mod, "_cache_dir", str(own))
+        env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path),
+               "TMPDIR": str(tmp_path), "TEMP": str(tmp_path), "TMP": str(tmp_path)}
+        other = subprocess.Popen([sys.executable, "-c", _RUNNING_INSTANCE],
+                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, env=env)
+        try:
+            folders = json.loads(other.stdout.readline())
+            gui_mod._cleanup_orphan_tempdirs()
+            assert all(os.path.isdir(path) for path in folders)
+        finally:
+            other.kill()
+            other.wait()
+            other.stdin.close()
+            other.stdout.close()
+        deadline = time.monotonic() + 15
+        while any(os.path.isdir(path) for path in folders) and time.monotonic() < deadline:
+            gui_mod._cleanup_orphan_tempdirs()
+            time.sleep(0.1)
+        assert not any(os.path.isdir(path) for path in folders)
+        assert own.is_dir()
+
+    def test_a_normal_end_leaves_nothing_in_the_temp_folder(self, tmp_path):
+        import subprocess
+        import sys
+        code = ("import sys; from unittest.mock import MagicMock; sys.modules['webview'] = MagicMock(); "
+                "from analyze_loudness import gui; print(gui._instance_lock.path)")
+        env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path),
+               "TMPDIR": str(tmp_path), "TEMP": str(tmp_path), "TMP": str(tmp_path)}
+        done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, check=True)
+        assert os.path.basename(done.stdout.strip()).startswith("loudness_instance_")
+        assert list(tmp_path.iterdir()) == []
 
 
 class TestUiSettingsEndpoint:
