@@ -184,74 +184,7 @@ The theme toggle's drawing and the shared CSS variables are in py-analyze-common
 
 ### Auto-update
 
-The installed version (frozen Windows x64 / macOS arm64) checks GitHub's latest Release at launch (when "Check at launch" is on) and from "Check now" in the settings dialog,
-and fetches, verifies and applies the update only when OK is chosen in the confirmation dialog. What it verifies is an Ed25519 signature over the product, the version, the OS and the installer's Secure Hash Algorithm 256 (SHA-256) digest. The client is
-`vendor/py-analyze-common/src/analyze_common/update.py`, and the user interface (UI) is `vendor/py-analyze-common/src/analyze_common/web/update.js` (served as `/common/update.js`); both are
-shared with analyze-spectrum. The part specific to this repository is `UPDATE_CONFIG` in `src/analyze_loudness/update.py`.
-
-```mermaid
-sequenceDiagram
-    participant UI as /common/update.js
-    participant S as src/analyze_loudness/gui.py
-    participant U as analyze_common.update
-    participant GH as GitHub Releases
-    participant Setup as Inno Setup (Windows)
-    participant Sh as relaunch shell (macOS)
-    UI->>S: POST /update/status
-    S-->>UI: current, supported, launch_check
-    UI->>S: POST /update/check (at launch when on)
-    S->>U: Updater.check()
-    U->>GH: GET releases/latest/download/latest.json
-    GH-->>U: redirect to the tag, then latest.json
-    U-->>S: newer version or None
-    S-->>UI: available, version
-    UI->>UI: window.confirm (OK or Cancel)
-    UI->>S: POST /update/install with the version
-    S->>U: Updater.install(version)
-    U->>GH: GET the installer (https only)
-    U->>U: Ed25519 verify of product, version, OS, SHA-256
-    alt Windows
-        U->>Setup: os.startfile with /SILENT and /UPDATE=1
-        S-->>UI: restarting
-        S->>S: window.destroy()
-        Setup->>Setup: wait for the app mutex, install, start the app
-    else macOS
-        U->>U: hdiutil attach, ditto, check id, version, Team ID
-        U->>U: swap with the running .app (renamex_np)
-        U->>Sh: start, waits for this process to end
-        S-->>UI: restarting
-        S->>S: _exit_now() then os._exit(0)
-        Sh->>Sh: open the new .app
-    end
-```
-
-- **Signature**: `latest.json` holds a `url` and a `signature` per OS. The signed statement is
-  `analyze-update-v1\n{product}\n{version}\n{platform}\n{sha256}\n`, and since it includes the version and OS,
-  relabeling an older genuine installer with a new version number and reusing a file for another OS fail verification. Ed25519 verification is
-  pure Python (`vendor/py-analyze-common/src/analyze_common/ed25519.py`, Request for Comments (RFC) 8032), and `cryptography` stays excluded from the bundle.
-  The signature is made in continuous integration (CI) by `openssl pkeyutl -rawin`, and `vendor/py-analyze-common/src/analyze_common/update_manifest.py` re-verifies it with the app's public key.
-- **How macOS exits**: PyInstaller reopens the archive by path on every lazy import, so if an import runs after the bundle has been swapped,
-  it reads the new version's files. After the swap, `_exit_now()` runs the atexit cleanup itself, and
-  exits with `os._exit(0)` without going through the interpreter's shutdown. The app does the swap itself.
-- **Environment of the relaunched process**: an app started with `open` receives the caller's environment variables (on 2026-10-20,
-  confirmed with `ps -wwE` that a test variable and `_PYI_PARENT_PROCESS_LEVEL=1` reach the relaunched process).
-  The bootloader of PyInstaller 6.9 and later behaves as the parent's worker when `_PYI_ARCHIVE_FILE` is the same as itself, so
-  `PYINSTALLER_RESET_ENVIRONMENT=1` is passed to the relaunch shell and the installer to make them start as independent processes.
-- **Windows User Account Control (UAC)**: Inno Setup's loader starts `asInvoker` and asks for elevation only when it becomes necessary, so UAC appears after the app
-  has closed. If it is refused, nothing is installed and the app stays closed (starting it again starts the old version).
-- **Storage location of "Check at launch"**: the app's settings file (`SettingsStore` in `vendor/py-analyze-common/src/analyze_common/settings.py`. On macOS
-  `~/Library/Application Support/analyze-loudness/settings.json`, on Windows `%APPDATA%\analyze-loudness\settings.json`).
-  The webview's localStorage does not survive to the next launch: `webview.start()` in pywebview 6.2.1 defaults to `private_mode=True`, and
-  clears website data on every launch. Even with private mode off, the local server's port changes on every launch, so the origin changes
-  (confirmed on 2026-10-20 by launching pywebview twice: with private mode at its default, the previous value could not be read even on the same port; with private mode off,
-  it could be read on the same port and could not be read on a different port).
-- **Another process of the same app**: on macOS, the swap is not done when another process of the same executable exists (because that process would keep running on top of the swapped
-  bundle). On Windows, the installer waits for the mutex to disappear.
-- **macOS real-device check** (2026-10-20, locally built unsigned 1.4.1 / 1.4.2, served locally):
-  when updating from 1.4.1, the old process ended 3.8 seconds after the `/update/install` response, and 4.1 seconds after it
-  1.4.2 started from the same path. No temporary directory or file next to the `.app` was left behind. A disk image (DMG) with one byte flipped was rejected, and
-  the old version kept running. When two were running, it did not swap. The check from the frozen build to github.com
-  went through Transport Layer Security (TLS) and the redirect, and ended in a 404 because `v1.4.1` has no `latest.json`.
+How an update runs, what is verified and how each OS applies it are in [py-analyze-common's auto-update document](https://github.com/semnil/py-analyze-common/blob/main/docs/auto-update.md). What this repository owns is `UPDATE_CONFIG` in `src/analyze_loudness/update.py`, and the exit handling (`_exit_now()`) in `src/analyze_loudness/gui.py`.
 
 ## Charts
 
