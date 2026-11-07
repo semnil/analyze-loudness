@@ -57,6 +57,16 @@ def fake_analysis(monkeypatch, summary=None):
     return resolve, run
 
 
+def test_analysis_with_no_length_to_extract_takes_the_probed_length(analysis_app, monkeypatch):
+    _, run = fake_analysis(monkeypatch)
+    monkeypatch.setattr(gui, "compute_middle", Mock(return_value=(None, None, "using full duration")))
+    events = analyze(analysis_app, "https://example.com/audio", 5)
+    progress = [event for event in events if event["type"] == "progress"]
+    assert progress[2]["duration_sec"] == 180
+    assert events[-1]["type"] == "result"
+    run.assert_called_once_with("download.opus", ss=None, duration=None)
+
+
 def test_analysis_emits_result_then_reuses_disk_cache(analysis_app, monkeypatch):
     resolve, run = fake_analysis(monkeypatch, {"integrated": -22, "warnings": ["partial audio"]})
     monkeypatch.setattr(gui.time, "monotonic", Mock(side_effect=[100.0, 102.0]))
