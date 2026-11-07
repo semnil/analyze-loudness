@@ -49,6 +49,108 @@ def test_resizing_the_window_redraws_a_rendered_result(monkeypatch):
 
 
 @pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("cause", ["resize", "theme", "language"])
+def test_redraws_keep_the_scroll_position(cause, monkeypatch):
+    from analyze_loudness import gui
+    from playwright.sync_api import sync_playwright
+
+    monkeypatch.setattr(gui._updater, "status", lambda: {"supported": False, "launch_check": False})
+    server = _app_server("analyze_loudness.gui")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                page = browser.new_page(viewport={"width": 1100, "height": 800}, locale="en-US")
+                page.goto(f"http://127.0.0.1:{server.server_port}/index.html")
+                page.evaluate("window.analyzeUpdate.ready")
+                page.evaluate("data => { render(data); }", track(-20, "First"))
+                page.evaluate("window.scrollTo(0, 150)")
+                assert page.evaluate("window.scrollY") == 150
+                page.evaluate("document.querySelector('#results [data-chart-block]').dataset.before = '1'")
+                if cause == "resize":
+                    page.set_viewport_size({"width": 1000, "height": 800})
+                elif cause == "theme":
+                    page.evaluate("_setThemeMode('dark')")
+                else:
+                    page.evaluate("window.i18n.setLang('ja')")
+                page.wait_for_function("!document.querySelector('#results [data-chart-block][data-before]')")
+                assert page.evaluate("window.scrollY") == 150
+            finally:
+                browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("focus, settled", [("the field", 150), ("nothing", 0)])
+def test_a_resize_goes_back_to_the_position_at_its_start_with_the_field_focused(focus, settled, monkeypatch):
+    from analyze_loudness import gui
+    from playwright.sync_api import sync_playwright
+
+    monkeypatch.setattr(gui._updater, "status", lambda: {"supported": False, "launch_check": False})
+    server = _app_server("analyze_loudness.gui")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                page = browser.new_page(viewport={"width": 1100, "height": 800}, locale="en-US")
+                page.goto(f"http://127.0.0.1:{server.server_port}/index.html")
+                page.evaluate("window.analyzeUpdate.ready")
+                page.evaluate("data => { render(data); }", track(-20, "First"))
+                page.evaluate("window.scrollTo(0, 150)")
+                page.evaluate("document.getElementById('url-input').focus({preventScroll: true})" if focus == "the field" else "document.activeElement.blur()")
+                # This listener moves the page to the top after the page's own resize listener, before the redraw.
+                page.evaluate("addEventListener('resize', () => window.scrollTo(0, 0))")
+                page.evaluate("document.querySelector('#results [data-chart-block]').dataset.before = '1'")
+                page.evaluate("() => { addEventListener('scroll', () => { window.atScroll = window.scrollY; }, {once: true}); dispatchEvent(new Event('resize')); dispatchEvent(new Event('resize')); }")
+                page.wait_for_function("window.atScroll !== undefined")
+                assert page.evaluate("window.atScroll") == settled
+                page.wait_for_function("!document.querySelector('#results [data-chart-block][data-before]')")
+                assert page.evaluate("window.scrollY") == settled
+                page.evaluate("window.scrollTo(0, 300)")
+                page.evaluate("document.querySelector('#results [data-chart-block]').dataset.before = '1'")
+                page.evaluate("_setThemeMode('dark')")
+                page.wait_for_function("!document.querySelector('#results [data-chart-block][data-before]')")
+                assert page.evaluate("window.scrollY") == 300
+            finally:
+                browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_a_redraw_after_a_resize_goes_back_to_the_kept_position_without_a_scroll_event(monkeypatch):
+    from analyze_loudness import gui
+    from playwright.sync_api import sync_playwright
+
+    monkeypatch.setattr(gui._updater, "status", lambda: {"supported": False, "launch_check": False})
+    server = _app_server("analyze_loudness.gui")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                page = browser.new_page(viewport={"width": 1100, "height": 800}, locale="en-US")
+                page.goto(f"http://127.0.0.1:{server.server_port}/index.html")
+                page.evaluate("window.analyzeUpdate.ready")
+                page.evaluate("data => { render(data); }", track(-20, "First"))
+                page.evaluate("window.scrollTo(0, 150)")
+                page.evaluate("document.getElementById('url-input').focus({preventScroll: true})")
+                # The page moves to the top in the same task as the redraw, before any scroll event.
+                page.evaluate("() => { const original = _redrawKeepingFocus; _redrawKeepingFocus = function (container, redraw) { window.scrollTo(0, 0); return original(container, redraw); }; }")
+                page.evaluate("document.querySelector('#results [data-chart-block]').dataset.before = '1'")
+                page.evaluate("dispatchEvent(new Event('resize'))")
+                page.wait_for_function("!document.querySelector('#results [data-chart-block][data-before]')")
+                assert page.evaluate("window.scrollY") == 150
+            finally:
+                browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
 @pytest.mark.parametrize("kind, theme", [("single", "light"), ("silent", "dark"), ("compare", "light"), ("compare", "dark")])
 def test_real_charts_and_png_export(kind, theme, monkeypatch):
     from analyze_loudness import gui
