@@ -26,7 +26,7 @@ function renderHistogram(canvas, values, label, integrated, silenceThreshold) {
     var th0 = getTheme();
     ctx0.clearRect(0, 0, canvas.width, canvas.height);
     ctx0.fillStyle = th0.fgMuted;
-    ctx0.font = "13px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+    ctx0.font = "13px " + CHART_FONT_FAMILY;
     ctx0.textAlign = "center";
     ctx0.textBaseline = "middle";
     ctx0.fillText(window.i18n.t("chart.no_data_silence"), canvas.width / 2, canvas.height / 2);
@@ -90,12 +90,12 @@ function renderHistogram(canvas, values, label, integrated, silenceThreshold) {
 
   // axes labels
   ctx.fillStyle = th.fg;
-  ctx.font = "12px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "12px " + CHART_FONT_FAMILY;
   ctx.textAlign = "center";
   ctx.fillText(window.i18n.t("chart.hist_axis", { label }), w / 2, h - 4);
 
   // x ticks
-  ctx.font = "10px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "10px " + CHART_FONT_FAMILY;
   ctx.fillStyle = th.fgMuted;
   for (let v = lo; v <= hi; v += 10) {
     const x = pad.left + ((v - lo) / (hi - lo)) * pw;
@@ -103,7 +103,7 @@ function renderHistogram(canvas, values, label, integrated, silenceThreshold) {
   }
 
   // legend
-  ctx.font = "10px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "10px " + CHART_FONT_FAMILY;
   ctx.textAlign = "left";
   const legendX = w - pad.right - 110;
   let legendY = pad.top + 6;
@@ -159,7 +159,7 @@ function renderHistogramCompare(canvas, items, label, silenceThreshold) {
   }
   if (curves.length === 0) {
     ctx.fillStyle = th.fgMuted;
-    ctx.font = "13px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+    ctx.font = "13px " + CHART_FONT_FAMILY;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(window.i18n.t("chart.no_data_silence"), w / 2, h / 2);
@@ -187,7 +187,7 @@ function renderHistogramCompare(canvas, items, label, silenceThreshold) {
     ctx.stroke();
   }
 
-  ctx.font = "bold 12px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "bold 12px " + CHART_FONT_FAMILY;
   ctx.textAlign = "center";
   ctx.textBaseline = "bottom";
   for (const c of curves) {
@@ -199,9 +199,9 @@ function renderHistogramCompare(canvas, items, label, silenceThreshold) {
 
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = th.fg;
-  ctx.font = "12px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "12px " + CHART_FONT_FAMILY;
   ctx.fillText(window.i18n.t("chart.hist_axis", { label }), w / 2, h - 4);
-  ctx.font = "10px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "10px " + CHART_FONT_FAMILY;
   ctx.fillStyle = th.fgMuted;
   for (let v = HIST_LO; v <= HIST_HI; v += 10) {
     const x = pad.left + ((v - HIST_LO) / (HIST_HI - HIST_LO)) * pw;

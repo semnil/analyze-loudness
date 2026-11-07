@@ -266,12 +266,11 @@ def test_chart_text_is_drawn_in_the_font_of_the_page(kind, monkeypatch):
                 page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
                 page.evaluate("data => { captureImage(data); }", data)
                 fonts = page.evaluate("Array.from(window.__chartFonts)")
-                # The families the page names, in the page's order; the generic families after them can differ.
-                page_families = page.evaluate("getComputedStyle(document.body).fontFamily").split(", ")[:3]
-                # uPlot draws its own axes in its default font, which starts with system-ui.
-                ours = [font for font in fonts if not font.split("px ", 1)[1].startswith("system-ui")]
-                assert ours
-                assert all(font.split("px ", 1)[1].split(", ")[:3] == page_families for font in ours), ours
+                page_families = page.evaluate("getComputedStyle(document.body).fontFamily").split(", ")
+                assert fonts
+                assert all(font.split("px ", 1)[1].split(", ") == page_families for font in fonts), fonts
+                legend = page.evaluate("getComputedStyle(document.querySelector('.u-legend .u-label')).fontFamily")
+                assert legend.split(", ") == page_families
             finally:
                 browser.close()
     finally:

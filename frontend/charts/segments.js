@@ -54,7 +54,7 @@ function renderSegments(canvas, t, S, integrated, silenceThreshold, color) {
   const allVals = segments.filter(s => s.mean != null);
   if (allVals.length === 0) {
     ctx.fillStyle = th.fgMuted;
-    ctx.font = "13px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+    ctx.font = "13px " + CHART_FONT_FAMILY;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(window.i18n.t("chart.no_data_silence"), w / 2, h / 2);
@@ -69,7 +69,7 @@ function renderSegments(canvas, t, S, integrated, silenceThreshold, color) {
   ctx.fillStyle = th.fgMuted;
   ctx.strokeStyle = th.border || th.fgMuted;
   ctx.lineWidth = 0.5;
-  ctx.font = "10px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "10px " + CHART_FONT_FAMILY;
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
   for (var yv = yTickStart; yv <= yMax; yv += 5) {
@@ -113,7 +113,7 @@ function renderSegments(canvas, t, S, integrated, silenceThreshold, color) {
 
     // x label
     ctx.fillStyle = th.fgMuted;
-    ctx.font = "10px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+    ctx.font = "10px " + CHART_FONT_FAMILY;
     ctx.textAlign = "center";
     ctx.fillText(s.label, cx, pad.top + ph + 16);
   }
@@ -133,7 +133,7 @@ function renderSegments(canvas, t, S, integrated, silenceThreshold, color) {
 
   // axis label
   ctx.fillStyle = th.fg;
-  ctx.font = "12px -apple-system, 'Segoe UI', 'Meiryo', sans-serif";
+  ctx.font = "12px " + CHART_FONT_FAMILY;
   ctx.textAlign = "center";
   ctx.fillText(window.i18n.t("chart.seg_axis"), w / 2, h - 4);
 }
