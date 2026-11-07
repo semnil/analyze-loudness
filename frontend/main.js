@@ -100,11 +100,9 @@ if (window.matchMedia) {
   });
 }
 
-var _resizeTimer = null;
 window.addEventListener("resize", function () {
   if (!lastRenderedData) return;
-  clearTimeout(_resizeTimer);
-  _resizeTimer = setTimeout(rerender, 200);
+  _afterResize(rerender);
 });
 
 function clearResults() {
