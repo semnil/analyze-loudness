@@ -12,8 +12,8 @@ import numpy as np
 
 from analyze_loudness import SCHEMA_VERSION, __version__, _json_safe
 from analyze_loudness.analysis import compute_silence_pct, compute_stats, first_full_window
+from analyze_common.server import MAX_TRACKS
 
-MAX_TRACKS = 6
 MIN_TRACKS = 2
 
 # Mirror of the same constants in frontend/gate.js.

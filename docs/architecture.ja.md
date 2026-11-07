@@ -353,7 +353,7 @@ stderr テキストのみを処理し、メモリ消費を数 MB に抑えてい
 
 pywebview は OS のネイティブ WebView (Windows: WebView2 / macOS: WebKit) を使用し、
 バンドルサイズを小さく保てる。
-`_HTTPServer` (`ThreadingHTTPServer`) を 127.0.0.1 のランダムポート (port 0) で起動し、
+`_HTTPServer` (py-analyze-common の `GuiServer`。`ThreadingHTTPServer`) を 127.0.0.1 のランダムポート (port 0) で起動し、
 same-origin で frontend を配信する。
 
 ### 実行時に校正する時間の推定

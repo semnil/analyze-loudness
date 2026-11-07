@@ -12,7 +12,6 @@ import threading
 import time
 import traceback
 from collections import OrderedDict
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import webview
@@ -28,8 +27,10 @@ from analyze_loudness.download import (
     resolve_source, sanitize_filename,
 )
 from analyze_loudness.update import UPDATE_CONFIG
+from analyze_common.server import CACHE_MAX_ENTRIES as _CACHE_MAX_ENTRIES
 from analyze_common.server import ClientDisconnected as _ClientDisconnected
 from analyze_common.server import GuiHandler
+from analyze_common.server import GuiServer as _HTTPServer
 from analyze_common.settings import SETTINGS_NAME, SettingsStore, settings_dir
 from analyze_common.tempdirs import InstanceLock, sweep_orphan_tempdirs
 from analyze_common.ui_settings import UiSettings, show_window_color_until_paint
@@ -100,7 +101,6 @@ def _exit_now() -> None:
     os._exit(0)
 
 
-_CACHE_MAX_ENTRIES = 10
 _result_cache: "OrderedDict[tuple, str]" = OrderedDict()  # (url, duration) -> json path
 # In-memory map for externally loaded JSON.  Kept separate from _result_cache
 # so /load payloads never touch _cache_dir on disk.
@@ -595,13 +595,6 @@ class AnalyzeHandler(GuiHandler):
             _loaded_cache_data.move_to_end(key)
             while len(_loaded_cache_data) > _CACHE_MAX_ENTRIES:
                 _loaded_cache_data.popitem(last=False)
-
-
-class _HTTPServer(ThreadingHTTPServer):
-    """Loopback server whose listen backlog holds the burst of connections a
-    webview opens while loading the page and its scripts in parallel."""
-
-    request_queue_size = 64
 
 
 def main():

@@ -352,7 +352,7 @@ only the stderr text is processed, keeping memory consumption to a few MB.
 
 pywebview uses the OS's native WebView (Windows: WebView2 / macOS: WebKit),
 which keeps the bundle size small.
-`_HTTPServer` (a `ThreadingHTTPServer`) is started on a random port (port 0) on 127.0.0.1,
+`_HTTPServer` (py-analyze-common's `GuiServer`, a `ThreadingHTTPServer`) is started on a random port (port 0) on 127.0.0.1,
 and serves the frontend from the same origin.
 
 ### Runtime-calibrated time estimation
