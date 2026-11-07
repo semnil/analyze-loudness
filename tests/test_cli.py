@@ -5,6 +5,7 @@ import argparse
 import pytest
 
 from analyze_loudness.cli import parse_args, _positive_float
+from analyze_loudness.compare import MAX_TRACKS
 
 
 class TestPositiveFloat:
@@ -92,7 +93,7 @@ class TestCompareArgs:
 
     def test_too_many_sources_exits(self):
         with pytest.raises(SystemExit):
-            parse_args([f"https://x/{i}" for i in range(7)])
+            parse_args([f"https://x/{i}" for i in range(MAX_TRACKS + 1)])
 
     def test_duration_with_comparison_exits(self):
         with pytest.raises(SystemExit):
