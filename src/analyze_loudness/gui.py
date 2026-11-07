@@ -351,7 +351,8 @@ class AnalyzeHandler(GuiHandler):
             analyze_sec = total_sec
             if duration_min is not None:
                 ss, dur, _ = compute_middle(total_sec, duration_min)
-                analyze_sec = dur
+                if dur is not None:
+                    analyze_sec = dur
 
             global _speed_factor
             with _speed_lock:
