@@ -4,7 +4,9 @@ Starts a local HTTP server to serve the test HTML, then uses Playwright
 to open the page and read test results from window._testResult.
 """
 
+import json
 import threading
+from contextlib import contextmanager
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import unquote
@@ -942,3 +944,412 @@ def test_status_area_reserves_one_line():
     finally:
         server.shutdown()
         server.server_close()
+
+
+@contextmanager
+def _app_page(**page_args):
+    """The real index.html in headless Chromium, served by the app's handler."""
+    server = _app_server("analyze_loudness.gui")
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                page = browser.new_page(**{"locale": "en-US", **page_args})
+                page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
+                page.wait_for_load_state("networkidle")
+                yield page
+            finally:
+                browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def _ndjson(*events):
+    return "".join(json.dumps(event) + "\n" for event in events)
+
+
+_SINGLE_RESULT = {
+    "title": "Clip", "meta": {"schema_version": 3, "source_url": "https://example.com/clip"},
+    "summary": {"duration_sec": 600, "frames": 5999, "integrated": -18.1, "true_peak": 0.8, "lra": 9.3,
+                "short_term": {"median": -19.4, "mean": -20.5, "p10": -24.1, "p90": -15.4},
+                "momentary": {"median": -20.8, "mean": -21.3, "p10": -26.9, "p90": -14.4}, "silence_pct": 1.0},
+    "series": {"t": [0.1, 0.2, 0.3], "S": [-20, -21, -22], "M": [-21, -22, -23]},
+}
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("how", ["escape", "button"])
+def test_a_running_analysis_is_cancelled_by_escape_or_the_button(how):
+    with _app_page() as page:
+        page.route("**/analyze", lambda route: None)
+        page.fill("#url-input", "x.wav")
+        page.click("#submit-btn")
+        page.wait_for_function("_isBusy")
+        if how == "escape":
+            page.keyboard.press("Escape")
+        else:
+            page.click("#submit-btn")
+        page.wait_for_function("!_isBusy")
+        expect(page.locator("#status")).to_have_text("Cancelled.")
+        assert not page.evaluate("document.getElementById('status').classList.contains('error')")
+        assert page.evaluate("document.activeElement.id") == "url-input"
+
+
+_STREAM_JS = """() => {
+    window.__ticks = [];
+    window.setInterval = (fn, ms) => { window.__ticks.push({fn, ms}); return window.__ticks.length; };
+    window.clearInterval = (id) => { window.__ticks[id - 1].cleared = true; };
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({start(controller) { window.__push = (text) => controller.enqueue(encoder.encode(text)); window.__close = () => controller.close(); window.__fail = (error) => controller.error(error); }});
+    window.__read = readNdjsonStream(new Response(stream), null, "[1/2] ").then((data) => ({data}), (error) => ({error: error.message}));
+}"""
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("reduced, tick_ms, step", [(False, 1000, 1), (True, 5000, 5)])
+def test_progress_stream_counts_down_and_shows_warnings(reduced, tick_ms, step):
+    with _app_page(reduced_motion="reduce" if reduced else "no-preference") as page:
+        page.evaluate(_STREAM_JS)
+        status = page.locator("#status")
+        page.evaluate("(text) => __push(text)", _ndjson(
+            {"type": "progress", "message": "Running", "estimate_sec": 2 * step + 1, "duration_sec": 120}) + "{not json}\n")
+        expect(status).to_have_text(f"[1/2] Running (2.0 min, ~{2 * step + 1}s remaining)")
+        ticks = page.evaluate("__ticks.map(t => t.ms)")
+        assert ticks == [tick_ms]
+        page.evaluate("__ticks[0].fn()")
+        expect(status).to_have_text(f"[1/2] Running (2.0 min, ~{step + 1}s remaining)")
+        page.evaluate("__ticks[0].fn()")
+        expect(status).to_have_text(f"[1/2] Running (2.0 min, ~{1}s remaining)")
+        page.evaluate("__ticks[0].fn()")
+        expect(status).to_have_text("[1/2] Running (finishing up...)")
+        assert page.evaluate("__ticks[0].cleared") is True
+        page.evaluate("""(text) => __push(text)""", _ndjson({"type": "warning", "message": "partial audio"}))
+        expect(status).to_have_text("[1/2] partial audio")
+        assert page.locator("#status svg.inline-icon").count() == 1
+        page.evaluate("""(text) => __push(text)""", _ndjson({"type": "progress", "message": "Stats"}))
+        expect(status).to_have_text("[1/2] Stats")
+        page.evaluate("""(text) => { __push(text); __close(); }""", _ndjson({"type": "result", "data": {"title": "T"}}))
+        assert page.evaluate("__read") == {"data": {"title": "T"}}
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("ending, expected", [
+    ("__push(text); __close();", "boom"),
+    ("__close();", "No result received from server"),
+], ids=["error_event", "no_result"])
+def test_progress_stream_without_a_result_is_an_error(ending, expected):
+    with _app_page() as page:
+        page.evaluate(_STREAM_JS)
+        page.evaluate("(text) => {" + ending + "}", _ndjson({"type": "error", "error": "boom"}))
+        assert page.evaluate("__read") == {"error": expected}
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("end", ["abort", "stream_error"])
+def test_progress_stream_reports_a_cancel_as_an_abort(end):
+    with _app_page() as page:
+        page.evaluate("""([end]) => {
+            const stream = new ReadableStream({start(controller) {
+                window.__fail = (error) => controller.error(error);
+            }});
+            window.__abort = new AbortController();
+            window.__read = readNdjsonStream(new Response(stream), window.__abort.signal)
+                .then(() => "resolved", (error) => error.name);
+            if (end === "abort") window.__abort.abort();
+            else window.__fail(new DOMException("Aborted", "AbortError"));
+        }""", [end])
+        assert page.evaluate("__read") == "AbortError"
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_an_error_from_the_stream_after_an_abort_is_reported_as_an_abort():
+    with _app_page() as page:
+        page.evaluate("""() => {
+            window.__abort = new AbortController();
+            const reader = {read: () => { __abort.abort(); return Promise.reject(new TypeError("network")); },
+                            cancel: () => Promise.resolve()};
+            window.__read = readNdjsonStream({body: {getReader: () => reader}}, __abort.signal)
+                .then(() => "resolved", (error) => error.name);
+        }""")
+        assert page.evaluate("__read") == "AbortError"
+
+
+def _comparison(titles=("First", "Second")):
+    from analyze_loudness.compare import build_compare, truncated_stats
+    from tests.test_chart_rendering import track
+    tracks = [track(-20 - 6 * k, title) for k, title in enumerate(titles)]
+    doc = build_compare(tracks)
+    return tracks, {"data": doc, "stats": [truncated_stats(item) for item in doc["compare"]["tracks"]]}
+
+
+_QUEUE_TWO_JS = """() => {
+    _queueTrack({kind: "url", label: "https://example.com/First"});
+    _queueTrack({kind: "url", label: "https://example.com/Second"});
+}"""
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_comparison_analyses_each_track_then_shows_the_comparison():
+    tracks, compare = _comparison()
+    requested = []
+
+    def analyze(route):
+        url = json.loads(route.request.post_data)["url"]
+        requested.append(url)
+        item = tracks[0] if url.endswith("First") else tracks[1]
+        route.fulfill(body=_ndjson({"type": "progress", "message": "Working"},
+                                   {"type": "result", "data": item}),
+                      headers={"Content-Type": "application/x-ndjson"})
+
+    with _app_page() as page:
+        page.route("**/analyze", analyze)
+        page.route("**/compare", lambda route: route.fulfill(json=compare))
+        page.evaluate(_QUEUE_TWO_JS)
+        page.click("#submit-btn")
+        expect(page.locator("#results .result-title")).to_be_visible()
+        page.wait_for_function("!_isBusy")
+        assert requested == ["https://example.com/First", "https://example.com/Second"]
+        assert page.evaluate("lastRenderedData.compare.tracks.length") == 2
+        assert page.evaluate("document.activeElement.id") == "results"
+        expect(page.locator("#status")).to_have_text("")
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("failure, expected", [
+    ("track", "Track 2: HTTP 500"),
+    ("track_message", "Track 2: unreadable"),
+    ("compare", "tracks differ"),
+    ("compare_http", "HTTP 502"),
+], ids=["track_http", "track_message", "compare_message", "compare_http"])
+def test_comparison_failure_names_where_it_stopped(failure, expected):
+    tracks, compare = _comparison()
+
+    def analyze(route):
+        if route.request.post_data_json["url"].endswith("Second") and failure.startswith("track"):
+            if failure == "track":
+                route.fulfill(status=500, body="not json")
+            else:
+                route.fulfill(status=400, json={"error": "unreadable"})
+            return
+        route.fulfill(body=_ndjson({"type": "result", "data": tracks[0]}),
+                      headers={"Content-Type": "application/x-ndjson"})
+
+    def compare_route(route):
+        if failure == "compare":
+            route.fulfill(status=400, json={"error": "tracks differ"})
+        else:
+            route.fulfill(status=502, body="bad gateway")
+
+    with _app_page() as page:
+        page.route("**/analyze", analyze)
+        page.route("**/compare", compare_route)
+        page.evaluate(_QUEUE_TWO_JS)
+        page.click("#submit-btn")
+        page.wait_for_selector("#status.error")
+        expect(page.locator("#status")).to_contain_text(expected)
+        assert page.evaluate("_isBusy") is False
+        assert page.evaluate("lastRenderedData") is None
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_comparison_can_be_cancelled_while_a_track_is_analysed():
+    with _app_page() as page:
+        page.route("**/analyze", lambda route: None)
+        page.evaluate(_QUEUE_TWO_JS)
+        page.click("#submit-btn")
+        page.wait_for_function("_isBusy")
+        page.keyboard.press("Escape")
+        page.wait_for_function("!_isBusy")
+        expect(page.locator("#status")).to_have_text("Cancelled.")
+        assert not page.evaluate("document.getElementById('status').classList.contains('error')")
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_loading_a_file_with_a_full_queue_keeps_the_queue_and_names_the_limit():
+    with _app_page() as page:
+        page.route("**/load", lambda route: route.fulfill(json={"loaded": True, "data": _SINGLE_RESULT}))
+        page.evaluate("() => { for (let k = 0; k < MAX_TRACKS; k++) _queueTrack({kind: 'file', label: '/audio/' + k + '.wav'}); }")
+        page.click("#load-btn")
+        page.wait_for_selector("#status.error")
+        expect(page.locator("#status")).to_contain_text("Up to 6 tracks can be compared")
+        assert page.evaluate("compareQueue.length") == 6
+        assert page.evaluate("lastRenderedData") is None
+        assert page.evaluate("document.activeElement.id") == "load-btn"
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_load_reply_carrying_an_error_is_shown():
+    with _app_page() as page:
+        page.route("**/load", lambda route: route.fulfill(json={"error": "Invalid loudness JSON"}))
+        page.click("#load-btn")
+        page.wait_for_selector("#status.error")
+        expect(page.locator("#status")).to_contain_text("Invalid loudness JSON")
+        assert page.evaluate("document.activeElement.id") == "load-btn"
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_file_dialog_that_never_answers_ends_with_a_timeout_message():
+    with _app_page() as page:
+        page.route("**/load", lambda route: None)
+        page.evaluate("""() => {
+            const original = window.setTimeout;
+            window.setTimeout = (fn, ms, ...args) => {
+                if (ms === 120000) { window.__loadTimeout = fn; return 0; }
+                return original(fn, ms, ...args);
+            };
+        }""")
+        page.click("#load-btn")
+        page.wait_for_function("_isBusy && !!window.__loadTimeout")
+        page.evaluate("__loadTimeout()")
+        page.wait_for_selector("#status.error")
+        expect(page.locator("#status")).to_contain_text("The file dialog did not respond")
+        assert page.evaluate("_isBusy") is False
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("reply, expected", [
+    (lambda route: route.fulfill(status=500, json={"error": "dialog failed"}), "dialog failed"),
+    (lambda route: route.fulfill(status=502, body="bad gateway"), "HTTP 502"),
+    (lambda route: route.abort(), "Failed to fetch"),
+], ids=["error_body", "no_body", "no_reply"])
+def test_browse_failures_are_shown(reply, expected):
+    with _app_page() as page:
+        page.route("**/browse", reply)
+        page.click("#browse-btn")
+        page.wait_for_selector("#status.error")
+        expect(page.locator("#status")).to_contain_text(expected)
+        assert page.input_value("#url-input") == ""
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_dragging_a_file_over_the_window_marks_it_and_keeps_the_webview_from_navigating():
+    with _app_page() as page:
+        outcome = page.evaluate("""() => {
+            const fire = (type, init) => {
+                const data = new DataTransfer();
+                const event = new DragEvent(type, {dataTransfer: data, cancelable: true, ...init});
+                window.dispatchEvent(event);
+                return {prevented: event.defaultPrevented, marked: document.body.classList.contains("drag-over")};
+            };
+            return [fire("dragenter", {}), fire("dragover", {}), fire("dragleave", {relatedTarget: document.body}),
+                    fire("dragleave", {})];
+        }""")
+        assert outcome[0]["prevented"] and not outcome[0]["marked"]
+        assert outcome[1]["prevented"] and outcome[1]["marked"]
+        assert outcome[2]["marked"]
+        assert not outcome[3]["marked"]
+
+
+_DROP_JS = """([files]) => {
+    const data = new DataTransfer();
+    for (const [name, size] of files) {
+        const file = new File(['audio'], name, {type: 'audio/wav'});
+        if (size) Object.defineProperty(file, 'size', {value: size});
+        data.items.add(file);
+    }
+    window.dispatchEvent(new DragEvent('drop', {dataTransfer: data}));
+}"""
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_dropped_file_over_the_size_limit_is_refused_and_the_next_one_still_uploads():
+    uploads = []
+
+    def upload(route):
+        uploads.append(unquote(route.request.headers["x-filename"]))
+        route.fulfill(json={"uploaded": True, "path": "/uploaded/" + uploads[-1]})
+
+    with _app_page() as page:
+        page.route("**/upload", upload)
+        page.evaluate(_DROP_JS, [[["huge.wav", 501 * 1024 * 1024], ["small.wav", 0]]])
+        page.wait_for_function("!_isBusy")
+        assert uploads == ["small.wav"]
+        assert page.evaluate("compareQueue.map(item => item.label)") == ["/uploaded/small.wav"]
+        expect(page.locator("#status")).to_contain_text("small.wav")
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("reply, expected", [
+    (lambda route: route.fulfill(status=400, json={"error": "Unsupported file type: .txt"}), "Unsupported file type"),
+    (lambda route: route.abort(), "Failed to fetch"),
+], ids=["refused", "no_reply"])
+def test_failed_upload_of_a_dropped_file_is_shown(reply, expected):
+    with _app_page() as page:
+        page.route("**/upload", reply)
+        page.evaluate(_DROP_JS, [[["notes.wav", 0]]])
+        page.wait_for_function("!_isBusy")
+        expect(page.locator("#status")).to_contain_text(expected)
+        assert page.input_value("#url-input") == ""
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("source, linked", [
+    ("https://example.com/clip", True),
+    ("/Users/me/clip.wav", False),
+    ("javascript:alert(1)", False),
+], ids=["url", "local_path", "script_scheme"])
+def test_only_http_sources_become_links(source, linked):
+    with _app_page() as page:
+        page.evaluate("(data) => render(data)", {**_SINGLE_RESULT, "meta": {**_SINGLE_RESULT["meta"], "source_url": source}})
+        meta = page.locator("#results .meta-info")
+        expect(meta).to_contain_text(source)
+        assert meta.locator("a").count() == (1 if linked else 0)
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+@pytest.mark.parametrize("save, endpoint", [("saveResult", "/save"), ("saveImage", "/save-image")])
+@pytest.mark.parametrize("reply, expected", [
+    (lambda route: route.fulfill(status=500, body="oops"), "Save failed: HTTP 500"),
+    (lambda route: route.abort(), "Save failed: Failed to fetch"),
+], ids=["http_error", "no_reply"])
+def test_failed_save_is_shown(save, endpoint, reply, expected):
+    with _app_page() as page:
+        page.route("**" + endpoint, reply)
+        page.evaluate("(data) => render(data)", _SINGLE_RESULT)
+        page.evaluate("(name) => window[name](lastRenderedData)", save)
+        page.wait_for_selector("#status.error")
+        expect(page.locator("#status")).to_contain_text(expected)
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_saving_an_image_before_any_chart_is_drawn_says_so_without_a_request():
+    requests = []
+    with _app_page() as page:
+        page.on("request", lambda request: requests.append(request.url) if "/save-image" in request.url else None)
+        page.evaluate("(data) => saveImage(data)", _SINGLE_RESULT)
+        page.wait_for_selector("#status.error")
+        expect(page.locator("#status")).to_contain_text("Charts are not ready")
+        assert requests == []
+
+
+@pytest.mark.skipif(not _HAS_PLAYWRIGHT, reason="playwright not installed")
+def test_silent_results_show_placeholders_instead_of_values():
+    from tests.test_chart_rendering import track
+    first, second = track(-70, "Silent"), track(-70, "Muted")
+    first["summary"]["true_peak"] = None
+    from analyze_loudness.compare import build_compare, truncated_stats
+    doc = build_compare([first, second])
+    stats = [truncated_stats(item) for item in doc["compare"]["tracks"]]
+    with _app_page(viewport={"width": 1100, "height": 800}) as page:
+        page.evaluate("(data) => render(data)", first)
+        assert page.locator("#results .summary-table td span[title]").inner_text() == "\u2014"
+        page.evaluate("clearResults()")
+        page.evaluate("""() => {
+            window.__drawn = [];
+            const fillText = CanvasRenderingContext2D.prototype.fillText;
+            CanvasRenderingContext2D.prototype.fillText = function (text, ...rest) {
+                window.__drawn.push(text);
+                return fillText.call(this, text, ...rest);
+            };
+        }""")
+        page.evaluate("({data, stats}) => renderCompare(data, stats)", {"data": doc, "stats": stats})
+        message = page.evaluate("window.i18n.t('chart.no_data_silence')")
+        drawn = page.evaluate("__drawn")
+        assert message in drawn
+        # The comparison histograms hold no curve, so they draw no axis labels.
+        assert "Short-term Loudness (LUFS)" not in drawn
+        assert "Momentary Loudness (LUFS)" not in drawn
+        assert page.locator("#results td span[title]").count() == 1
+        sizes = page.evaluate("""() => chartCanvasRefs.filter(ref => ref.canvas && ref.canvas.width).length""")
+        assert sizes >= 1

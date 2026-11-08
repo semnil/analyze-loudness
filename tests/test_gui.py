@@ -1190,3 +1190,166 @@ class TestUiSettingsEndpoint:
         monkeypatch.setattr(gui_mod, "run_atexit_on_app_quit", watch)
         gui_mod.main()
         watch.assert_called_once_with()
+
+
+def _raw_post(server, path, headers, body=b""):
+    import http.client
+    t = threading.Thread(target=server.handle_request)
+    t.start()
+    conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+    conn.request("POST", path, body=body, headers=headers)
+    resp = conn.getresponse()
+    data = json.loads(resp.read().decode())
+    conn.close()
+    t.join(timeout=5)
+    return resp.status, data
+
+
+class TestHandlerFailures:
+    def test_unexpected_error_is_a_server_error(self, server, handler_class, monkeypatch):
+        monkeypatch.setattr(handler_class, "_handle_compare", MagicMock(side_effect=RuntimeError("boom")))
+        status, body = _serve_post(server, "/compare", {"tracks": []})
+        assert status == 500
+        assert body == {"error": "Internal server error"}
+
+    def test_failure_while_reporting_the_error_ends_the_connection(self, server, handler_class, monkeypatch):
+        import http.client
+        monkeypatch.setattr(handler_class, "_handle_compare", MagicMock(side_effect=RuntimeError("boom")))
+        monkeypatch.setattr(handler_class, "_json_error", MagicMock(side_effect=OSError("closed")))
+        t = threading.Thread(target=server.handle_request)
+        t.start()
+        with pytest.raises((http.client.RemoteDisconnected, ConnectionResetError)):
+            _post(server, "/compare", {"tracks": []})
+        t.join(timeout=5)
+        assert not t.is_alive()
+
+    def test_analyze_body_must_be_json(self, server):
+        status, body = _raw_post(server, "/analyze", {"Content-Type": "application/json", "Content-Length": "x"})
+        assert status == 400
+        assert body == {"error": "Invalid JSON body"}
+
+    def test_duration_over_the_limit_is_refused(self, server):
+        status, body = _serve_post(server, "/analyze", {"url": "https://x.com", "duration": 241})
+        assert status == 400
+        assert "240" in body["error"]
+
+    def test_compare_body_must_be_json(self, server):
+        status, body = _raw_post(server, "/compare", {"Content-Type": "application/json", "Content-Length": "x"})
+        assert status == 400
+        assert body == {"error": "Invalid JSON body"}
+
+    def test_save_body_must_be_json(self, server):
+        status, body = _raw_post(server, "/save", {"Content-Type": "application/json", "Content-Length": "x"})
+        assert status == 400
+        assert body == {"error": "Invalid JSON body"}
+
+
+class TestDialogFailures:
+    def test_save_dialog_error(self, server, mock_window):
+        import analyze_loudness.gui as gui_mod
+        mock_window.create_file_dialog.side_effect = RuntimeError("no dialog")
+        status, body = _serve_post(server, "/save", {"data": {"x": 1}})
+        assert status == 500
+        assert "no dialog" in body["error"]
+        assert gui_mod._dialog_lock.acquire(blocking=False)
+        gui_mod._dialog_lock.release()
+
+    def test_save_write_failure(self, server, mock_window, tmp_path):
+        mock_window.create_file_dialog.return_value = str(tmp_path / "missing" / "out.json")
+        status, body = _serve_post(server, "/save", {"data": {"x": 1}})
+        assert status == 500
+        assert "Failed to write file" in body["error"]
+
+    def test_load_dialog_error(self, server, mock_window):
+        import analyze_loudness.gui as gui_mod
+        mock_window.create_file_dialog.side_effect = RuntimeError("no dialog")
+        status, body = _serve_post(server, "/load", {})
+        assert status == 500
+        assert "no dialog" in body["error"]
+        assert gui_mod._dialog_lock.acquire(blocking=False)
+        gui_mod._dialog_lock.release()
+
+    def test_load_of_a_file_that_vanished(self, server, mock_window, tmp_path):
+        mock_window.create_file_dialog.return_value = str(tmp_path / "gone.json")
+        status, body = _serve_post(server, "/load", {})
+        assert status == 400
+        assert "Failed to read file" in body["error"]
+
+
+class TestUploadFailures:
+    def test_length_header_must_be_a_number(self, server):
+        status, body = _raw_post(server, "/upload", {"Content-Type": "application/octet-stream",
+                                                     "Content-Length": "x", "X-Filename": "a.wav"})
+        assert (status, body) == (400, {"error": "Invalid Content-Length"})
+
+    def test_empty_body_refused(self, server):
+        status, body = _upload(server, b"", "a.wav")
+        assert (status, body) == (400, {"error": "Empty file"})
+
+    def test_name_escaping_the_upload_dir_refused(self, server, monkeypatch, tmp_path):
+        import analyze_loudness.gui as gui_mod
+        inside = tmp_path / "uploads"
+        inside.mkdir()
+        monkeypatch.setattr(gui_mod, "_upload_dir", str(inside))
+        monkeypatch.setattr(gui_mod, "sanitize_filename", lambda name: "../escaped.wav")
+        status, body = _upload(server, b"x", "a.wav")
+        assert (status, body) == (400, {"error": "Invalid filename"})
+        assert not (tmp_path / "escaped.wav").exists()
+
+    def test_unwritable_destination_refused(self, server, monkeypatch, tmp_path):
+        import analyze_loudness.gui as gui_mod
+        monkeypatch.setattr(gui_mod, "_upload_dir", str(tmp_path / "missing"))
+        status, body = _upload(server, b"x", "a.wav")
+        assert (status, body) == (400, {"error": "Invalid filename"})
+
+    def test_cut_off_upload_leaves_no_file(self, server):
+        import socket
+        import analyze_loudness.gui as gui_mod
+        name = "cut_off_upload.wav"
+        t = threading.Thread(target=server.handle_request)
+        t.start()
+        with socket.create_connection(("127.0.0.1", server.server_address[1]), timeout=5) as sock:
+            sock.sendall(b"POST /upload HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                         b"Content-Type: application/octet-stream\r\nContent-Length: 10\r\n"
+                         b"X-Filename: " + name.encode() + b"\r\n\r\nabcd")
+            sock.shutdown(socket.SHUT_WR)
+            reply = b""
+            while chunk := sock.recv(4096):
+                reply += chunk
+        t.join(timeout=5)
+        assert b" 400 " in reply.split(b"\r\n", 1)[0]
+        assert b"Incomplete upload" in reply
+        assert not os.path.exists(os.path.join(gui_mod._upload_dir, name))
+
+    def test_discarding_a_missing_file_is_silent(self, handler_class, tmp_path):
+        handler_class._discard(str(tmp_path / "gone.wav"))
+
+
+class TestMainEntry:
+    def _patch_main(self, monkeypatch):
+        import analyze_loudness.gui as gui_mod
+        monkeypatch.setattr(gui_mod, "webview", MagicMock())
+        monkeypatch.setattr(gui_mod, "hold_instance_mutex", MagicMock())
+        monkeypatch.setattr(gui_mod, "run_atexit_on_app_quit", MagicMock())
+        monkeypatch.setattr(gui_mod, "_HTTPServer", MagicMock(return_value=MagicMock(server_address=("127.0.0.1", 1))))
+        monkeypatch.setattr(gui_mod, "_window", None)
+        return gui_mod
+
+    def test_frozen_app_puts_its_bundled_tools_first_on_path(self, monkeypatch, tmp_path):
+        gui_mod = self._patch_main(monkeypatch)
+        monkeypatch.setattr(gui_mod.sys, "frozen", True, raising=False)
+        monkeypatch.setattr(gui_mod.sys, "_MEIPASS", str(tmp_path), raising=False)
+        monkeypatch.setenv("PATH", "/usr/bin")
+        gui_mod.main()
+        assert os.environ["PATH"] == str(tmp_path / "bin") + os.pathsep + "/usr/bin"
+
+    def test_running_the_file_as_a_script_starts_the_app(self, monkeypatch):
+        import runpy
+        import sys
+        import analyze_loudness.gui as gui_mod
+        webview = MagicMock()
+        monkeypatch.setitem(sys.modules, "webview", webview)
+        monkeypatch.setattr("analyze_common.window.run_atexit_on_app_quit", MagicMock())
+        monkeypatch.setattr("analyze_common.update.hold_instance_mutex", MagicMock())
+        runpy.run_path(gui_mod.__file__, run_name="__main__")
+        webview.start.assert_called_once()

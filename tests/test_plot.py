@@ -64,3 +64,44 @@ def test_p10_p90_drawn_at_their_own_positions():
     spans = ax.collections[0].get_segments()
     assert [tuple(s[:, 1]) for s in spans[:2]] == [(-57.1, -57.1), (-30.0, -20.0)]
     plt.close(fig)
+
+
+def test_silent_recording_draws_with_missing_values(tmp_path):
+    # Every frame is below the silence threshold: the statistics are None ("N/A"),
+    # the histograms hold nothing and every 5-minute segment is empty.
+    t, S = _series(6000, -70.0)
+    out = tmp_path / "silent.png"
+    plot_analysis(t, S, S, {}, "silent", str(out))
+    assert out.stat().st_size > 0
+
+
+def test_segment_stats_of_a_silent_segment_are_nan():
+    from analyze_loudness.plot import _segment_stats
+    t, S = _series(6000, -20.0)
+    S[2999:] = -70.0
+    starts, means, p10s, p90s = _segment_stats(t, S)
+    assert len(starts) == 2
+    assert means[0] == pytest.approx(-20.0) and p10s[0] == pytest.approx(-20.0)
+    assert np.isnan(means[1]) and np.isnan(p10s[1]) and np.isnan(p90s[1])
+
+
+def test_comparison_figure_skips_a_silent_track_in_the_histograms(tmp_path):
+    t, S = _series(6000, -21.0)
+    t2, S2 = _series(6000, -70.0)
+    doc = build_compare([_doc(t, S, "loud"), _doc(t2, S2, "silent")])
+    out = tmp_path / "compare.png"
+    plot_compare(doc, [truncated_stats(tr) for tr in doc["compare"]["tracks"]], str(out))
+    assert out.stat().st_size > 0
+
+
+def test_font_family_stays_default_without_a_cjk_font():
+    import importlib.util
+    from unittest.mock import patch
+    from matplotlib import font_manager
+    from analyze_loudness import plot
+    before = matplotlib.rcParams["font.family"]
+    spec = importlib.util.spec_from_file_location("plot_without_cjk_font", plot.__file__)
+    module = importlib.util.module_from_spec(spec)
+    with patch.object(font_manager.fontManager, "ttflist", []):
+        spec.loader.exec_module(module)
+    assert matplotlib.rcParams["font.family"] == before

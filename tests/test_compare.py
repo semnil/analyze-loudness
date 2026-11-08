@@ -124,6 +124,14 @@ class TestValidateCompare:
     def _doc(self, *tracks):
         return {"meta": {"schema_version": 3}, "compare": {"truncate_sec": 1.0, "tracks": list(tracks)}}
 
+    @pytest.mark.parametrize("doc", [[], "text", None])
+    def test_document_must_be_an_object(self, doc):
+        assert "expected an object" in validate_compare(doc)
+
+    @pytest.mark.parametrize("compare", [None, [], "x"])
+    def test_compare_must_be_an_object(self, compare):
+        assert "compare must be an object" in validate_compare({"meta": {"schema_version": 3}, "compare": compare})
+
     def test_tracks_must_be_an_array(self):
         assert "array" in validate_compare({"compare": {"tracks": {}}})
 

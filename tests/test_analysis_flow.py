@@ -101,6 +101,8 @@ def test_analysis_emits_result_then_reuses_disk_cache(analysis_app, monkeypatch)
     (subprocess.CalledProcessError(1, ["ffmpeg", "secret-url"], stderr=b"x" * 250),
      "External tool failed during analysis: " + "x" * 200),
     (subprocess.CalledProcessError(1, ["ffmpeg", "secret-url"]), "External tool failed during analysis"),
+    (subprocess.CalledProcessError(1, ["ffmpeg", "secret-url"], stderr="  text tail \n"),
+     "External tool failed during analysis: text tail"),
 ])
 def test_failed_analysis_streams_error_and_releases_files(analysis_app, monkeypatch, error, expected):
     resolve, run = fake_analysis(monkeypatch)
@@ -144,3 +146,74 @@ def test_loaded_cache_access_refreshes_eviction_order(analysis_app, monkeypatch)
     gui.AnalyzeHandler._cache_loaded("https://c", {"source": "https://c"})
     assert gui._cache_get("https://b", None) is None
     assert gui._cache_get("https://a", None) == {"source": "https://a"}
+
+
+def test_local_file_is_analysed_by_its_resolved_path(analysis_app, monkeypatch, tmp_path):
+    resolve, _ = fake_analysis(monkeypatch)
+    source = tmp_path / "clip.wav"
+    source.write_bytes(b"RIFF")
+    events = analyze(analysis_app, str(source))
+    assert events[-1]["type"] == "result"
+    assert resolve.call_args.args[0] == str(source)
+
+
+def test_client_leaving_during_analysis_ends_the_stream_quietly(analysis_app, monkeypatch):
+    monkeypatch.setattr(gui.AnalyzeHandler, "_run_analysis", Mock(side_effect=gui._ClientDisconnected()))
+    assert analyze(analysis_app, "https://example.com/audio") == []
+
+
+@pytest.mark.parametrize("error", [
+    FileNotFoundError("missing decoder"),
+    subprocess.CalledProcessError(1, ["ffmpeg"], stderr=b"boom"),
+    RuntimeError("decoder stopped"),
+])
+def test_client_leaving_while_the_error_is_sent_ends_quietly(analysis_app, monkeypatch, error):
+    monkeypatch.setattr(gui.AnalyzeHandler, "_run_analysis", Mock(side_effect=error))
+    send = Mock(side_effect=gui._ClientDisconnected())
+    monkeypatch.setattr(gui.AnalyzeHandler, "_send_event", send)
+    assert analyze(analysis_app, "https://example.com/audio") == []
+    send.assert_called_once()
+    assert send.call_args.args == ("error",)
+
+
+def test_zero_elapsed_time_leaves_the_speed_factor_alone(analysis_app, monkeypatch):
+    fake_analysis(monkeypatch)
+    monkeypatch.setattr(gui.time, "monotonic", Mock(return_value=100.0))
+    events = analyze(analysis_app, "https://example.com/audio")
+    assert events[-1]["type"] == "result"
+    assert gui._speed_factor == 50.0
+
+
+def test_unreadable_local_source_keys_the_cache_without_a_modification_time(tmp_path):
+    missing = str(tmp_path / "gone.wav")
+    assert gui._cache_key(missing, 3.0) == (missing, 3.0, None)
+
+
+def test_entry_dropped_while_its_file_is_read_is_a_miss(analysis_app, monkeypatch, tmp_path):
+    source = "https://example.com/audio"
+    path = Path(gui._cache_put(source, None, {"version": 1}))
+    # The entry leaves the map after its file was found, before the map is checked again.
+    def evicted(url, duration):
+        gui._result_cache.clear()
+        return str(path)
+    monkeypatch.setattr(gui, "_cache_file", evicted)
+    assert gui._cache_get(source, None) is None
+
+
+def test_eviction_tolerates_a_cache_file_that_is_already_gone(analysis_app):
+    source = "https://example.com/audio"
+    first = Path(gui._cache_put(source, None, {"version": 1}))
+    first.unlink()
+    second = Path(gui._cache_put(source, None, {"version": 2}))
+    assert json.loads(second.read_text(encoding="utf-8")) == {"version": 2}
+
+
+def test_leaving_without_a_window_does_nothing(monkeypatch):
+    monkeypatch.setattr(gui, "_window", None)
+    gui.AnalyzeHandler.exit_for_update(object(), "close")
+
+
+def test_frozen_base_dir_is_the_bundle(monkeypatch, tmp_path):
+    monkeypatch.setattr(gui.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(gui.sys, "_MEIPASS", str(tmp_path), raising=False)
+    assert gui._get_base_dir() == tmp_path
