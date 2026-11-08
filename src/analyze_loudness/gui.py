@@ -517,6 +517,10 @@ class AnalyzeHandler(GuiHandler):
 
 
     def _handle_load(self):
+        body = self._read_json_body()
+        if not isinstance(body, dict):
+            self._json_error(400, "Invalid JSON body")
+            return
         if not _dialog_lock.acquire(blocking=False):
             self._json_error(409, "A dialog is already open")
             return
@@ -572,9 +576,11 @@ class AnalyzeHandler(GuiHandler):
 
         # Cache loaded data for reuse.  Only URL sources: a local file's cache
         # key carries its modification time, which a saved result does not.
+        # A result loaded to join the queue ({"queue": true}) is not cached: the
+        # queue row carries its data, and a result the page refuses stays out.
         meta = data.get("meta")
         src = meta.get("source_url") if isinstance(meta, dict) else None
-        if isinstance(src, str) and is_url(src):
+        if isinstance(src, str) and is_url(src) and body.get("queue") is not True:
             self._cache_loaded(src, data)
 
         self._json_response(200, {"loaded": True, "data": data})

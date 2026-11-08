@@ -184,7 +184,7 @@ CI (`.github/workflows/ci.yaml`) runs `pytest -q --cov --cov-report=xml --js-cov
 | `/save` | POST | Saves the analysis result JSON with a native file dialog |
 | `/save-image` | POST | Saves the chart composite PNG (base64) with a native dialog |
 | `/compare` | POST | Returns the comparison JSON of 2-6 single results truncated to the shortest track, and the statistics of the truncated range (`stats`) |
-| `/load` | POST | Picks a JSON with a native dialog and visualizes the result again. Adds `stats` to a comparison JSON and does not put it in the single-result cache |
+| `/load` | POST | Picks a JSON with a native dialog and visualizes the result again. Adds `stats` to a comparison JSON and does not put it in the single-result cache. A single result loaded with `{"queue": true}`, which the page sends while the queue holds tracks, is not put in the cache either: it joins the queue with its data, or the page refuses it at the limit |
 | `/browse` | POST | Picks a local audio file with a native dialog and returns its path |
 | `/upload` | POST | Places a dropped file (the body as is, the name in `X-Filename`) in a temporary directory and returns its path. Limit 500 MB; extensions per `AUDIO_EXTENSIONS` in `src/analyze_loudness/download.py` |
 | `/common/settings.js` | GET | Returns py-analyze-common's `settings.js` preceded by the theme and language saved in the settings file (`window.analyzeSettingsStored`). Reads the settings file on every load (`Cache-Control: no-store`) |
@@ -194,7 +194,7 @@ CI (`.github/workflows/ci.yaml`) runs `pytest -q --cov --cov-report=xml --js-cov
 | `/update/check` | POST | Checks `latest.json` of the latest Release; `{"available": true, "version"}` when there is a newer version, otherwise `{"available": false}`. Failure is 502 |
 | `/update/install` | POST | Fetches, verifies the signature of and applies `{"version"}` (only the version the preceding check reported is accepted), returns `{"restarting": true}` and ends the app. Failure is 500. When macOS cannot restart after the swap, returns `{"installed": true, "restart_error"}` and keeps running |
 
-POST is accepted only when the Content-Type is `application/json` (`application/octet-stream` for `/upload`); anything else is 415. `/analyze`, `/compare`, `/save` and `/save-image` answer a body that is not JSON with 400 (`Invalid JSON body`). The Host and Content-Type checks, `/browse`, `/save-image`, `/settings`, `/update/*` and the `/common/*` files come from py-analyze-common's `GuiHandler` (`analyze_common/server.py`), which `AnalyzeHandler` extends with this app's state (`updater()`, `ui_settings()`, `window()`, `dialog_lock()`, `exit_for_update()`).
+POST is accepted only when the Content-Type is `application/json` (`application/octet-stream` for `/upload`); anything else is 415. `/analyze`, `/compare`, `/save`, `/save-image` and `/load` answer a body that is not JSON with 400 (`Invalid JSON body`). The Host and Content-Type checks, `/browse`, `/save-image`, `/settings`, `/update/*` and the `/common/*` files come from py-analyze-common's `GuiHandler` (`analyze_common/server.py`), which `AnalyzeHandler` extends with this app's state (`updater()`, `ui_settings()`, `window()`, `dialog_lock()`, `exit_for_update()`).
 
 ## Response format (GUI NDJSON)
 

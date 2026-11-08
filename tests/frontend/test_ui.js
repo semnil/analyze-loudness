@@ -413,7 +413,9 @@ function fakeStats() {
   // ================================================
 
   resetState();
-  mockFetch(function() {
+  var emptyQueueLoadBody = null;
+  mockFetch(function(url, opts) {
+    emptyQueueLoadBody = JSON.parse(opts.body);
     return makeJsonResponse({
       loaded: true,
       data: fakeResult("https://www.youtube.com/watch?v=loaded"),
@@ -423,6 +425,8 @@ function fakeStats() {
   await new Promise(function(r) { setTimeout(r, 300); });
   assertEqual(urlInput.value, "https://www.youtube.com/watch?v=loaded", "urlInput populated from loaded meta");
   assert(resultsEl.classList.contains("visible"), "Loaded data rendered");
+  assertEqual(JSON.stringify(emptyQueueLoadBody), JSON.stringify({ queue: false }),
+              "Load JSON with an empty queue asks the server to cache the result");
 
   // ================================================
   suite("Load JSON: server error surfaces error message");
@@ -628,6 +632,49 @@ function fakeStats() {
               "Remove track 1", "Remove button names its track number");
 
   // ================================================
+  suite("The URL field counts toward MAX_TRACKS");
+  // ================================================
+
+  resetState();
+  for (var f = 0; f < MAX_TRACKS - 1; f++) {
+    urlInput.value = "https://www.youtube.com/watch?v=held" + f;
+    addBtn.click();
+  }
+  urlInput.value = "https://www.youtube.com/watch?v=pending";
+  mockFetch(function() { return makeJsonResponse({ loaded: true, data: fakeResult() }); });
+  loadBtn.click();
+  await new Promise(function(r) { setTimeout(r, 100); });
+  assertEqual(compareQueue.length, MAX_TRACKS - 1, "A loaded result does not join when the field holds the last place");
+  assert(statusEl.textContent.indexOf("Up to " + MAX_TRACKS + " tracks") !== -1, "Load JSON shows the limit error");
+  assertEqual(urlInput.value, "https://www.youtube.com/watch?v=pending", "The field keeps its source");
+
+  resetState();
+  var fieldUploads = [];
+  mockFetch(function(url, opts) {
+    fieldUploads.push(decodeURIComponent(opts.headers["X-Filename"]));
+    return makeJsonResponse({ uploaded: true, path: "/tmp/up/first.wav" });
+  });
+  dropFiles(["first.wav"]);
+  await new Promise(function(r) { setTimeout(r, 100); });
+  var many = [];
+  for (var m = 0; m < MAX_TRACKS; m++) {
+    many.push("many" + m + ".wav");
+    (function(name) {
+      mockFetch(function(url, opts) {
+        fieldUploads.push(decodeURIComponent(opts.headers["X-Filename"]));
+        return makeJsonResponse({ uploaded: true, path: "/tmp/up/" + name });
+      });
+    })(many[m]);
+  }
+  dropFiles(many);
+  await new Promise(function(r) { setTimeout(r, 300); });
+  assertEqual(urlInput.value, "/tmp/up/first.wav", "The first drop stays in the field");
+  assertEqual(compareQueue.length, MAX_TRACKS - 1, "A drop stops when the queue and the field hold MAX_TRACKS");
+  assertEqual(_effectiveTrackCount(), MAX_TRACKS, "The queue and the field hold MAX_TRACKS");
+  assert(statusEl.textContent.indexOf("Up to " + MAX_TRACKS + " tracks") !== -1, "The drop shows the limit error");
+  assertEqual(fieldUploads.length, MAX_TRACKS + 1, "The file past the limit is uploaded, then the drop stops");
+
+  // ================================================
   suite("One queued track is a single analysis");
   // ================================================
 
@@ -729,9 +776,15 @@ function fakeStats() {
   resetState();
   urlInput.value = "https://www.youtube.com/watch?v=a";
   addBtn.click();
-  mockFetch(function() { return makeJsonResponse({ loaded: true, data: fakeResult() }); });
+  var queuedLoadBody = null;
+  mockFetch(function(url, opts) {
+    queuedLoadBody = JSON.parse(opts.body);
+    return makeJsonResponse({ loaded: true, data: fakeResult() });
+  });
   loadBtn.click();
   await new Promise(function(r) { setTimeout(r, 100); });
+  assertEqual(JSON.stringify(queuedLoadBody), JSON.stringify({ queue: true }),
+              "Load JSON next to queued tracks asks the server not to cache the result");
   assertEqual(compareQueue.length, 2, "A single result joins the queue");
   assertEqual(compareQueue[1].kind, "json", "Loaded result is queued as JSON");
   assert(!resultsEl.classList.contains("visible"), "Loaded result is not rendered on its own");
