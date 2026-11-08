@@ -29,5 +29,7 @@ path = "src/analyze_loudness/__init__.py"
 # Measures this package only; vendor/py-analyze-common is measured by its own repository's CI.
 [tool.coverage.run]
 source_pkgs = ["analyze_loudness"]
+# the two-line entry point that only calls cli.main(), which the CLI tests cover
+omit = ["*/analyze_loudness/__main__.py"]
 branch = true
 relative_files = true

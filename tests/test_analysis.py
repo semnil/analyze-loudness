@@ -177,6 +177,22 @@ class TestRunEbur128Parsing:
             run_ebur128("/fake/audio.opus")
 
     @patch("analyze_loudness.analysis.run_ffmpeg")
+    def test_summary_without_fields_and_nonzero_exit(self, mock_run, capsys):
+        frames = MOCK_EBUR128_STDERR.split("\n\n")[0]
+        mock_run.return_value = MagicMock(returncode=3, stderr=frames + "\n\nSummary:\n")
+        t, _, _, summary = run_ebur128("/fake/audio.opus")
+        assert len(t) == 3
+        assert summary == {"warnings": ["ffmpeg exited with code 3"]}
+        assert "ffmpeg exited with code 3" in capsys.readouterr().err
+
+    @patch("analyze_loudness.analysis.run_ffmpeg")
+    def test_true_peak_takes_the_highest_channel_and_skips_silent_ones(self, mock_run):
+        stderr = MOCK_EBUR128_STDERR.replace("Peak:        0.3 dBFS", "Peak:       -inf -2.5 -1.0 dBFS")
+        mock_run.return_value = MagicMock(returncode=0, stderr=stderr)
+        _, _, _, summary = run_ebur128("/fake/audio.opus")
+        assert summary["true_peak"] == pytest.approx(-1.0)
+
+    @patch("analyze_loudness.analysis.run_ffmpeg")
     def test_true_peak_negative_inf(self, mock_run):
         stderr = MOCK_EBUR128_STDERR.replace("0.3 dBFS", "-inf dBFS")
         mock_run.return_value = MagicMock(returncode=0, stderr=stderr)

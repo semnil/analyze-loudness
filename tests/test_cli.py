@@ -147,6 +147,16 @@ class TestCompareRun:
             main([a, bad, "--output-dir", str(tmp_path / "out")])
 
 
+    def test_source_without_frames_rejected_before_any_output(self, tmp_path):
+        from analyze_loudness.cli import main
+        a = self._write(tmp_path, "a.json", _single(50, "a"))
+        empty = self._write(tmp_path, "empty.json", _single(0, "empty"))
+        out = tmp_path / "out"
+        with pytest.raises(SystemExit, match="Track 2: series has no frames"):
+            main([a, empty, "--output-dir", str(out)])
+        assert not list(out.glob("*.json"))
+
+
 class TestLocalSources:
     def test_single_local_path_parses(self):
         assert parse_args(["./clip.wav"]).sources == ["./clip.wav"]
@@ -228,3 +238,18 @@ class TestInstanceLock:
         assert len(seen) == len(sources)
         assert all(len(locks) == 1 for locks in seen)
         assert glob.glob(pattern) == []
+
+
+class TestAnalyzeWarnings:
+    def test_ffmpeg_warnings_are_printed_and_kept_out_of_the_result(self, tmp_path, monkeypatch, capsys):
+        from unittest.mock import Mock
+        import numpy as np
+        from analyze_loudness import cli
+
+        monkeypatch.setattr(cli, "_resolve", lambda url, workdir: (url, "tone"))
+        t, level = np.arange(1, 60) * 0.1, np.full(59, -20.0)
+        summary = {"integrated": -20.0, "lra": 1.0, "true_peak": -1.0, "warnings": ["partial audio"]}
+        monkeypatch.setattr(cli, "run_ebur128", Mock(return_value=(t, level, level, summary)))
+        result = cli._analyze_track("tone.wav")
+        assert "       [warn] partial audio" in capsys.readouterr().out
+        assert "warnings" not in result["summary"]

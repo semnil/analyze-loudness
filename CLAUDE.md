@@ -79,6 +79,7 @@ graph LR
     t --> t_dl["test_download.py"]
     t --> t_gui["test_gui.py"]
     t --> t_plot["test_plot.py"]
+    t --> t_pkg["test_package.py<br>the vendor/py-analyze-common entry that the package puts on sys.path once"]
     t --> t_upd["test_update.py<br>UPDATE_CONFIG and the installer.iss / spec / release.yaml that match it"]
     t --> t_ffb["test_ffmpeg_binary.py<br>reads the ffmpeg / ffprobe on PATH with the app's parsers<br>(EXPECT_FFMPEG_DIR points at the bundled binaries)"]
     t --> t_rwf["test_release_workflow.py<br>release.yaml runs test_ffmpeg_binary.py on the ffmpeg / ffprobe inside the distributables;<br>only create-release can write and it runs no Python; the job holding UPDATE_SIGNING_KEY has a read-only token<br>and installs only the hash-pinned yt-dlp; the Developer ID identity is imported right before codesign<br>and deleted when codesign ends; the release jobs install packages only from requirements/*.txt<br>and build tools only after a SHA256 check; requirements/release.txt satisfies pyproject.toml<br>and every requirements/*.txt resolves, with its own pins as constraints, to exactly the packages it pins<br>under the same environment markers (runs py-analyze-common's analyze_common.testing.release_workflow)"]
@@ -167,7 +168,7 @@ The flags are in the "Building a consumer" section of `vendor/py-analyze-common/
 
 ```bash
 pytest -q                                          # all tests
-pytest -q --cov --cov-report=term-missing          # with line and branch coverage of src/analyze_loudness ([tool.coverage.run] in pyproject.toml)
+pytest -q --cov --cov-report=term-missing          # with line and branch coverage of src/analyze_loudness, without __main__.py ([tool.coverage.run] in pyproject.toml)
 pytest -q --js-coverage=coverage-js.lcov           # with the line coverage of frontend/*.js that the Playwright tests run, as LCOV (tests/js_coverage.py)
 python -m playwright install --with-deps chromium  # first time only (used by tests/test_frontend.py)
 python build.py --ffmpeg-only && EXPECT_FFMPEG_DIR=build_assets/bin pytest -q tests/test_ffmpeg_binary.py  # with the bundled ffmpeg / ffprobe
