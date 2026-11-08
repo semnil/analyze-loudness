@@ -379,7 +379,9 @@ loadBtn.addEventListener("click", async () => {
     const resp = await fetch(window.location.origin + "/load", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: "{}",
+      // A single result loaded next to queued tracks joins the queue with its
+      // data, so the server does not cache it for its URL.
+      body: JSON.stringify({ queue: compareQueue.length > 0 }),
       signal: loadAbort.signal,
     });
     if (!resp.ok) {

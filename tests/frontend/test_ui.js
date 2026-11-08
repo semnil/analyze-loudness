@@ -413,7 +413,9 @@ function fakeStats() {
   // ================================================
 
   resetState();
-  mockFetch(function() {
+  var emptyQueueLoadBody = null;
+  mockFetch(function(url, opts) {
+    emptyQueueLoadBody = JSON.parse(opts.body);
     return makeJsonResponse({
       loaded: true,
       data: fakeResult("https://www.youtube.com/watch?v=loaded"),
@@ -423,6 +425,8 @@ function fakeStats() {
   await new Promise(function(r) { setTimeout(r, 300); });
   assertEqual(urlInput.value, "https://www.youtube.com/watch?v=loaded", "urlInput populated from loaded meta");
   assert(resultsEl.classList.contains("visible"), "Loaded data rendered");
+  assertEqual(JSON.stringify(emptyQueueLoadBody), JSON.stringify({ queue: false }),
+              "Load JSON with an empty queue asks the server to cache the result");
 
   // ================================================
   suite("Load JSON: server error surfaces error message");
@@ -772,9 +776,15 @@ function fakeStats() {
   resetState();
   urlInput.value = "https://www.youtube.com/watch?v=a";
   addBtn.click();
-  mockFetch(function() { return makeJsonResponse({ loaded: true, data: fakeResult() }); });
+  var queuedLoadBody = null;
+  mockFetch(function(url, opts) {
+    queuedLoadBody = JSON.parse(opts.body);
+    return makeJsonResponse({ loaded: true, data: fakeResult() });
+  });
   loadBtn.click();
   await new Promise(function(r) { setTimeout(r, 100); });
+  assertEqual(JSON.stringify(queuedLoadBody), JSON.stringify({ queue: true }),
+              "Load JSON next to queued tracks asks the server not to cache the result");
   assertEqual(compareQueue.length, 2, "A single result joins the queue");
   assertEqual(compareQueue[1].kind, "json", "Loaded result is queued as JSON");
   assert(!resultsEl.classList.contains("visible"), "Loaded result is not rendered on its own");

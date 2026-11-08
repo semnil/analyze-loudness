@@ -4,6 +4,7 @@ import base64
 import json
 import os
 import threading
+from collections import OrderedDict
 from http.server import HTTPServer
 from unittest.mock import patch, MagicMock
 
@@ -698,6 +699,28 @@ class TestLoadComparison:
         status, body = _serve_post(server, "/load", {})
         assert status == 400
         assert "tracks" in body["error"]
+
+
+class TestLoadForTheQueue:
+    @pytest.mark.parametrize("request_body, cached", [({}, True), ({"queue": False}, True), ({"queue": True}, False)])
+    def test_a_result_loaded_for_the_queue_is_not_cached(self, server, mock_window, tmp_path, monkeypatch,
+                                                         request_body, cached):
+        import analyze_loudness.gui as gui_mod
+        monkeypatch.setattr(gui_mod, "_loaded_cache_data", OrderedDict())
+        doc = _single(10, "queued")
+        f = tmp_path / "r.json"
+        f.write_text(json.dumps(doc))
+        mock_window.create_file_dialog.return_value = str(f)
+        status, body = _serve_post(server, "/load", request_body)
+        assert status == 200
+        assert body["loaded"] is True
+        assert (gui_mod._cache_get(doc["meta"]["source_url"], None) is not None) is cached
+
+    def test_a_body_that_is_not_an_object_is_refused(self, server, mock_window):
+        status, body = _serve_post(server, "/load", ["queue"])
+        assert status == 400
+        assert body["error"] == "Invalid JSON body"
+        mock_window.create_file_dialog.assert_not_called()
 
 
 class TestLocalSourceValidation:
