@@ -184,6 +184,15 @@ def test_zero_elapsed_time_leaves_the_speed_factor_alone(analysis_app, monkeypat
     assert gui._speed_factor == 50.0
 
 
+@pytest.mark.parametrize("elapsed", [0.01, 1000.0])
+def test_a_speed_outside_the_limits_leaves_the_speed_factor_alone(analysis_app, monkeypatch, elapsed):
+    fake_analysis(monkeypatch)
+    monkeypatch.setattr(gui.time, "monotonic", Mock(side_effect=[100.0, 100.0 + elapsed]))
+    events = analyze(analysis_app, "https://example.com/audio")
+    assert events[-1]["type"] == "result"
+    assert gui._speed_factor == 50.0
+
+
 def test_unreadable_local_source_keys_the_cache_without_a_modification_time(tmp_path):
     missing = str(tmp_path / "gone.wav")
     assert gui._cache_key(missing, 3.0) == (missing, 3.0, None)
