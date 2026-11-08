@@ -443,9 +443,11 @@ loadBtn.addEventListener("click", async () => {
 
 // ------ Comparison queue ------
 
-// Adds a track to the queue; shows the error and returns false when full.
-function _queueTrack(item) {
-  if (compareQueue.length >= MAX_TRACKS) {
+// Adds a track to the queue; shows the error and returns false when the queue and
+// a field value it does not hold already have MAX_TRACKS tracks. fromField marks
+// the field's own source moving into the queue, which is not counted twice.
+function _queueTrack(item, fromField) {
+  if (_effectiveTrackCount() - (fromField ? 1 : 0) >= MAX_TRACKS) {
     showError(window.i18n.t("err.max_tracks", { max: MAX_TRACKS }));
     return false;
   }
@@ -498,7 +500,7 @@ function _queueUrlInput() {
   // the server's URL cache keeps only the latest result loaded for a URL.
   const shown = lastRenderedData && !lastRenderedData.compare && lastRenderedData.meta &&
     lastRenderedData.meta.source_url === source ? lastRenderedData : undefined;
-  if (!_queueTrack({ kind, label: source, data: shown })) return false;
+  if (!_queueTrack({ kind, label: source, data: shown }, true)) return false;
   urlInput.value = "";
   return true;
 }

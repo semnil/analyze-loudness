@@ -114,6 +114,7 @@ graph TD
 
 - **Input**: pressing the submit button moves the input field's source into the queue (a source the queue already holds stays in the field). One row is a single analysis (a JSON row is shown without one), and the row keeps its result. Two or more rows are a comparison, and the button reads Compare while the queue and the field hold two or more sources.
   The queue also takes URLs and local file paths with `+ Add Track`, dropped files (one file dropped on an empty queue goes into the input field instead), and saved single JSON with Load JSON while the queue is not empty.
+  The queue and a source in the input field that the queue does not hold count together toward `MAX_TRACKS`: a track past it is refused with the limit error, and a drop stops at that file.
   In a comparison, rows without a result are analyzed in order with `/analyze`, and all tracks are sent to `/compare`.
   `+ Add Track`, removing a row, Load JSON and a dropped file that joins the queue drop the results on screen when tracks stay in the queue, Clear All drops them too, and moving a row reorders a comparison on screen.
   When a single result is displayed and the input field equals its `source_url`, `+ Add Track` gives the row the displayed result itself
