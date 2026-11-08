@@ -11,8 +11,10 @@ from urllib.parse import unquote
 
 import pytest
 
+from analyze_common.server import GuiServer
+
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_REQUEST_QUEUE_SIZE = 64
+_REQUEST_QUEUE_SIZE = GuiServer.request_queue_size
 
 try:
     from playwright.sync_api import expect, sync_playwright

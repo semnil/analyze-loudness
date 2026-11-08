@@ -6,9 +6,8 @@ let lastCompareStats = null;
 let lastGate = null;
 let activeAbort = null;
 
-// Mirror of MIN_TRACKS / MAX_TRACKS in src/analyze_loudness/compare.py.
+// Mirror of MIN_TRACKS in src/analyze_loudness/compare.py.
 const MIN_TRACKS = 2;
-const MAX_TRACKS = 6;
 // Mirror of _MAX_UPLOAD in src/analyze_loudness/gui.py.
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
 // Queued comparison tracks: {kind: "url" | "file", label, data?} or {kind: "json", label, data}.

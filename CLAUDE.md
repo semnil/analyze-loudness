@@ -148,7 +148,7 @@ analyze-loudness-gui
 .venv/bin/python build.py --installer      # + DMG
 ```
 
-Flags: `--skip-download` (skip fetching external assets) / `--skip-build` (skip PyInstaller; assumes `dist/` exists) / `--update-checksums` (fetch assets and update `checksums.json`) / `--ffmpeg-only` (fetch only ffmpeg / ffprobe into `build_assets/bin/` and stop).
+The flags are in the "Building a consumer" section of `vendor/py-analyze-common/README.md`.
 
 > **Note**: run it with the python of this project's venv: `.venv/bin/python` (macOS) / `.venv/Scripts/python` (Windows).
 
@@ -289,41 +289,21 @@ Bundling a PyInstaller onefile binary such as `yt-dlp_macos` causes a Team ID mi
 
 ### yt-dlp version pin
 
-`pyproject.toml` has an exact pin `yt-dlp==<version>`. The three `pyproject.toml` files of analyze-loudness / analyze-spectrum / py-analyze-common have the same pin, and a manual version change updates all three at the same time. In analyze-loudness and analyze-spectrum, a Dependabot update of the Python dependencies (the yt-dlp pin included) is merged automatically at any semver level once its required checks pass, unless someone other than Dependabot pushed a commit to its PR (`.github/workflows/dependabot-auto-merge.yml`), so the three values can differ. In analyze-loudness and analyze-spectrum, Dependabot (`.github/dependabot.yml`, the `uv` ecosystem) opens an update of the pin and of `requirements/*.txt` every day at 00:00 JST, for a version released at least three days before; py-analyze-common's Dependabot opens the same update of its own pin (`pyproject.toml` only), which is merged automatically there too. Dependabot moves yt-dlp and `yt-dlp-ejs` (the challenge solver scripts yt-dlp reads) in one pull request (the `yt-dlp` group), and `tests/test_yt_dlp_ejs.py` fails when the two disagree. In analyze-loudness and analyze-spectrum the checks pass only when the update also keeps `requirements/release.txt` in step with `pyproject.toml` ([Pinned release dependencies](#pinned-release-dependencies)). What goes into the shipped app is the pin in this repository's `pyproject.toml`; py-analyze-common's `pyproject.toml` is not used to build the shipped app (the submodule is read through `sys.path` injection).
-
-Why pin: the shipped app has yt-dlp baked into the PYZ by PyInstaller, so it cannot be updated after installation. Leaving it unpinned makes the version depend on the resolution at build time, and the version inside a shipped app cannot be identified afterwards.
-
-Check the pinned version before opening the version bump PR of the [Release procedure](#release-procedure). A pin changed by a Dependabot auto-merge reached master without this check:
-
-1. In a `.venv` with the version pinned in this repository's `pyproject.toml`, confirm a **full-length download**. `--test` (fetches only the first 10 KiB) cannot detect a 403:
-   `.venv/bin/python -m yt_dlp -f bestaudio -o <tmpdir>/%(id)s.%(ext)s <URL>`
-   Confirm with three kinds: a normal video, a live archive and a Short
-2. If it fails, install a candidate version with `pip install -U yt-dlp`, run the same check, and write the version that passes into the three `pyproject.toml` files. Commit py-analyze-common first, then update the submodule pointer. In analyze-loudness and analyze-spectrum, regenerate `requirements/*.txt` in the same commit as the `pyproject.toml` change ([Pinned release dependencies](#pinned-release-dependencies))
-
-This section is a mirror with the same content as the one in analyze-spectrum's CLAUDE.md.
+`pyproject.toml` has an exact pin `yt-dlp==<version>`. Who updates it, why it is pinned and the check before a release are in the "yt-dlp version pin" section of `vendor/py-analyze-common/CLAUDE.md`.
 
 ### macOS is Apple Silicon (arm64) only (v1.3.0+)
 
-ffmpeg / ffprobe are fetched as osxexperts.net's arm64 native builds. evermeet.cx (x86_64) is not used because (a) an Intel Mach-O in the bundle makes macOS 26 show the warning that support for apps for Intel processors is ending, and (b) connections from the GitHub Actions macos runner time out. Intel Mac support ended with v1.2.0.
+The reason is in the "Building a consumer (build)" section of `vendor/py-analyze-common/CLAUDE.md`.
 
 ### Bundled ffmpeg pin
 
-`build_assets/ffmpeg.json` holds the series (`series`, e.g. `8.1`) of the ffmpeg / ffprobe bundled on both OSes, and the URL and SHA256 of the macOS build. Reading, writing and validation are done by `analyze_common/ffmpeg_release.py` of py-analyze-common, which `build.py` calls.
+`build_assets/ffmpeg.json` holds the pin. How each OS bundles it, how it is updated and how the release build checks the distributed copies are in the "Bundled ffmpeg pin (ffmpeg_release)" section of `vendor/py-analyze-common/CLAUDE.md`.
 
-- macOS: `build.py` fetches the osxexperts.net zip and checks the binaries in it against the pinned SHA256 (a mismatch stops the build). This SHA256 is the same value the osxexperts.net page shows next to the download
-- Windows: the build of the same series in `latest` of BtbN/FFmpeg-Builds (`ffmpeg-n{series}-latest-win64-gpl-{series}.zip`; the lgpl builds are not used). Its contents change daily, so the SHA256 is not pinned. When the series disappears from `latest`, the build stops
-- Updates: `.github/workflows/ffmpeg-watch.yml` does this daily and carries it through to a patch release ("Patch release for an ffmpeg update" in the [Release procedure](#release-procedure)). The osxexperts.net URL is not derived from the version (`ffmpeg81arm.zip` / `ffmpeg9arm.zip`), so the pin is taken from the page's links. To do it by hand, the following command — only when the page has a different build — confirms that BtbN has the same series and that both files match the page's SHA256, then writes the new pin to `--candidate`. When `pin_update=true`, copy its contents to `build_assets/ffmpeg.json`
-
-  ```bash
-  PYTHONPATH=vendor/py-analyze-common/src .venv/bin/python -m analyze_common.ffmpeg_release detect \
-    --pin build_assets/ffmpeg.json --version-file src/analyze_loudness/__init__.py --candidate <tmpdir>/ffmpeg.json
-  ```
-
-- Verification: `tests/test_ffmpeg_binary.py` reads a 1 kHz sine wave written with numpy through the ffmpeg / ffprobe on PATH and the app's parsers (`run_ebur128()` / `probe_duration()`), and compares Integrated, the relative gate and True Peak with the BS.1770 calculation, and also reads a copy with a non-ASCII name and a copy with a tag that is not UTF-8. Given the directory of the bundled binaries in `EXPECT_FFMPEG_DIR`, it confirms the ffmpeg / ffprobe there are found first, and fails instead of skipping when they are not (the last line of [Tests](#tests)). The release build (`.github/workflows/release.yaml`) runs this test on the copies inside the distributables (on Windows `dist/analyze-loudness/_internal/bin` collected by PyInstaller, on macOS `Contents/Frameworks/bin` of the `.app` after signing), and on failure it does not proceed to uploading the artifacts and creating the Draft Release (`tests/test_release_workflow.py` checks the position of that step and the directory it passes against the spec and `installer.iss`)
+`tests/test_ffmpeg_binary.py` here reads a 1 kHz sine wave written with numpy through the ffmpeg / ffprobe on PATH and the app's parsers (`run_ebur128()` / `probe_duration()`), and compares Integrated, the relative gate and True Peak with the BS.1770 calculation, and also reads a copy with a non-ASCII name and a copy with a tag that is not UTF-8.
 
 ### Starting ffmpeg / ffprobe by absolute path
 
-`run_ebur128()` in `src/analyze_loudness/analysis.py`, and py-analyze-common's `probe_info()` / `download_audio()`, start ffmpeg / ffprobe (and yt-dlp's deno) by the absolute path that py-analyze-common's `find_executable()` returns. It searches only the absolute entries of PATH, in order; the frozen app puts the bundled `bin` folder at the front of PATH (`main()` in `src/analyze_loudness/gui.py`). The reason is in the "Programs start by absolute path" section of `vendor/py-analyze-common/CLAUDE.md`. When the program they run is not on PATH (ffmpeg for `run_ebur128()` / `download_audio()`, ffprobe for `probe_info()`), they raise `FileNotFoundError` without starting a process. `tests/test_ffmpeg_binary.py` checks `EXPECT_FFMPEG_DIR` with the same `find_executable()`.
+`run_ebur128()` in `src/analyze_loudness/analysis.py`, and py-analyze-common's `probe_info()` / `download_audio()`, start ffmpeg / ffprobe (and yt-dlp's deno) by the absolute path that py-analyze-common's `find_executable()` returns. It searches only the absolute entries of PATH, in order; the frozen app puts the bundled `bin` folder at the front of PATH (`main()` in `src/analyze_loudness/gui.py`). The reason is in the "Programs start by absolute path (find_executable)" section of `vendor/py-analyze-common/CLAUDE.md`. When the program they run is not on PATH (ffmpeg for `run_ebur128()` / `download_audio()`, ffprobe for `probe_info()`), they raise `FileNotFoundError` without starting a process. `tests/test_ffmpeg_binary.py` checks `EXPECT_FFMPEG_DIR` with the same `find_executable()`.
 
 ### deno (yt-dlp dependency)
 
@@ -408,7 +388,7 @@ The Integrated and the GATE band of the truncated range recompute the relative g
 The verification measurements, the shape of the comparison JSON and the reasons for the track colors are in the "Comparison mode" section of `docs/architecture.md`.
 On Submit, `_queueUrlInput()` moves the field's source into `compareQueue` (a source the queue holds stays in the field, and `+ Add Track` refuses it with `err.duplicate_track`). One row is a single analysis whose row keeps its result, two or more are a comparison, and one JSON row is shown without a request. `_effectiveTrackCount()` decides the Submit button label; the button is refreshed on the field's `input` event and after Browse.
 `_maybeInvalidateResults()` drops the results on screen when `+ Add Track`, removing a row, Load JSON or a dropped file that joins the queue leaves tracks in the queue, Clear All also drops the status, and moving a row reorders a comparison on screen (`_moveTrack()`).
-`MIN_TRACKS` / `MAX_TRACKS` are mirrored between `src/analyze_loudness/compare.py` and `frontend/main.js`, the gate constants
+`MAX_TRACKS` comes from py-analyze-common (`analyze_common/server.py`, mirrored in `analyze_common/web/ui.js`). `MIN_TRACKS` is mirrored between `src/analyze_loudness/compare.py` and `frontend/main.js`, the gate constants
 (`GATE_ABSOLUTE` / `GATE_RELATIVE_OFFSET` / `GATE_BLOCK_SEC`) between `src/analyze_loudness/compare.py` and `frontend/gate.js`,
 and the track colors (light) between `trackColors` in `frontend/theme.js` and `TRACK_COLORS` in `src/analyze_loudness/plot.py`; always update them together.
 
@@ -427,37 +407,22 @@ The `_isBusy` flag disables the Load JSON button to prevent a double run.
 
 ### Auto-update
 
-The installed version (the Windows / macOS app built with PyInstaller) checks GitHub's latest Release at launch, and when there is a newer version it shows a confirmation dialog (`window.confirm`, OK / Cancel). Only on OK does it fetch, verify and apply the installer and restart the app. The core lives in py-analyze-common's `analyze_common/update.py` (check, fetch, signature verification, apply) and `analyze_common/web/update.js` (gear button, settings dialog, confirmation flow), shared with analyze-spectrum. This repository holds `UPDATE_CONFIG` in `src/analyze_loudness/update.py`; the four `/update/*` endpoints are py-analyze-common's `GuiHandler`, and `src/analyze_loudness/gui.py` gives it the `Updater` and the way the app exits.
+How an update runs, what the user sees, what is verified, how each OS applies it and the signing key are in `vendor/py-analyze-common/docs/auto-update.md`.
 
-- Settings: the settings dialog opened by the toolbar's gear button has "Check at launch" (default ON), "Check now" (the result is shown inside the dialog) and the version. "Check at launch" is saved with `/update/settings` to `update_check_at_launch` in the app's settings file (macOS `~/Library/Application Support/analyze-loudness/settings.json`, Windows `%APPDATA%\analyze-loudness\settings.json`) and returned by `/update/status`. It is not kept in the webview's localStorage (pywebview starts in private mode, and the local server's port = origin changes on every launch, so localStorage does not survive to the next launch). While a save request is in flight the toggle is disabled (requests do not overlap), and after saving it is redrawn with the value the server returned. When saving fails it goes back to the value before the save and says so inside the dialog. The check at launch shows nothing when the app is up to date or the check fails. When the check at launch and "Check now" overlap, they are merged into one check
-- Builds that can apply updates: frozen Windows x64 and macOS arm64 (`supported` of `/update/status`). When run in development, the update row of the settings dialog is disabled
-- During an analysis it declines without showing the confirmation dialog ("Check now" says so inside the dialog). During the download, the input field, analysis, saving results and the settings dialog are blocked
-- Verification: `latest.json` on the Release holds each OS's installer URL and Ed25519 signature. The signed statement is `analyze-update-v1` / product name / version / OS / the installer's SHA-256 joined by newlines, verified with `PUBLIC_KEY` of `UPDATE_CONFIG`. Because the version and OS are in the signature, swapping in an old legitimate installer with a newer version number, or reusing a file for another OS, fails verification. Only URLs under `https://github.com/semnil/analyze-loudness/releases/download/` are accepted, and only redirects that stay on https are followed. The CA is certifi
-- Windows: starts the verified `LoudnessAnalyzer-X.Y.Z-setup.exe` with `/SILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /UPDATE=1` through `os.startfile` (the installer shows UAC; Inno Setup's loader starts `asInvoker` and asks for elevation only when it needs it), and the app closes its window and ends normally. `vendor/py-analyze-common/installer/auto_update.iss`, included by `installer.iss`, waits only when `/UPDATE=1` until the app's mutex is gone, installs, and when done starts the app with the original user's rights. If the mutex is still there after 30 seconds, it shows Inno Setup's "is running" message; OK waits again and Cancel ends without installing. The app ends when it starts the installer, so declining UAC leaves the update not installed and the app closed (launching it again starts the old version, and with the check at launch ON it offers the same update again). The mutex name is held only by `UPDATE_CONFIG.mutex_name`; `main()` holds it with `hold_instance_mutex()`, and `build.py` passes it to Inno Setup with `/DMyAppMutex=` (`installer.iss` has `#error` when it is undefined)
-- macOS: opens the DMG, copies the `.app` to a temporary directory on the same volume, checks the identifier and version, and — when the current version is signed with a Team ID — the same Team ID and `codesign --verify --deep --strict`, then swaps it with the running `.app` (`RENAME_SWAP` of `renamex_np`; asks for the administrator password when it lacks permission). After the swap the bundle on disk is the new version, so `_exit_now()` runs the atexit cleanup itself and ends with `os._exit(0)`. The restart is done by a shell that waits for this process to end and then runs `open`. It does not swap while another process of the same executable is running, or when started from inside the DMG or from App Translocation
-- Failure: failures other than the check are shown as an error in the status area, and the app keeps running
+What this app holds:
 
-The signing key is Ed25519. The private key is not put in the repository; the contents of the PEM are registered as the repository secret `UPDATE_SIGNING_KEY`. The public key (base64 of the raw 32 bytes) is written to `PUBLIC_KEY` in `src/analyze_loudness/update.py`. Creating the key needs OpenSSL 3 or later (the LibreSSL 3.3 bundled with macOS cannot create Ed25519 keys; use Homebrew's `openssl@3`).
-
-```bash
-openssl genpkey -algorithm ed25519 -out analyze-loudness.pem
-PYTHONPATH=vendor/py-analyze-common/src python -m analyze_common.update_manifest public-key analyze-loudness.pem
-gh secret set UPDATE_SIGNING_KEY < analyze-loudness.pem
-```
-
-The sign-manifest job of `.github/workflows/release.yaml` makes `latest.json` with `python -m analyze_common.update_manifest sign`, and the create-release job puts it on the Release together with the installers. `UPDATE_SIGNING_KEY` is referenced only by sign-manifest, which runs with a read-only token, a checkout without stored credentials and no pip cache, and installs only the `yt-dlp` wheel in `requirements/sign-manifest.txt` (`--require-hashes --no-deps --only-binary :all:`; `analyze_common` imports `yt_dlp`). create-release is the only job with `contents: write`, and it runs no Python (`tests/test_release_workflow.py` checks both). The sign-manifest job fails when the secret is missing, when the created signature cannot be verified with `PUBLIC_KEY` (the secret and the public key disagree), or when the tag is not `v` + `__version__`.
+- `UPDATE_CONFIG` in `src/analyze_loudness/update.py`: the product name, the repository, the public key `PUBLIC_KEY`, the temporary directory prefix and the mutex name
+- `src/analyze_loudness/gui.py` gives `GuiHandler` the `Updater` and the way the app exits: on macOS `_exit_now()` runs the atexit cleanup itself and ends with `os._exit(0)`
+- `frontend/main.js` stops the input field, analysis, saving results and the settings dialog during the download
+- Settings: "Check at launch" is `update_check_at_launch` in the app's settings file (macOS `~/Library/Application Support/analyze-loudness/settings.json`, Windows `%APPDATA%\analyze-loudness\settings.json`)
 
 ### Temp folders of a killed run
 
-`src/analyze_loudness/gui.py` holds py-analyze-common's `InstanceLock` while it runs, and the CLI holds one while its work folder exists. When the GUI ends, `_cleanup_orphan_tempdirs()` removes the `loudness_*` temp folders a killed run left behind, unless another instance runs (the "Temp folders a killed process left behind" section of `vendor/py-analyze-common/CLAUDE.md`).
+`src/analyze_loudness/gui.py` holds py-analyze-common's `InstanceLock` while it runs, and the CLI holds one while its work folder exists. When the GUI ends, `_cleanup_orphan_tempdirs()` removes the `loudness_*` temp folders a killed run left behind, unless another instance runs (the "Temp folders a killed process left behind (tempdirs)" section of `vendor/py-analyze-common/CLAUDE.md`).
 
 ### Window icon
 
-PyInstaller's `EXE(icon=...)` is only the icon of the EXE file itself (shown in Explorer). The pywebview window icon (title bar and taskbar) needs an explicit `webview.start(icon=...)` (moved from `create_window` to `start` in pywebview 6.x). `build_assets/icon.ico` is bundled through PyInstaller's `datas` and resolved through `_ICON_PATH`.
-
-The `icon=` argument is passed only on Windows (`sys.platform == "win32"`). On macOS the Dock/app icon comes from the `.app` bundle (`CFBundleIconFile` = `icon.icns`); passing `icon=` there makes pywebview's Cocoa backend call `NSApplication.setApplicationIconImage_`, which overrides the bundle icon with the raw `icon.ico` bitmap. That bitmap carries no icon-grid inset, so on macOS 26 the Dock renders it edge-to-edge (oversized) instead of at the system-masked size the bundle icon gets.
-
-The Windows taskbar groups processes by AppUserModelID. When it is not set, the Python runtime's default ID is used and the icon embedded in the EXE does not show on the taskbar. `main()` sets `com.semnil.loudness-analyzer` with `set_app_user_model_id()` of py-analyze-common's `analyze_common/window.py`, so the taskbar icon shows correctly.
+Why `webview.start(icon=...)` gets the icon only on Windows, and what the AppUserModelID does, are in the "Window icon" section of `vendor/py-analyze-common/CLAUDE.md`. `main()` sets `com.semnil.loudness-analyzer` with `set_app_user_model_id()`.
 
 ### Windows subprocess console hiding
 
@@ -465,49 +430,15 @@ In PyInstaller frozen mode, `STARTF_USESHOWWINDOW` hides the console window of t
 
 ## Release procedure
 
-Before opening the version bump PR, check the pinned yt-dlp version with a full-length download ([yt-dlp version pin](#yt-dlp-version-pin)).
-
-1. Open a PR that raises `__version__` in `src/analyze_loudness/__init__.py` (a version bump contains no other change)
-2. After the merge, when the CI run of the push to master succeeds, `.github/workflows/tag-release.yml` detects the change of `__version__`, puts a `vX.Y.Z` tag on the merge commit, and starts `.github/workflows/release.yaml` with `workflow_dispatch` on that tag
-3. `.github/workflows/release.yaml` builds the Windows installer (`LoudnessAnalyzer-X.Y.Z-setup.exe`) and the macOS DMG (`Loudness-Analyzer.dmg`) and creates the Release (`draft: true`) together with the signed `latest.json` ([Auto-update](#auto-update)). Before uploading the artifacts, the build runs the ffmpeg / ffprobe inside the distributables through `tests/test_ffmpeg_binary.py` ("Verification" in [Bundled ffmpeg pin](#bundled-ffmpeg-pin))
-4. A person publishes the Release. The published Release becomes `releases/latest`, and the update check of installed apps reads its `latest.json`
-
-The merge of the version bump PR is the starting point of a release. `tag-release.yml` does nothing on a push that does not change `__version__`, and does not move a tag of the same name that already exists on another commit. `tag-release.yml`'s `workflow_dispatch` handles the commit of the input `sha`, and tags it only when it is on master and CI succeeded on that commit or on a parent commit with the same tree (the head of a PR merged with the tip of master included). `release.yaml` also builds and releases on a tag push and on a `workflow_dispatch` on a tag (a `workflow_dispatch` on a branch only builds).
+The steps are in the "Releasing a consumer" section of `vendor/py-analyze-common/CLAUDE.md`. In this app `__version__` is in `src/analyze_loudness/__init__.py`, the Windows installer is `LoudnessAnalyzer-X.Y.Z-setup.exe` and the macOS DMG is `Loudness-Analyzer.dmg`.
 
 ### Pinned release dependencies
 
-Dependabot updates `pyobjc-core` and `pyobjc-framework-*` together in the `pyobjc` group of `.github/dependabot.yml`.
-
-The release jobs install nothing that is resolved at build time:
-
-- Python packages: `requirements/release.txt` (the dependencies of `pyproject.toml` and its `gui` and `dev` extras), installed with `--require-hashes --no-deps --no-build-isolation` after `requirements/release-build.txt` (the pip that installs it, and the build backends of its source distributions and of this project). The `sign-manifest` job installs only `requirements/sign-manifest.txt` (yt-dlp, which analyze_common imports) as a wheel
-- Build tools: Inno Setup (Windows) and create-dmg (macOS) are downloaded from their GitHub releases and checked against the SHA256 in `release.yaml` (`INNOSETUP_SHA256`, `CREATE_DMG_SHA256`)
-- Not pinned: deno and the Windows ffmpeg / ffprobe, which `build.py` downloads ([Bundled ffmpeg pin](#bundled-ffmpeg-pin))
-
-`requirements/*.txt` are generated by uv from `pyproject.toml` and `requirements/*.in` (uv is in the `dev` extra of `pyproject.toml`). Run the following from the repository root after changing the dependencies of `pyproject.toml` (the yt-dlp pin included); add `--upgrade` to the first command to take newer versions:
-
-```bash
-uv pip compile pyproject.toml --extra gui --extra dev --universal --python-version 3.12 --generate-hashes -o requirements/release.txt
-uv pip compile requirements/release-build.in -c requirements/release.txt --universal --python-version 3.12 --generate-hashes -o requirements/release-build.txt
-uv pip compile requirements/sign-manifest.in -c requirements/release.txt --universal --python-version 3.12 --generate-hashes -o requirements/sign-manifest.txt
-```
-
-`--python-version` is the `python-version` of `release.yaml`. `tests/test_release_workflow.py` fails when `requirements/release.txt` does not satisfy `pyproject.toml`, when a file was generated with other options, or when uv finds no resolution for the command in a file's header with that file's own pins as constraints (a pin that breaks the requirement of another package in the file) or finds one with a package the file does not pin, or pins under another environment marker (the release jobs install with `--no-deps`, so it would be missing on that platform), or without one the file pins, so a branch that changes `pyproject.toml` without regenerating these files does not pass CI, whoever opened it.
-
-This section is a mirror with the same content as the one in analyze-spectrum's CLAUDE.md.
+What the release jobs install, the commands that regenerate `requirements/*.txt` and what fails when they are not regenerated are in the section of the same name in `vendor/py-analyze-common/CLAUDE.md`.
 
 ### Patch release for an ffmpeg update
 
-`.github/workflows/ffmpeg-watch.yml` does the following daily (and on `workflow_dispatch`), with no human step until the Draft Release is created. The bot merges the PRs without review.
-
-1. detect: checks out the current tip of master when the job starts, including its tags and history, then compares `build_assets/ffmpeg.json` with the osxexperts.net page ([Bundled ffmpeg pin](#bundled-ffmpeg-pin)). When the page has a different build, it confirms that BtbN has the same series and checks the SHA256 of both files, and makes a new pin. It makes a patch release when `__version__` equals the latest `vX.Y.Z` tag and either the pin changes this time or the current pin differs from the pin that tag released (the pin file in the tag, or, when the tag has none, the pin from when the file was first added after the tag)
-2. smoke: checks out the exact commit recorded by detect, then on macOS and Windows runners, runs `tests/test_ffmpeg_binary.py` on the binaries fetched with `build.py --ffmpeg-only` using the pin from that commit, replaced by the candidate artifact when `pin_update=true`
-3. land: opens in order the pin PR (`ffmpeg-watch/pin-<series>-<run id>-<attempt>`) and the bump-only PR (`ffmpeg-watch/bump-v<version>-<run id>-<attempt>`, `chore: update the version to vX.Y.Z`), pushing, opening and merging them with the GitHub App's token (the prerequisite below) and reading the PRs and runs with GITHUB_TOKEN. Each PR starts its CI (`Test 🧪`) and `dependabot-auto-merge.yml` (`auto-merge`) runs of `pull_request` and its `workflow-checks.yml` (`action-pins`) run of `pull_request_target`; land merges the PR after the three runs on its head commit succeed and `gh pr checks --required` passes. The merge of the bump runs the CI of the push to master, which starts `tag-release.yml` (step 2 of the [Release procedure](#release-procedure)). GITHUB_TOKEN is not used for these PRs: a PR it opens starts no `pull_request_target` run and its `pull_request` runs wait for an approval, and the checks of runs started with `workflow_dispatch` are not counted as the required checks of master's ruleset (the merge of such a PR was refused with `3 of 3 required status checks are expected.`)
-4. A person publishes the Release (step 4 of the [Release procedure](#release-procedure))
-
-- Prerequisite: a GitHub App installed on this repository with the repository permissions Contents (read and write) and Pull requests (read and write), its client ID in the repository variable `FFMPEG_WATCH_APP_CLIENT_ID`, and its private key (the contents of the `.pem`) in the repository secret `FFMPEG_WATCH_APP_PRIVATE_KEY`. The token land creates carries only those two permissions. Without the variable or the secret, land fails at its first step
-- When a PR from an earlier run (an open PR whose head is `ffmpeg-watch/`) remains, land fails without changing anything. Close or merge that PR, then run again. The branch name differs per run (run id and attempt), so a branch pushed by a run that failed before opening its PR does not collide with the next run's push (that branch stays without a PR). When only the pin PR was merged and the bump remains, the next run's detect resumes from the bump, as "the current pin differs from the pin the latest tag released". When the bump was merged but there is no tag (for example, the CI run of that push failed), the next run's detect reports the master commit that set `__version__` to that value (`release_sha`), and land passes that commit and starts `tag-release.yml`. If the tag already exists, it does nothing
-- When smoke, or any of the runs of a PR (CI, auto-merge, action-pins), fails, or a run does not start within three minutes, land stops at that point and does not merge
+What `.github/workflows/ffmpeg-watch.yml` does daily, and its prerequisite, are in the section of the same name in `vendor/py-analyze-common/CLAUDE.md`.
 
 ## Versioning
 

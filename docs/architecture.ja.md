@@ -184,74 +184,7 @@ CSS 変数 (`--bg`, `--text`, `--accent` 等。共通分は `vendor/py-analyze-c
 
 ### 自動更新
 
-インストール版 (frozen の Windows x64 / macOS arm64) は起動時 (「起動時に確認」が ON のとき) と設定ダイアログの「今すぐ確認」で GitHub の最新の Release を確認し、
-確認ダイアログで OK のときだけ更新を取得・検証・適用する。検証するのは、製品・版・OS・インストーラーの Secure Hash Algorithm 256 (SHA-256) ダイジェストに対する Ed25519 の署名である。クライアントは
-`vendor/py-analyze-common/src/analyze_common/update.py`、ユーザーインターフェース (UI) は `vendor/py-analyze-common/src/analyze_common/web/update.js` (`/common/update.js` で配信) で、
-analyze-spectrum と共有する。このリポジトリの固有部分は `src/analyze_loudness/update.py` の `UPDATE_CONFIG`。
-
-```mermaid
-sequenceDiagram
-    participant UI as /common/update.js
-    participant S as src/analyze_loudness/gui.py
-    participant U as analyze_common.update
-    participant GH as GitHub Releases
-    participant Setup as Inno Setup (Windows)
-    participant Sh as 再起動用のシェル (macOS)
-    UI->>S: POST /update/status
-    S-->>UI: current, supported, launch_check
-    UI->>S: POST /update/check (ON のときは起動時)
-    S->>U: Updater.check()
-    U->>GH: GET releases/latest/download/latest.json
-    GH-->>U: タグへのリダイレクト、続けて latest.json
-    U-->>S: 新しい版か None
-    S-->>UI: available, version
-    UI->>UI: window.confirm (OK か Cancel)
-    UI->>S: 版を付けて POST /update/install
-    S->>U: Updater.install(version)
-    U->>GH: インストーラーを GET (https のみ)
-    U->>U: 製品・版・OS・SHA-256 を Ed25519 で検証
-    alt Windows
-        U->>Setup: os.startfile に /SILENT と /UPDATE=1
-        S-->>UI: restarting
-        S->>S: window.destroy()
-        Setup->>Setup: アプリの mutex を待ち、インストールし、アプリを起動
-    else macOS
-        U->>U: hdiutil attach、ditto、id・版・Team ID の確認
-        U->>U: 動いている .app と入れ替え (renamex_np)
-        U->>Sh: 起動、このプロセスの終了を待つ
-        S-->>UI: restarting
-        S->>S: _exit_now() から os._exit(0)
-        Sh->>Sh: 新しい .app を開く
-    end
-```
-
-- **署名**: `latest.json` は OS ごとに `url` と `signature` を持つ。署名の対象は
-  `analyze-update-v1\n{product}\n{version}\n{platform}\n{sha256}\n` で、版と OS が入るので、
-  古い正規のインストーラーへの版番号の付け替えと別 OS のファイルの流用は検証で落ちる。Ed25519 の検証は
-  純 Python (`vendor/py-analyze-common/src/analyze_common/ed25519.py`、Request for Comments (RFC) 8032) で、`cryptography` は bundle から除いたまま。
-  署名は継続的インテグレーション (CI) で `openssl pkeyutl -rawin` が作り、`vendor/py-analyze-common/src/analyze_common/update_manifest.py` がアプリの公開鍵で検証し直す。
-- **macOS の終わり方**: PyInstaller は遅延 import のたびにアーカイブをパスで開き直すため、bundle を入れ替えた後に
-  import が走ると新しい版のファイルを読む。入れ替えの後は `_exit_now()` が atexit の後始末を自分で行い、
-  `os._exit(0)` で interpreter の終了処理を通らずに終わる。入れ替えはアプリ自身が行う。
-- **再起動したプロセスの環境**: `open` で起動したアプリには呼び出し側の環境変数が渡る (2026-10-20 に、
-  テスト用の変数と `_PYI_PARENT_PROCESS_LEVEL=1` が再起動後のプロセスに渡ることを `ps -wwE` で確認)。
-  PyInstaller 6.9 以降の bootloader は、`_PYI_ARCHIVE_FILE` が自分と同じなら親の worker として振る舞うので、
-  再起動用のシェルとインストーラーに `PYINSTALLER_RESET_ENVIRONMENT=1` を渡して独立したプロセスとして起動させる。
-- **Windows のユーザーアカウント制御 (UAC)**: Inno Setup の loader は `asInvoker` で起動し、必要になってから昇格を求めるので、UAC はアプリが
-  閉じた後に出る。拒否するとインストールされず、アプリは閉じたままになる (起動し直すと旧版が起動する)。
-- **「起動時に確認」の保存先**: アプリの設定ファイル (`vendor/py-analyze-common/src/analyze_common/settings.py` の `SettingsStore`。macOS は
-  `~/Library/Application Support/analyze-loudness/settings.json`、Windows は `%APPDATA%\analyze-loudness\settings.json`)。
-  webview の localStorage は次の起動に残らない: pywebview 6.2.1 の `webview.start()` は既定で `private_mode=True` で、
-  起動ごとに website data を消す。private mode を切っても、ローカルサーバーのポートは起動ごとに変わり origin が変わる
-  (2026-10-20 に pywebview を 2 回起動して確認: private mode 既定・同じポートでも前回の値は読めず、private mode を切ると
-  同じポートでは読め、別のポートでは読めない)。
-- **同じアプリの別プロセス**: macOS では、同じ実行ファイルの別プロセスがあると入れ替えない (入れ替えた bundle の
-  上で動き続けることになるため)。Windows はインストーラーが mutex の消えるのを待つ。
-- **macOS の実機確認** (2026-10-20、ローカルでビルドした未署名の 1.4.1 / 1.4.2、ローカルの配信):
-  1.4.1 から更新すると、`/update/install` の応答の 3.8 秒後に旧プロセスが終わり、4.1 秒後に同じパスから
-  1.4.2 が起動した。一時ディレクトリと `.app` の隣のファイルは残らなかった。1 バイトを反転したディスクイメージ (DMG) は拒否され、
-  旧版が動き続けた。2 つ起動しているときは入れ替えなかった。frozen のビルドから github.com への確認は
-  Transport Layer Security (TLS) とリダイレクトを通り、`v1.4.1` に `latest.json` が無いことによる 404 になった。
+更新の流れ、検証するもの、OS ごとの適用は [py-analyze-common の自動更新の文書](https://github.com/semnil/py-analyze-common/blob/main/docs/auto-update.ja.md) にある。このリポジトリが持つのは `src/analyze_loudness/update.py` の `UPDATE_CONFIG` と、`src/analyze_loudness/gui.py` の終了処理 (`_exit_now()`) である。
 
 ## チャート
 
@@ -353,7 +286,7 @@ stderr テキストのみを処理し、メモリ消費を数 MB に抑えてい
 
 pywebview は OS のネイティブ WebView (Windows: WebView2 / macOS: WebKit) を使用し、
 バンドルサイズを小さく保てる。
-`_HTTPServer` (`ThreadingHTTPServer`) を 127.0.0.1 のランダムポート (port 0) で起動し、
+`_HTTPServer` (py-analyze-common の `GuiServer`。`ThreadingHTTPServer`) を 127.0.0.1 のランダムポート (port 0) で起動し、
 same-origin で frontend を配信する。
 
 ### 実行時に校正する時間の推定
