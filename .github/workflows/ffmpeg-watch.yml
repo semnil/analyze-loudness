@@ -301,7 +301,9 @@ jobs:
           # merge_when_required <pr> <sha>: hand the merge of <sha> to GitHub's auto-merge with the App's token and wait
           # for it. GitHub merges once every check the ruleset requires has passed, codecov/project included, which
           # Codecov reports after the runs and which `gh pr checks` does not list before it reports. A required check
-          # that fails, a pull request closed without merging, and ten minutes without a merge each stop land.
+          # that fails, a pull request closed without merging, and ten minutes without a merge each stop land; for a
+          # failed check and for the time running out it first turns the auto-merge off, so a check that passes later
+          # does not merge the pull request after land has stopped.
           merge_when_required() {
             local pr="$1" sha="$2" state checks
             GH_TOKEN="${APP_TOKEN}" gh pr merge "${pr}" --auto --merge --match-head-commit "${sha}"
@@ -319,11 +321,13 @@ jobs:
               if [[ "${checks}" -ne 0 && "${checks}" -ne 8 ]]; then
                 gh pr checks "${pr}" --required || :
                 echo "::error::a required check of #${pr} failed"
+                GH_TOKEN="${APP_TOKEN}" gh pr merge "${pr}" --disable-auto
                 return 1
               fi
               sleep 10
             done
             echo "::error::#${pr} did not merge within 10 minutes of its runs passing"
+            GH_TOKEN="${APP_TOKEN}" gh pr merge "${pr}" --disable-auto
             return 1
           }
 

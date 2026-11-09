@@ -75,7 +75,7 @@ def parse(args):
     opts, rest, i = {}, [], 0
     while i < len(args):
         a = args[i]
-        if a in ("--exit-status", "--compact", "--required", "--merge", "--auto"):
+        if a in ("--exit-status", "--compact", "--required", "--merge", "--auto", "--disable-auto"):
             opts[a] = True
         elif a.startswith("-"):
             if a == "-f":
@@ -177,6 +177,9 @@ def main():
         elif codecov(state, head) == "failure":
             print("codecov/project\tfail", file=sys.stderr)
             status = 1
+    elif (group, verb) == ("pr", "merge") and "--disable-auto" in opts:
+        pr = next(p for p in state["prs"] if str(p["number"]) == rest[0])
+        pr["auto"] = None
     elif (group, verb) == ("pr", "merge"):
         pr = next(p for p in state["prs"] if str(p["number"]) == rest[0])
         head = git("rev-parse", f"refs/heads/{pr['head']}")
@@ -516,17 +519,36 @@ else
   echo "FAIL every merge must be an auto-merge of the head commit with the App's token: ${merges}"
 fi
 
+# late_success <name>: once land has stopped, codecov/project passes on #11; nothing may merge it, since land turned
+# its auto-merge off before stopping.
+late_success() {
+  local state
+  count=$((count + 1))
+  state=$(env PATH="$work/bin:$PATH" FAKE_STATE="$work/state.json" FAKE_REMOTE="$work/remote.git" \
+    FAKE_APP_TOKEN="$app_token" FAKE_GITHUB_TOKEN="$github_token" FAKE_APP_SLUG="$app_slug" FAKE_BOT_ID="$bot_id" \
+    GH_TOKEN="$github_token" CODECOV=success CODECOV_AFTER=0 gh pr view 11 --json state --jq .state)
+  if [ "$state" = OPEN ] && [ "$(git -C "$work/remote.git" rev-parse master)" = "$base" ] \
+    && [ "$(jq -r '.prs[] | select(.number == 11) | .auto' "$work/state.json")" = null ]; then
+    echo "ok   $1: a check passing after land stopped merges nothing"
+  else
+    failures=$((failures + 1))
+    echo "FAIL $1: a check passing after land stopped must merge nothing (state=${state})"
+  fi
+}
+
 want_error="a required check of #11 failed"
 run_land true true "" CODECOV=failure
 check "a required check that fails after the runs stops land before the merge" \
   "exit=nonzero" "master=" "version=1.4.1" "pin=8.1" \
   "pr ffmpeg-watch/pin-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
+late_success "a required check that fails after the runs"
 
 want_error="#11 did not merge within 10 minutes of its runs passing"
 run_land true true "" CODECOV=never
 check "a pull request that does not merge stops land after its wait" \
   "exit=nonzero" "master=" "version=1.4.1" "pin=8.1" \
   "pr ffmpeg-watch/pin-9.0 OPEN opened_by=${app_token} merged_by=null" "dispatches=" "$author"
+late_success "a pull request that does not merge in time"
 
 count=$((count + 1))
 wired() {
