@@ -5,7 +5,7 @@ It comes in two forms: a CLI version and a GUI application version (Windows / ma
 
 ## Documentation languages
 
-- **Override of the global CLAUDE.md's 「ドキュメント」 language rule**: this file is written entirely in English, and the documents are maintained in both English and Japanese — English at `README.md` and `docs/architecture.md`, Japanese at `README.ja.md` and `docs/architecture.ja.md`.
+- **Override of the global CLAUDE.md's 「ドキュメント」 language rule**: this file is written entirely in English, and the documents are maintained in both English and Japanese — English at `README.md`, `docs/architecture.md` and the decision records `docs/decisions/<subject>.md`, Japanese at `README.ja.md`, `docs/architecture.ja.md` and `docs/decisions/<subject>.ja.md`.
 
 ## Architecture overview
 
@@ -97,6 +97,8 @@ graph LR
     root --> docs["docs/"]
     docs --> docs_arch["architecture.md"]
     docs --> docs_arch_ja["architecture.ja.md"]
+    docs --> docs_dec["decisions/<br>closed decisions: what was chosen and what was rejected;<br>each record is an English .md and a Japanese .ja.md"]
+    docs_dec --> docs_dec_cmp["comparison-mode.md, comparison-mode.ja.md<br>the comparison mode"]
     docs --> docs_shot["screenshot.png"]
     root --> vend["vendor/py-analyze-common/<br>git submodule (used through sys.path injection)"]
     root --> r_build["build.py<br>Build script: py-analyze-common's analyze_common.build with this app's names<br>(asset download + PyInstaller + Inno Setup / DMG)"]
