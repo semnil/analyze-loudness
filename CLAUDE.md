@@ -5,7 +5,7 @@ It comes in two forms: a CLI version and a GUI application version (Windows / ma
 
 ## Documentation languages
 
-- **Override of the global CLAUDE.md's 「ドキュメント」 language rule**: this file is written entirely in English, and the documents are maintained in both English and Japanese — English at `README.md`, `docs/architecture.md` and the decision records `docs/decisions/<subject>.md`, Japanese at `README.ja.md`, `docs/architecture.ja.md` and `docs/decisions/<subject>.ja.md`.
+- **Override of the global CLAUDE.md's 「ドキュメント」 language rule**: this file is written entirely in English, and the documents are maintained in both English and Japanese — English at `README.md`, `docs/architecture.md` and the decision records `docs/decisions/<subject>.md`, Japanese at `README.ja.md`, `docs/architecture.ja.md` and `docs/decisions/<subject>.ja.md`. The decision records are kept section for section, with the Japanese file under the same headings as the English one.
 
 ## Architecture overview
 
