@@ -5,7 +5,7 @@ It comes in two forms: a CLI version and a GUI application version (Windows / ma
 
 ## Documentation languages
 
-- **Override of the global CLAUDE.md's 「ドキュメント」 language rule**: this file is written entirely in English, and the documents are maintained in both English and Japanese — English at `README.md` and `docs/architecture.md`, Japanese at `README.ja.md` and `docs/architecture.ja.md`.
+- **Override of the global CLAUDE.md's 「ドキュメント」 language rule**: this file is written entirely in English, and the documents are maintained in both English and Japanese — English at `README.md`, `docs/architecture.md` and the decision records `docs/decisions/<subject>.md`, Japanese at `README.ja.md`, `docs/architecture.ja.md` and `docs/decisions/<subject>.ja.md`.
 
 ## Architecture overview
 
@@ -97,6 +97,9 @@ graph LR
     root --> docs["docs/"]
     docs --> docs_arch["architecture.md"]
     docs --> docs_arch_ja["architecture.ja.md"]
+    docs --> docs_dec["decisions/<br>closed decisions: what was chosen and what was rejected;<br>each record is an English .md and a Japanese .ja.md"]
+    docs_dec --> docs_dec_cmp["comparison-mode.md, comparison-mode.ja.md<br>the comparison mode"]
+    docs_dec --> docs_dec_lfi["local-file-input.md, local-file-input.ja.md<br>local audio files as input"]
     docs --> docs_shot["screenshot.png"]
     root --> vend["vendor/py-analyze-common/<br>git submodule (used through sys.path injection)"]
     root --> r_build["build.py<br>Build script: py-analyze-common's analyze_common.build with this app's names<br>(asset download + PyInstaller + Inno Setup / DMG)"]
@@ -176,7 +179,7 @@ python build.py --ffmpeg-only && EXPECT_FFMPEG_DIR=build_assets/bin pytest -q te
 
 For how the browser binary is handled, see [Frontend UI tests](#frontend-ui-tests).
 
-CI (`.github/workflows/ci.yaml`) runs `pytest -q --cov --cov-report=xml --js-coverage=coverage-js.lcov` and uploads `coverage.xml` and `coverage-js.lcov` to Codecov with `codecov/codecov-action`. The job's `id-token: write` lets the upload authenticate with GitHub's OIDC token (`use_oidc: true`), so the repository holds no Codecov token. On a pull request a failed upload fails `Test 🧪` (`fail_ci_if_error: true`); on a push to master the step's `continue-on-error` leaves the run green (.github/workflows/ci.yaml:126). `codecov/project` is a required check of master, reported by Codecov (app id 254) once the upload has arrived, after the run; `ffmpeg-watch.yml`'s land therefore hands its merges to auto-merge, which waits for it. `codecov/patch` is not required. `vendor/py-analyze-common` is not measured here (`source_pkgs` names this package only); py-analyze-common's own CI uploads its coverage.
+CI (`.github/workflows/ci.yaml`) runs `pytest -q --cov --cov-report=xml --js-coverage=coverage-js.lcov` and uploads `coverage.xml` and `coverage-js.lcov` to Codecov with `codecov/codecov-action`. The job's `id-token: write` lets the upload authenticate with GitHub's OIDC token (`use_oidc: true`), so the repository holds no Codecov token. On a pull request a failed upload fails `Test 🧪` (`fail_ci_if_error: true`); on a push to master the step's `continue-on-error` leaves the run green ([.github/workflows/ci.yaml:126](https://github.com/semnil/analyze-loudness/blob/5586edea5e683eb3f2809670ccb15838cf4f5d73/.github/workflows/ci.yaml#L126)). `codecov/project` is a required check of master, reported by Codecov once the upload has arrived, after the run; `ffmpeg-watch.yml`'s land therefore hands its merges to auto-merge, which waits for it. `codecov/patch` is not required. `vendor/py-analyze-common` is not measured here (`source_pkgs` names this package only); py-analyze-common's own CI uploads its coverage.
 
 ## GUI endpoints
 
@@ -387,7 +390,7 @@ Changing only one makes the legend and band colors drift apart.
 Overlays 2-6 results from the start and truncates all tracks to the length of the shortest track. The statistics of the truncated range are
 computed only by `truncated_stats()` in `src/analyze_loudness/compare.py`; the frontend shows the `stats` returned by `/compare` and `/load`.
 The Integrated and the GATE band of the truncated range recompute the relative gate (they do not use the full-length `summary.gate_threshold`).
-The verification measurements, the shape of the comparison JSON and the reasons for the track colors are in the "Comparison mode" section of `docs/architecture.md`.
+The verification measurements and the shape of the comparison JSON are in the "Comparison mode" section of `docs/architecture.md`. What was chosen for the track colors and for the rest of the mode, with the rejected alternatives, is in `docs/decisions/comparison-mode.md`.
 On Submit, `_queueUrlInput()` moves the field's source into `compareQueue` (a source the queue holds stays in the field, and `+ Add Track` refuses it with `err.duplicate_track`). One row is a single analysis whose row keeps its result, two or more are a comparison, and one JSON row is shown without a request. `_effectiveTrackCount()` decides the Submit button label; the button is refreshed on the field's `input` event and after Browse.
 `_maybeInvalidateResults()` drops the results on screen when `+ Add Track`, removing a row, Load JSON or a dropped file that joins the queue leaves tracks in the queue, Clear All also drops the status, and moving a row reorders a comparison on screen (`_moveTrack()`).
 `MAX_TRACKS` comes from py-analyze-common (`analyze_common/server.py`, mirrored in `analyze_common/web/ui.js`). `MIN_TRACKS` is mirrored between `src/analyze_loudness/compare.py` and `frontend/main.js`, the gate constants
