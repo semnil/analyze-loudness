@@ -99,6 +99,7 @@ graph LR
     docs --> docs_arch_ja["architecture.ja.md"]
     docs --> docs_dec["decisions/<br>closed decisions: what was chosen and what was rejected;<br>each record is an English .md and a Japanese .ja.md"]
     docs_dec --> docs_dec_cmp["comparison-mode.md, comparison-mode.ja.md<br>the comparison mode"]
+    docs_dec --> docs_dec_lfi["local-file-input.md, local-file-input.ja.md<br>local audio files as input"]
     docs --> docs_shot["screenshot.png"]
     root --> vend["vendor/py-analyze-common/<br>git submodule (used through sys.path injection)"]
     root --> r_build["build.py<br>Build script: py-analyze-common's analyze_common.build with this app's names<br>(asset download + PyInstaller + Inno Setup / DMG)"]
