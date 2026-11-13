@@ -72,6 +72,97 @@ graph LR
 | `_json_safe()` | py-analyze-common の `json_safe()`。NaN / Infinity を再帰的に None にする |
 | `_find_executable()` | py-analyze-common の `find_executable()`。PATH のうち絶対パスの項目で見つけたプログラムの絶対パス、無ければ None |
 
+## ディレクトリ構成
+
+```mermaid
+graph LR
+    root["analyze-loudness/"]
+    root --> wf[".github/workflows/"]
+    wf --> wf_ci["ci.yaml<br>PR / push<br>Python パッケージと frontend/*.js のカバレッジを付けて pytest を走らせ、両方を Codecov へ上げる<br>apt のパッケージファイルと Playwright のブラウザをキャッシュし、保存するのは PR 以外の走行だけ"]
+    wf --> wf_rel["release.yaml<br>v* タグ / タグに対する workflow_dispatch"]
+    wf --> wf_tag["tag-release.yml<br>master への push の CI が成功した後、またはコミットを渡した workflow_dispatch で: それが版上げなら、そのコミットにタグを付けて release.yaml を起動する"]
+    wf --> wf_ffw["ffmpeg-watch.yml<br>毎日、osxexperts.net の新しい ffmpeg を検出し、固定値の更新と版上げの PR を<br>GitHub App のトークンで作って、レビューなしでマージする<br>detect が接続できないときは、自分自身を dispatch して別のランナーで detect をやり直す (3 回まで)"]
+    wf --> wf_chk["workflow-checks.yml<br>全ての PR で、uses: の SHA 固定と同一リポジトリ参照の規則を検査する"]
+    wf --> wf_chkt["workflow-checks-test.yml<br>その検査のフィクスチャのテスト、dependabot-auto-merge.yml のトリガー・条件・自動マージの判定のテスト、<br>tag-release.yml のタグ付けの手順のテスト、ffmpeg-watch.yml の land の手順と detect のやり直しのテストを走らせる"]
+    wf --> wf_dam["dependabot-auto-merge.yml<br>先頭の 1 コミットだけで、Dependabot だけが書き、GitHub (web-flow) がコミットし、署名が検証済みの Dependabot の PR に対して、Python 依存 (uv) またはサブモジュールの更新と、<br>GitHub Action の semver の patch / minor の更新に自動マージを予約する。必須チェック auto-merge"]
+    root --> ght[".github/tests/"]
+    ght --> ght_sh["workflow-checks-test.sh<br>偽の gh とフィクスチャの git ツリーで workflow-checks.yml を走らせるテスト"]
+    ght --> ght_am["dependabot-auto-merge-test.sh<br>dependabot-auto-merge.yml が全ての PR で走り、その手順だけが Dependabot の PR に限られること、<br>どの更新とコミット (作者、数、最後のコミットが先頭か、誰がコミットしたか、署名が検証済みか) に対して<br>その手順が自動マージを予約するか取り消すかを、偽の gh で確かめるテスト"]
+    ght --> ght_tag["tag-release-test.sh<br>偽の gh とフィクスチャのリポジトリで tag-release.yml の検査とタグ付けの手順を走らせるテスト"]
+    ght --> ght_land["ffmpeg-watch-land-test.sh<br>呼び出しごとのトークンで答えを変える偽の gh とフィクスチャのリポジトリで ffmpeg-watch.yml の land の手順を、<br>偽の CLI で detect の手順を、そして detect の次の試行の dispatch を走らせるテスト"]
+    root --> r_dep[".github/dependabot.yml<br>毎日 00:00 JST に、GitHub Actions、py-analyze-common のサブモジュール<br>(Dependabot の既定の 3 日の cooldown なし)、Python 依存 (uv。<br>yt-dlp と yt-dlp-ejs は 1 つの PR、pyobjc-core と pyobjc-framework-* は別の 1 つの PR) の版を更新する"]
+    root --> r_claude["AGENTS.md"]
+    root --> r_readme["README.md"]
+    root --> r_readme_ja["README.ja.md"]
+    root --> r_pyproj["pyproject.toml<br>CLI ツール (pip install -e #quot;.[dev]#quot;)"]
+    root --> req["requirements/<br>release.txt, release-build.txt, sign-manifest.txt: リリースのジョブが入れる、ハッシュで固定したパッケージ。<br>uv が pyproject.toml と .in ファイルから生成する (Pinned release dependencies)"]
+    root --> src["src/analyze_loudness/"]
+    src --> src_init["__init__.py<br>vendor の sys.path 注入、SCHEMA_VERSION"]
+    src --> src_main["__main__.py"]
+    src --> src_cli["cli.py<br>argparse + 全体の処理の流れ (CLI)"]
+    src --> src_gui["gui.py<br>pywebview + ローカル HTTP サーバー (GUI)"]
+    src --> src_dl["download.py<br>yt_dlp.YoutubeDL API、ローカルファイルの解決 (resolve_source)、ffprobe での長さの取得"]
+    src --> src_ana["analysis.py<br>ebur128 の stderr の解析、compute_stats"]
+    src --> src_cmp["compare.py<br>単体 / 比較の JSON の組み立てと検証、切り詰めた範囲の統計"]
+    src --> src_upd["update.py<br>自動更新でこのアプリを表す値 (UPDATE_CONFIG: 製品名、リポジトリ、公開鍵、mutex 名)"]
+    src --> src_plot["plot.py<br>matplotlib の図の生成 (CLI のみ)"]
+    root --> fe["frontend/"]
+    fe --> fe_idx["index.html"]
+    fe --> fe_main["main.js<br>fetch + NDJSON の進捗 + DOM の描画 + テーマの切り替え"]
+    fe --> fe_theme["theme.js<br>getTheme(): チャートの色の提供 (ライト / ダーク)"]
+    fe --> fe_gate["gate.js<br>computeGate(): series.M から再構成する BS.1770 のゲート"]
+    fe --> fe_i18n["i18n.js<br>en/ja の DICT。py-analyze-common の /common/i18n.js がこれを window.i18n (t / setLang / onChange) にする"]
+    fe --> ch["charts/"]
+    ch --> ch_tl["timeline.js<br>uPlot のラッパー (テーマ対応、GATE レーンのプラグイン)"]
+    ch --> ch_hist["histogram.js<br>Canvas のヒストグラム (テーマ対応、内部にタイトルなし)"]
+    ch --> ch_seg["segments.js<br>Canvas のセグメントバー (テーマ対応、内部にタイトルなし)"]
+    fe --> fe_css["style.css<br>CSS 変数 + [data-theme=#quot;dark#quot;] のルール"]
+    fe --> fe_vendor["vendor/<br>uPlot (同梱)"]
+    root --> t["tests/"]
+    t --> t_init["__init__.py"]
+    t --> t_conf["conftest.py<br>py-analyze-common の analyze_common.testing に、このリポジトリとパッケージを指させることも行う"]
+    t --> t_ana["test_analysis.py"]
+    t --> t_flow["test_analysis_flow.py<br>GUI の HTTP エンドポイントを通した、分析・ストリーミング・キャッシュの契約"]
+    t --> t_cmp["test_compare.py"]
+    t --> t_cli["test_cli.py"]
+    t --> t_clis["test_cli_single.py<br>実際のローカル音声を使う単一ソースの CLI の分析と、その出力の図"]
+    t --> t_dl["test_download.py"]
+    t --> t_gui["test_gui.py"]
+    t --> t_plot["test_plot.py"]
+    t --> t_pkg["test_package.py<br>パッケージが sys.path に 1 度だけ入れる vendor/py-analyze-common の項目"]
+    t --> t_upd["test_update.py<br>UPDATE_CONFIG と、それに一致する installer.iss / spec / release.yaml"]
+    t --> t_ffb["test_ffmpeg_binary.py<br>PATH の ffmpeg / ffprobe をアプリのパーサーで読む<br>(EXPECT_FFMPEG_DIR が同梱のバイナリを指す)"]
+    t --> t_rwf["test_release_workflow.py<br>release.yaml が配布物の中の ffmpeg / ffprobe に test_ffmpeg_binary.py を走らせる。<br>書き込めるのは create-release だけで、それは Python を走らせない。UPDATE_SIGNING_KEY を持つジョブのトークンは読み取り専用で、<br>ハッシュで固定した yt-dlp だけを入れる。Developer ID の identity は codesign の直前に取り込み、<br>codesign が終わると削除する。リリースのジョブはパッケージを requirements/*.txt からだけ入れ、<br>ビルドの道具を SHA256 を照合してから入れる。requirements/release.txt は pyproject.toml を満たし、<br>どの requirements/*.txt も、自分の固定値を制約にして解決すると、同じ環境マーカーの下で、固定しているパッケージとちょうど同じになる<br>(py-analyze-common の analyze_common.testing.release_workflow を走らせる)"]
+    t --> t_font["test_chart_font.py<br>どのスクリプトも独自のフォントを名指ししない (analyze_common.testing.chart_font を走らせる)"]
+    t --> t_ejs["test_yt_dlp_ejs.py<br>入っている yt-dlp-ejs の版 (major.minor) とスクリプトのハッシュが、入っている yt-dlp の受け付けるものである<br>(analyze_common.testing.yt_dlp_ejs を走らせる)"]
+    t --> t_tpl["test_third_party_licenses.py<br>THIRD_PARTY_LICENSES.txt が指す GPL の全文と、それを同梱する spec / installer.iss<br>(analyze_common.testing.third_party_licenses を走らせる)"]
+    t --> t_fe["test_frontend.py<br>Playwright のヘッドレス Chromium のランナー"]
+    t --> t_chart["test_chart_rendering.py<br>実際のチャートのスクリプトを Chromium で描画し、そのピクセルを書き出す"]
+    t --> t_static["test_static_server.py<br>数を限った接続の集中の間も、最初のアセットが配信される"]
+    t --> t_jsc["js_coverage.py<br>--js-coverage を付けると、Playwright のテストが走らせる frontend/*.js の V8 のカバレッジを LCOV で書く<br>(analyze-spectrum のものと同じファイル)"]
+    t --> t_jsct["test_js_coverage.py<br>js_coverage.py: V8 の範囲と行の対応付け、書き出す LCOV<br>(analyze-spectrum のものと同じファイル)"]
+    t --> tf["frontend/"]
+    tf --> tf_html["test_ui.html<br>テストハーネスのページ (DOM + スタブ)"]
+    tf --> tf_js["test_ui.js<br>ブラウザで走る UI の状態のテスト"]
+    root --> docs["docs/"]
+    docs --> docs_arch["architecture.md"]
+    docs --> docs_arch_ja["architecture.ja.md"]
+    docs --> docs_dec["decisions/<br>閉じた判断: 何を選び、何を却下したか。<br>各記録は英語の .md と日本語の .ja.md"]
+    docs_dec --> docs_dec_cmp["comparison-mode.md, comparison-mode.ja.md<br>比較モード"]
+    docs_dec --> docs_dec_lfi["local-file-input.md, local-file-input.ja.md<br>ローカルの音声ファイルの入力"]
+    docs --> docs_shot["screenshot.png"]
+    root --> vend["vendor/py-analyze-common/<br>git submodule (sys.path 注入で使う)"]
+    root --> r_build["build.py<br>ビルドスクリプト: py-analyze-common の analyze_common.build にこのアプリの名前を渡したもの<br>(アセットのダウンロード + PyInstaller + Inno Setup / DMG)"]
+    root --> r_spec["analyze-loudness.spec<br>PyInstaller の spec"]
+    root --> r_iss["installer.iss<br>Inno Setup のスクリプト"]
+    root --> r_lic["THIRD_PARTY_LICENSES.txt<br>同梱するライセンスのファイル"]
+    root --> r_gpl["licenses/<br>GPL v2 / v3 の全文 (THIRD_PARTY_LICENSES.txt の FFmpeg の節が指す。<br>spec が同じ階層に同梱する)"]
+    root --> ba_pin["build_assets/ffmpeg.json<br>同梱する ffmpeg / ffprobe の系列と、macOS のビルドの URL / SHA256"]
+    root --> ba_sum["build_assets/checksums.json<br>同梱する uPlot のファイルの版と SHA256"]
+    root --> ba_icon["build_assets/icon_draft.svg<br>icon.ico / icon.png / icon.iconset の元 (PYTHONPATH=vendor/py-analyze-common/src python -m analyze_common.icons build_assets)"]
+    root --> ba["build_assets/bin/<br>ffmpeg, ffprobe, deno (git 管理外)"]
+```
+
 ## データの流れ
 
 ### CLI
@@ -148,7 +239,36 @@ graph TD
   最小 3.05)。色だけに頼らないよう、タイムラインの線の右端・ヒストグラムの最頻ビン・GATE 帯のラベル・
   セグメントの見出しにトラック番号を描く。CLI の図はライトの 6 色 (`src/analyze_loudness/plot.py` の `TRACK_COLORS`) を使う。
 
+## 所要時間の目安 (10 分の音声)
+
+| 段階                      | 時間    |
+|---------------------------|---------|
+| yt_dlp API での音声のダウンロード | 3〜8 秒 |
+| ffmpeg ebur128            | 約 11 秒 |
+| stderr の解析 + JSON      | 1 秒未満 |
+| **合計**                  | **約 20 秒** |
+
 ## GUI
+
+### エンドポイント
+
+| エンドポイント | メソッド | 説明 |
+|----------|--------|-------------|
+| `/analyze` | POST | URL から音声をダウンロードするか、ローカルファイルをそのまま使い、EBU R128 の分析を行う。応答は NDJSON ストリーム |
+| `/save` | POST | 分析結果の JSON をネイティブのファイルダイアログで保存する |
+| `/save-image` | POST | チャートを合成した PNG (base64) をネイティブのダイアログで保存する |
+| `/compare` | POST | 2〜6 本の単体結果を最短のトラックに切り詰めた比較 JSON と、切り詰めた範囲の統計 (`stats`) を返す |
+| `/load` | POST | ネイティブのダイアログで JSON を選び、結果をもう一度表示する。比較 JSON には `stats` を添え、単体結果のキャッシュには入れない。待ち行列にトラックがある間にページが送る `{"queue": true}` 付きで読んだ単体結果も、キャッシュには入れない: データごと待ち行列に加わるか、上限ではページが断る |
+| `/browse` | POST | ネイティブのダイアログでローカルの音声ファイルを選び、そのパスを返す |
+| `/upload` | POST | ドロップされたファイル (本文はそのまま、名前は `X-Filename`) を一時ディレクトリに置き、そのパスを返す。上限 500 MB。拡張子は `src/analyze_loudness/download.py` の `AUDIO_EXTENSIONS` に従う |
+| `/common/settings.js` | GET | py-analyze-common の `settings.js` の前に、設定ファイルに保存されたテーマと言語 (`window.analyzeSettingsStored`) を付けて返す。読み込みのたびに設定ファイルを読む (`Cache-Control: no-store`) |
+| `/settings` | POST | `{"theme": ...}` か `{"lang": ...}` のちょうど 1 つをアプリの設定ファイルに保存し、保存後の `{"theme", "lang"}` を返す。それ以外は 400。書き込めないときは 500 |
+| `/update/status` | POST | 実行中の版 (`current`)、このビルドが更新を適用できるか (`supported`)、「起動時に確認」の設定 (`launch_check`) を返す |
+| `/update/settings` | POST | `{"launch_check": bool}` をアプリの設定ファイルに保存し、保存後の値を返す。bool 以外は 400。書き込めないときは 500 |
+| `/update/check` | POST | 最新の Release の `latest.json` を確認する。新しい版があれば `{"available": true, "version"}`、無ければ `{"available": false}`。失敗は 502 |
+| `/update/install` | POST | `{"version"}` を取得し、署名を検証して適用し (直前の確認が報告した版だけを受け付ける)、`{"restarting": true}` を返してアプリを終了する。失敗は 500。macOS で入れ替えの後に再起動できないときは、`{"installed": true, "restart_error"}` を返して動き続ける |
+
+POST は Content-Type が `application/json` (`/upload` は `application/octet-stream`) のときだけ受け付け、それ以外は 415。`/analyze`、`/compare`、`/save`、`/save-image`、`/load` は、JSON でない本文に 400 (`Invalid JSON body`) を返す。Host と Content-Type の検査、`/browse`、`/save-image`、`/settings`、`/update/*`、`/common/*` のファイルは py-analyze-common の `GuiHandler` (`analyze_common/server.py`) から来ており、`AnalyzeHandler` がそれを継承してこのアプリの状態 (`updater()`、`ui_settings()`、`window()`、`dialog_lock()`、`exit_for_update()`) を渡す。
 
 ### 通信モデル
 
@@ -166,6 +286,36 @@ GUI の `/analyze` エンドポイントは `application/x-ndjson` でストリ�
 それ以降のダウンロード・解析フェーズで発生したエラーは **HTTP 200 + NDJSON `{"type":"error","error":"..."}`** として返る。
 応答ヘッダ送信後に HTTP ステータスを変更できないための設計上の契約であり、クライアントは HTTP ステータスだけでなく NDJSON の `type` フィールドで成否を判定する。
 `Content-Length` / `Transfer-Encoding: chunked` は付与せず、フレーム境界は `Connection: close` で確定させる。
+
+警告イベント (ffmpeg が 0 以外で終了したときに送る。ステータス欄に表示し、stderr から解析できた分で処理を続ける):
+```json
+{"type":"warning","message":"ffmpeg exited with code 1"}
+```
+
+結果イベント:
+```json
+{
+  "type": "result",
+  "data": {
+    "meta": {
+      "schema_version": 3,
+      "version": "1.0.0",
+      "analyzed_at": "2026-04-03T12:34:56+00:00",
+      "source_url": "https://www.youtube.com/watch?v=..."
+    },
+    "title": "Video Title",
+    "summary": {
+      "duration_sec": 600, "frames": 5999,
+      "integrated": -18.1, "true_peak": 0.8, "lra": 9.3,
+      "gate_threshold": -28.5,
+      "short_term": { "median": -19.4, "mean": -20.5, "p10": -24.1, "p90": -15.4 },
+      "momentary": { "median": -20.8, "mean": -21.3, "p10": -26.9, "p90": -14.4 },
+      "silence_pct": 1.0
+    },
+    "series": { "t": [...], "S": [...], "M": [...] }
+  }
+}
+```
 
 ### キャンセル
 
@@ -214,6 +364,16 @@ Integrated は BS.1770 の絶対ゲート (-70 LUFS、loudness units relative to
   帯は実際の除外区間に収束する。
 - 数値サマリー (算入率 / 除外率 / しきい値) はチャート直下の `.gate-caption` に置き、
   合成した PNG には summary テキストの 1 行として焼き込む。
+
+## テスト
+
+### フロントエンドの UI テスト
+
+`tests/frontend/test_ui.html` + `tests/frontend/test_ui.js` は `tests/test_frontend.py` (Playwright + ヘッドレス Chromium) を通して走る。確かめるのは `fmt`、`_setBusy`、`_addTip`、テーマと言語の切り替え、/analyze + /load の fetch のモックの経路、辞書のキーの網羅など。ハーネスは、更新の確認の JSON の応答が通常のときと遅れるときの両方で走る。インストールを受け入れるケースは、インストールのリクエストを待ってからその中身を調べる。`test_frontend.py` は、パーセントエンコードした非 ASCII のアップロードのファイル名も、アプリケーションのページを通して確かめる。静的なサーバーとアプリケーションのページのサーバーは、リクエストの待ち列の大きさを共有する。`test_static_server.py` は最初に HTML を配信し、その後、数を限った接続の集中の中でスクリプトの応答の本文を確かめ、その集中が接続し終わるまで最初の accept を保留する。`tests/frontend/test_ui.html` は、言語を決めるためと保存を確かめるために、`window.analyzeSettings` のスタブ (言語 en、テーマ light。保存は送らずに記録する) を `frontend/i18n.js` の前に置く。`tests/conftest.py` の `_isolated_settings` は、各テストのアプリの設定ファイルを一時フォルダに向ける。
+
+### JavaScript のカバレッジ
+
+`--js-coverage=PATH` を付けると、`tests/js_coverage.py` は、テストが開く全ての Chromium のページで、ページが何かを読み込む前に V8 の precise coverage を始める。採取するのは、テストが始めるナビゲーション (`goto`、`reload`、`go_back`、`go_forward`) のそれぞれの前 (ナビゲーションは文書のスクリプトを置き去りにする) と、ページ・そのコンテキスト・そのブラウザが閉じられるときで、採取のたびに前回からのカウントを足す。数える対象は `frontend/` のうち `frontend/vendor/` の外にあるスクリプトで、プロジェクトのルートから配信されたもの (`/frontend/main.js`、`tests/frontend/test_ui.html`) もアプリのハンドラーが配信したもの (`/main.js`) も含み、その全てを LCOV として PATH に書く。どのテストも読み込まなかったスクリプトはヒット 0 で書く。行のヒット数は、その行のコード全体を含む最も内側の V8 の範囲のカウントを、ページをまたいで合計したもの。空行と、コメントで始まる行は数えない。ページが、ディスク上のファイルと長さの違うスクリプトを走らせたテストは失敗にする。py-analyze-common のスクリプト (`/common/*.js`) は数えない。
 
 ## ビルドと配布
 
