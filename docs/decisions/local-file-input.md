@@ -2,7 +2,7 @@
 
 > 日本語版は [local-file-input.ja.md](local-file-input.ja.md) を参照してください.
 
-Closed decisions about analyzing local audio files. How local files are handled today is in the "Local files" section of `CLAUDE.md`; this file keeps what was chosen and what was rejected. The decisions were made for semnil/analyze-loudness#66 (merged on 2026-10-17).
+Closed decisions about analyzing local audio files. How local files are handled today is in the "Local files" section of `AGENTS.md`; this file keeps what was chosen and what was rejected. The decisions were made for semnil/analyze-loudness#66 (merged on 2026-10-17).
 
 ## Inputs
 

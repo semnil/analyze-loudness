@@ -2,7 +2,7 @@
 
 > For the English version, see [local-file-input.md](local-file-input.md).
 
-ローカルの音声ファイルの分析について、閉じた判断の記録。ローカルファイルの今の扱いは `CLAUDE.md` の「Local files」の節にある。この文書には、何を選んだかと、却下した案を残す。どの決定も semnil/analyze-loudness#66 (2026-10-17 にマージ) のときのもの。
+ローカルの音声ファイルの分析について、閉じた判断の記録。ローカルファイルの今の扱いは `AGENTS.md` の「Local files」の節にある。この文書には、何を選んだかと、却下した案を残す。どの決定も semnil/analyze-loudness#66 (2026-10-17 にマージ) のときのもの。
 
 ## Inputs
 
