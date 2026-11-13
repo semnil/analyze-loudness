@@ -296,21 +296,21 @@ Bundling a PyInstaller onefile binary such as `yt-dlp_macos` causes a Team ID mi
 
 ### yt-dlp version pin
 
-`pyproject.toml` has an exact pin `yt-dlp==<version>`. Who updates it, why it is pinned and the check before a release are in the "yt-dlp version pin" section of `vendor/py-analyze-common/CLAUDE.md`.
+`pyproject.toml` has an exact pin `yt-dlp==<version>`. Who updates it, why it is pinned and the check before a release are in the "yt-dlp version pin" section of `vendor/py-analyze-common/AGENTS.md`.
 
 ### macOS is Apple Silicon (arm64) only (v1.3.0+)
 
-The reason is in the "Building a consumer (build)" section of `vendor/py-analyze-common/CLAUDE.md`.
+The reason is in the "Building a consumer (build)" section of `vendor/py-analyze-common/AGENTS.md`.
 
 ### Bundled ffmpeg pin
 
-`build_assets/ffmpeg.json` holds the pin. How each OS bundles it, how it is updated and how the release build checks the distributed copies are in the "Bundled ffmpeg pin (ffmpeg_release)" section of `vendor/py-analyze-common/CLAUDE.md`.
+`build_assets/ffmpeg.json` holds the pin. How each OS bundles it, how it is updated and how the release build checks the distributed copies are in the "Bundled ffmpeg pin (ffmpeg_release)" section of `vendor/py-analyze-common/AGENTS.md`.
 
 `tests/test_ffmpeg_binary.py` here reads a 1 kHz sine wave written with numpy through the ffmpeg / ffprobe on PATH and the app's parsers (`run_ebur128()` / `probe_duration()`), and compares Integrated, the relative gate and True Peak with the BS.1770 calculation, and also reads a copy with a non-ASCII name and a copy with a tag that is not UTF-8.
 
 ### Starting ffmpeg / ffprobe by absolute path
 
-`run_ebur128()` in `src/analyze_loudness/analysis.py`, and py-analyze-common's `probe_info()` / `download_audio()`, start ffmpeg / ffprobe (and yt-dlp's deno) by the absolute path that py-analyze-common's `find_executable()` returns. It searches only the absolute entries of PATH, in order; the frozen app puts the bundled `bin` folder at the front of PATH (`main()` in `src/analyze_loudness/gui.py`). The reason is in the "Programs start by absolute path (find_executable)" section of `vendor/py-analyze-common/CLAUDE.md`. When the program they run is not on PATH (ffmpeg for `run_ebur128()` / `download_audio()`, ffprobe for `probe_info()`), they raise `FileNotFoundError` without starting a process. `tests/test_ffmpeg_binary.py` checks `EXPECT_FFMPEG_DIR` with the same `find_executable()`.
+`run_ebur128()` in `src/analyze_loudness/analysis.py`, and py-analyze-common's `probe_info()` / `download_audio()`, start ffmpeg / ffprobe (and yt-dlp's deno) by the absolute path that py-analyze-common's `find_executable()` returns. It searches only the absolute entries of PATH, in order; the frozen app puts the bundled `bin` folder at the front of PATH (`main()` in `src/analyze_loudness/gui.py`). The reason is in the "Programs start by absolute path (find_executable)" section of `vendor/py-analyze-common/AGENTS.md`. When the program they run is not on PATH (ffmpeg for `run_ebur128()` / `download_audio()`, ffprobe for `probe_info()`), they raise `FileNotFoundError` without starting a process. `tests/test_ffmpeg_binary.py` checks `EXPECT_FFMPEG_DIR` with the same `find_executable()`.
 
 ### deno (yt-dlp dependency)
 
@@ -325,7 +325,7 @@ Shows real-time progress with NDJSON streaming. Estimates the remaining time wit
 
 Three-state theme switching light / dark / auto with CSS variables + `[data-theme="dark"]`.
 CSS variable names are shared with analyze-spectrum (`--text` / `--bg-card` / `--text-secondary` / `--text-muted` etc.). The CSS variables and rules that are the same in both apps live in py-analyze-common's `analyze_common/web/common.css`, which `src/analyze_loudness/gui.py` serves as `/common/common.css` (the PyInstaller spec bundles it in `analyze_common/web`). `frontend/index.html` loads it before `frontend/style.css`, and `frontend/style.css` holds the remaining variables (accent color etc.) and its own rules. The `h1` of the narrow-screen `@media (max-width: 480px)` has to come after the `h1` of each `style.css`, so it stays in `style.css`.
-The default is `auto` (follows the OS `prefers-color-scheme`). The choice is saved with `/settings` to `theme` in the app's settings file (the same `settings.json` as "Settings" in the "Auto-update" section). The page starts drawing with `window.analyzeSettings.theme` passed by `/common/settings.js` (py-analyze-common's `UiSettings.script()`; `Cache-Control: no-store`), `main()` decides the window's background color with `UiSettings.background_color()`, and `analyze_common.ui_settings.show_window_color_until_paint()` right after `create_window()` shows that color on macOS until the page is drawn (pywebview attaches WKWebView to the window only after the first load finishes, and WKWebView draws white until its first paint, so its background is turned off; the mechanism is in the "Theme and language settings" section of `vendor/py-analyze-common/CLAUDE.md`). When saving fails, the chosen theme stays and the status area shows an error.
+The default is `auto` (follows the OS `prefers-color-scheme`). The choice is saved with `/settings` to `theme` in the app's settings file (the same `settings.json` as "Settings" in the "Auto-update" section). The page starts drawing with `window.analyzeSettings.theme` passed by `/common/settings.js` (py-analyze-common's `UiSettings.script()`; `Cache-Control: no-store`), `main()` decides the window's background color with `UiSettings.background_color()`, and `analyze_common.ui_settings.show_window_color_until_paint()` right after `create_window()` shows that color on macOS until the page is drawn (pywebview attaches WKWebView to the window only after the first load finishes, and WKWebView draws white until its first paint, so its background is turned off; the mechanism is in the "Theme and language settings" section of `vendor/py-analyze-common/AGENTS.md`). When saving fails, the chosen theme stays and the status area shows an error.
 The theme toggle UI is a pill button fixed at the top right (SVG of a sun / crescent moon / half-filled circle, generated by `_createThemeIcon()` of py-analyze-common's `analyze_common/web/ui.js`). Unified with analyze-spectrum.
 Chart colors are managed in one place by `getTheme()` of `frontend/theme.js`, and the charts are redrawn on a theme switch.
 
@@ -425,11 +425,11 @@ What this app holds:
 
 ### Temp folders of a killed run
 
-`src/analyze_loudness/gui.py` holds py-analyze-common's `InstanceLock` while it runs, and the CLI holds one while its work folder exists. When the GUI ends, `_cleanup_orphan_tempdirs()` removes the `loudness_*` temp folders a killed run left behind, unless another instance runs (the "Temp folders a killed process left behind (tempdirs)" section of `vendor/py-analyze-common/CLAUDE.md`).
+`src/analyze_loudness/gui.py` holds py-analyze-common's `InstanceLock` while it runs, and the CLI holds one while its work folder exists. When the GUI ends, `_cleanup_orphan_tempdirs()` removes the `loudness_*` temp folders a killed run left behind, unless another instance runs (the "Temp folders a killed process left behind (tempdirs)" section of `vendor/py-analyze-common/AGENTS.md`).
 
 ### Window icon
 
-Why `webview.start(icon=...)` gets the icon only on Windows, and what the AppUserModelID does, are in the "Window icon" section of `vendor/py-analyze-common/CLAUDE.md`. `main()` sets `com.semnil.loudness-analyzer` with `set_app_user_model_id()`.
+Why `webview.start(icon=...)` gets the icon only on Windows, and what the AppUserModelID does, are in the "Window icon" section of `vendor/py-analyze-common/AGENTS.md`. `main()` sets `com.semnil.loudness-analyzer` with `set_app_user_model_id()`.
 
 ### Windows subprocess console hiding
 
@@ -437,15 +437,15 @@ In PyInstaller frozen mode, `STARTF_USESHOWWINDOW` hides the console window of t
 
 ## Release procedure
 
-The steps are in the "Releasing a consumer" section of `vendor/py-analyze-common/CLAUDE.md`. In this app `__version__` is in `src/analyze_loudness/__init__.py`, the Windows installer is `LoudnessAnalyzer-X.Y.Z-setup.exe` and the macOS DMG is `Loudness-Analyzer.dmg`.
+The steps are in the "Releasing a consumer" section of `vendor/py-analyze-common/AGENTS.md`. In this app `__version__` is in `src/analyze_loudness/__init__.py`, the Windows installer is `LoudnessAnalyzer-X.Y.Z-setup.exe` and the macOS DMG is `Loudness-Analyzer.dmg`.
 
 ### Pinned release dependencies
 
-What the release jobs install, the commands that regenerate `requirements/*.txt` and what fails when they are not regenerated are in the section of the same name in `vendor/py-analyze-common/CLAUDE.md`.
+What the release jobs install, the commands that regenerate `requirements/*.txt` and what fails when they are not regenerated are in the section of the same name in `vendor/py-analyze-common/AGENTS.md`.
 
 ### Patch release for an ffmpeg update
 
-What `.github/workflows/ffmpeg-watch.yml` does daily, and its prerequisite, are in the section of the same name in `vendor/py-analyze-common/CLAUDE.md`.
+What `.github/workflows/ffmpeg-watch.yml` does daily, and its prerequisite, are in the section of the same name in `vendor/py-analyze-common/AGENTS.md`.
 
 ## Versioning
 

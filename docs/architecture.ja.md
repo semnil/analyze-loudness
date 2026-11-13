@@ -237,7 +237,7 @@ python build.py --installer  # + Inno Setup インストーラー (Windows) / DM
 1. `build.py` (py-analyze-common の `analyze_common.build` にこのアプリの名前を渡したもの) は `--skip-download` が無ければ ffmpeg、ffprobe、deno、uPlot をダウンロードし、uPlot を `build_assets/checksums.json` と照合する (yt-dlp は Python 依存)
 2. PyInstaller (`analyze-loudness.spec`): Python + 依存 + frontend + バイナリをまとめる
 3. Inno Setup (`installer.iss`): ライセンス表示付きの Windows インストーラー。`vendor/py-analyze-common/installer/auto_update.iss` を include し、`build.py` が `/DMyAppMutex=` を渡す。macOS は `build.py --installer` が create-dmg で DMG を作る
-4. `.github/workflows/release.yaml`: インストーラーと DMG の SHA-256 に署名した `latest.json` を Release に載せる ([自動更新](#自動更新))。そのジョブは Python パッケージをハッシュで固定した `requirements/*.txt` からだけ入れ、Inno Setup と create-dmg を SHA-256 を照合してから入れる (`CLAUDE.md` の「Pinned release dependencies」)
+4. `.github/workflows/release.yaml`: インストーラーと DMG の SHA-256 に署名した `latest.json` を Release に載せる ([自動更新](#自動更新))。そのジョブは Python パッケージをハッシュで固定した `requirements/*.txt` からだけ入れ、Inno Setup と create-dmg を SHA-256 を照合してから入れる (`AGENTS.md` の「Pinned release dependencies」)
 
 ### 同梱するアセット (`build_assets/bin/`)
 
