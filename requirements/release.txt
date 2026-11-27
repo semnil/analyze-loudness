@@ -564,9 +564,9 @@ docutils==0.23 \
     --hash=sha256:25d013af9bf23bc1c7b2b093dff4208166c53a94786c9e447808335ef1185fea \
     --hash=sha256:746f5060322511280a1e50eb76846ed6bf2342984b2ac04dc42caa1a8d78799e
     # via readme-renderer
-filelock==4.3.0 \
-    --hash=sha256:143407310acf479e82d88068e3b9a6486f45fb410c0ed8729fe7359eaabeb6f1 \
-    --hash=sha256:f933f39f7e01249a4a49b9abab30edc6d4b874624c3de5dd0b0d137aa8adb979
+filelock==4.3.1 \
+    --hash=sha256:4c5ee627c401f1863ac6a0de9a14a28d3bb5f8c730b45e2fd6e5dbc79cf34b9e \
+    --hash=sha256:79e43df8e9fe509cd83a3899a7c186c8077cbbe4d200a1ed3705c2f3bb6bc487
     # via static-ffmpeg
 fonttools==4.68.0 \
     --hash=sha256:039142b75a068c93f8596ef68787f82c74940b9153d24c224ab31e750eb083a2 \
